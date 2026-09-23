@@ -306,30 +306,6 @@ def auth_reset_password():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# TEMPORARY (again) - the first migration attempt's write likely landed on
-# the old container's ephemeral disk instead of the volume, because it ran
-# in the brief window between a deploy and the volume finishing its mount -
-# see the conversation with Francis. Same as before: normal login required,
-# not a new unauthenticated surface. Delete once re-confirmed persistent
-# (i.e. survives a manual restart, not just a page reload).
-@app.route('/admin/restore-data', methods=['POST'])
-def admin_restore_data():
-    allowed_files = {
-        'users.json', 'todos.json', 'suggestions.json', 'calendar_events.json',
-        'calendar_settings.json', 'calendar_checkin_status.json', 'discussion_topics.json',
-        'kb_notes.json', 'kb_connections.json', 'knowledge_base.json',
-        'personal_knowledge_base.json', 'thought_status.json', 'personal_thought_status.json'
-    }
-    payload = request.json or {}
-    written = []
-    for filename, content in payload.items():
-        if filename not in allowed_files:
-            continue
-        with open(_data_path(filename), 'w', encoding='utf-8') as f:
-            json.dump(content, f, indent=2)
-        written.append(filename)
-    return jsonify({'success': True, 'written': written, 'dataDir': DATA_DIR})
-
 
 _AUTH_EXEMPT_PATHS = {
     '/', '/auth/status', '/auth/setup', '/auth/login', '/auth/logout',
