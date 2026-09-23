@@ -1,0 +1,26 @@
+# Secrets - API keys, Flask session secret, SendGrid credentials
+.env
+
+# User data - personal business data and password hashes, not app code.
+# In production these live on a mounted persistent volume (see DATA_DIR in
+# app.py), never in the repo.
+users.json
+todos.json
+suggestions.json
+calendar_events.json
+calendar_settings.json
+calendar_checkin_status.json
+discussion_topics.json
+kb_notes.json
+kb_connections.json
+knowledge_base.json
+personal_knowledge_base.json
+thought_status.json
+personal_thought_status.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Local tooling config, not part of the deployed app
+.claude/
