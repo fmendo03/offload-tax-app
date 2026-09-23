@@ -306,32 +306,6 @@ def auth_reset_password():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# TEMPORARY - one-time migration of Francis's existing local data onto this
-# deploy's persistent volume, so the live app continues from what he already
-# had instead of starting empty. Deliberately NOT in _AUTH_EXEMPT_PATHS - it
-# requires the normal login session like every other route below, so this
-# isn't a new unauthenticated surface, just a bulk-write version of the
-# per-record POST routes the rest of the app already exposes to a logged-in
-# user. Delete this whole route once the migration is done - it's dead
-# weight afterward either way.
-@app.route('/admin/restore-data', methods=['POST'])
-def admin_restore_data():
-    allowed_files = {
-        'users.json', 'todos.json', 'suggestions.json', 'calendar_events.json',
-        'calendar_settings.json', 'calendar_checkin_status.json', 'discussion_topics.json',
-        'kb_notes.json', 'kb_connections.json', 'knowledge_base.json',
-        'personal_knowledge_base.json', 'thought_status.json', 'personal_thought_status.json'
-    }
-    payload = request.json or {}
-    written = []
-    for filename, content in payload.items():
-        if filename not in allowed_files:
-            continue
-        with open(_data_path(filename), 'w', encoding='utf-8') as f:
-            json.dump(content, f, indent=2)
-        written.append(filename)
-    return jsonify({'success': True, 'written': written})
-
 
 _AUTH_EXEMPT_PATHS = {
     '/', '/auth/status', '/auth/setup', '/auth/login', '/auth/logout',
