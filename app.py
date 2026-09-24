@@ -3745,10 +3745,15 @@ def chat():
             content_blocks.extend(attachment_blocks)
             last_turn['content'] = content_blocks
 
-        # Get response from Claude
+        # Get response from Claude. 8192 (up from 4096) because create_file's
+        # content now covers full HTML documents (see file_type "html") on top
+        # of everything else that shares this same budget - web search
+        # results, other file types, and the reply text itself. A styled
+        # multi-section page with several services easily used the old ceiling
+        # on the file alone, leaving nothing for the reply.
         response = client.messages.create(
             model="claude-sonnet-5",
-            max_tokens=4096,
+            max_tokens=8192,
             system=system_prompt,
             messages=claude_messages,
             tools=tools
@@ -3761,12 +3766,13 @@ def chat():
             block.text for block in response.content if getattr(block, 'type', None) == 'text'
         )
 
-        # A heavy web-search turn can spend the whole token budget on search
-        # results/tool-use and leave nothing for the actual answer. Rather than
-        # silently returning nothing, surface that so the user isn't left
-        # waiting with no visible outcome.
+        # A heavy web-search turn, or a large generated file (a multi-section
+        # HTML page, a long document), can spend the whole token budget before
+        # leaving room for the actual reply text. Rather than silently
+        # returning nothing, surface that so the user isn't left waiting with
+        # no visible outcome.
         if not response_text.strip() and response.stop_reason == 'max_tokens':
-            response_text = "That took me down a longer research path than expected and I ran out of room to answer - try asking again, maybe a bit more narrowly."
+            response_text = "That took more room to work through than expected and I ran out of space to answer - try asking again, maybe split into smaller steps."
 
         # If the agent just asked a short multiple-choice clarifying question, it may
         # have called the (purely cosmetic) quick-replies tool to suggest tappable
