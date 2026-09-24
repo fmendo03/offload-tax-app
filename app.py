@@ -3773,6 +3773,15 @@ def chat():
         # no visible outcome.
         if not response_text.strip() and response.stop_reason == 'max_tokens':
             response_text = "That took more room to work through than expected and I ran out of space to answer - try asking again, maybe split into smaller steps."
+            # TEMPORARY diagnostics - this keeps happening even at the raised
+            # 8192 ceiling and there's no Railway log access to inspect it
+            # directly, so surface what actually consumed the budget right in
+            # the reply. Remove once the real cause is confirmed.
+            tool_calls = [
+                {'name': getattr(b, 'name', None), 'input_size': len(str(getattr(b, 'input', '') or ''))}
+                for b in response.content if getattr(b, 'type', None) == 'tool_use'
+            ]
+            response_text += f"\n\n(debug: output_tokens={response.usage.output_tokens}, tool_calls={tool_calls})"
 
         # If the agent just asked a short multiple-choice clarifying question, it may
         # have called the (purely cosmetic) quick-replies tool to suggest tappable
