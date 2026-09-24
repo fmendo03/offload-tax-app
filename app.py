@@ -34,6 +34,10 @@ from pptx.enum.text import PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE
 from fpdf import FPDF
 import csv as csv_lib
+import email as email_lib
+import email.policy
+import html as html_lib
+import extract_msg
 
 load_dotenv()
 
@@ -326,6 +330,90 @@ def _require_login():
         return
     if not session.get('user_id'):
         return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+
+
+# --- Attachments -----------------------------------------------------------
+# A single generic file store shared by every item type that can carry a
+# file (To-Do, Calendar events, Discussion Topics, Project/Solo Tasks) -
+# rather than one bespoke upload path per feature. Each upload gets its own
+# folder (named by a random id) holding exactly one file under its original
+# name, so serving it back needs no separate metadata store - the folder
+# listing IS the metadata. The item itself (todo/event/topic/task) just
+# holds a small {id, name, size, mimeType} descriptor pointing at one of
+# these folders; Tasks aren't server-persisted at all (see workspaceTasks in
+# index.html - they live in localStorage), so for those the descriptor is
+# stored client-side while the actual bytes still live here.
+ATTACHMENTS_DIR = _data_path('attachments')
+os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
+attachments_lock = threading.Lock()
+
+
+def _attachment_file_path(attachment_id):
+    folder = os.path.join(ATTACHMENTS_DIR, attachment_id)
+    if not os.path.isdir(folder):
+        return None
+    names = os.listdir(folder)
+    return os.path.join(folder, names[0]) if names else None
+
+
+@app.route('/attachments', methods=['POST'])
+def attachments_upload():
+    try:
+        file = request.files.get('file')
+        if not file or not file.filename:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+        attachment_id = uuid.uuid4().hex
+        safe_name = os.path.basename(file.filename)
+        with attachments_lock:
+            folder = os.path.join(ATTACHMENTS_DIR, attachment_id)
+            os.makedirs(folder, exist_ok=True)
+            dest = os.path.join(folder, safe_name)
+            file.save(dest)
+            size = os.path.getsize(dest)
+        mime_type = file.mimetype or mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
+        return jsonify({
+            'success': True,
+            'attachment': {'id': attachment_id, 'name': safe_name, 'size': size, 'mimeType': mime_type}
+        })
+    except Exception as e:
+        print(f"Attachment upload error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/attachments/<attachment_id>', methods=['GET'])
+def attachments_get(attachment_id):
+    path = _attachment_file_path(attachment_id)
+    if not path:
+        return ('Not found', 404)
+    directory, filename = os.path.split(path)
+    return send_from_directory(directory, filename)
+
+
+@app.route('/attachments/<attachment_id>', methods=['DELETE'])
+def attachments_delete(attachment_id):
+    try:
+        _delete_attachment_folder(attachment_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Attachment delete error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _delete_attachment_folder(attachment_id):
+    with attachments_lock:
+        folder = os.path.join(ATTACHMENTS_DIR, attachment_id)
+        if os.path.isdir(folder):
+            shutil.rmtree(folder)
+
+
+# Called wherever a whole item (to-do, calendar event, discussion topic) with
+# attachments gets deleted outright, so its files don't linger as orphaned
+# folders on disk - see the "takes up space" discussion with Francis.
+def _delete_item_attachments(item):
+    for att in (item.get('attachments') or []):
+        att_id = att.get('id') if isinstance(att, dict) else None
+        if att_id:
+            _delete_attachment_folder(att_id)
 
 KNOWLEDGE_BASE_FILE = _data_path('knowledge_base.json')
 THOUGHT_STATUS_FILE = _data_path('thought_status.json')
@@ -1801,7 +1889,8 @@ def calendar_events_create():
             'externalUid': None,
             'status': 'confirmed',
             'createdAt': now_iso,
-            'updatedAt': now_iso
+            'updatedAt': now_iso,
+            'attachments': data.get('attachments') or []
         }
         with calendar_lock:
             events = load_calendar_events()
@@ -1829,6 +1918,8 @@ def calendar_events_update(event_id):
                 event['allDay'] = bool(data['allDay'])
             if 'status' in data and data['status'] in ('confirmed', 'done', 'cancelled'):
                 event['status'] = data['status']
+            if 'attachments' in data:
+                event['attachments'] = data['attachments'] or []
             event['updatedAt'] = datetime.now().isoformat()
             save_calendar_events(events)
         return jsonify({'success': True, 'event': event})
@@ -1855,6 +1946,7 @@ def calendar_events_delete(event_id):
                 dismissed.add(event['externalUid'])
                 settings['dismissedExternalUids'] = list(dismissed)
                 save_calendar_settings(settings)
+        _delete_item_attachments(event)
         return jsonify({'success': True})
     except Exception as e:
         print(f"Calendar delete error: {e}")
@@ -2132,7 +2224,8 @@ def discussion_topics_auto_add():
                 'details': details,
                 'discussed': False,
                 'createdAt': datetime.now().isoformat(),
-                'discussedAt': None
+                'discussedAt': None,
+                'attachments': data.get('attachments') or []
             }
             category['topics'].append(topic)
             save_discussion_topics(store)
@@ -2239,7 +2332,8 @@ def discussion_topics_create_topic():
                 'details': details,
                 'discussed': False,
                 'createdAt': datetime.now().isoformat(),
-                'discussedAt': None
+                'discussedAt': None,
+                'attachments': data.get('attachments') or []
             }
             category['topics'].append(topic)
             save_discussion_topics(store)
@@ -2267,6 +2361,8 @@ def discussion_topics_update_topic(topic_id):
             if 'discussed' in data:
                 topic['discussed'] = bool(data['discussed'])
                 topic['discussedAt'] = datetime.now().isoformat() if topic['discussed'] else None
+            if 'attachments' in data:
+                topic['attachments'] = data['attachments'] or []
             if 'category_id' in data and data['category_id'] and data['category_id'] != current_category['id']:
                 new_category = next((c for c in store['categories'] if c['id'] == data['category_id']), None)
                 if not new_category:
@@ -2290,6 +2386,7 @@ def discussion_topics_delete_topic(topic_id):
                 return jsonify({'success': False, 'error': 'Topic not found'}), 404
             category['topics'] = [t for t in category['topics'] if t['id'] != topic_id]
             save_discussion_topics(store)
+        _delete_item_attachments(topic)
         return jsonify({'success': True, 'data': store})
     except Exception as e:
         print(f"Discussion topics delete topic error: {e}")
@@ -2349,7 +2446,8 @@ def todos_create():
                 'completed': False,
                 'createdAt': datetime.now().isoformat(),
                 'completedAt': None,
-                'calendarEventId': None
+                'calendarEventId': None,
+                'attachments': data.get('attachments') or []
             }
             todos.append(todo)
             save_todos(todos)
@@ -2384,6 +2482,8 @@ def todos_update(todo_id):
             if 'completed' in data:
                 todo['completed'] = bool(data['completed'])
                 todo['completedAt'] = datetime.now().isoformat() if todo['completed'] else None
+            if 'attachments' in data:
+                todo['attachments'] = data['attachments'] or []
             # Set once Ashanti actually creates the calendar event this to-do
             # was scheduled for (see the calendar_update handling in
             # runOneOnOneAgentTurn) - null explicitly clears it, e.g. if
@@ -2402,10 +2502,12 @@ def todos_delete(todo_id):
     try:
         with todos_lock:
             todos = load_todos()
-            if not any(t['id'] == todo_id for t in todos):
+            todo = next((t for t in todos if t['id'] == todo_id), None)
+            if not todo:
                 return jsonify({'success': False, 'error': 'To-do not found'}), 404
             todos = [t for t in todos if t['id'] != todo_id]
             save_todos(todos)
+        _delete_item_attachments(todo)
         return jsonify({'success': True, 'todos': todos})
     except Exception as e:
         print(f"Todo delete error: {e}")
@@ -2505,6 +2607,30 @@ def suggestions_delete(suggestion_id):
         return jsonify({'success': True, 'suggestions': suggestions})
     except Exception as e:
         print(f"Suggestions delete error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Reorders the whole list to match `order` (a list of ids, active items
+# only - see moveSuggestion in index.html, which only offers up/down within
+# the active section since Completed is already sorted by completion date).
+# Anything not mentioned in `order` is kept, appended at the end, rather
+# than silently dropped - defensive against a stale client-side list.
+@app.route('/suggestions/reorder', methods=['POST'])
+def suggestions_reorder():
+    try:
+        data = request.json or {}
+        order = data.get('order') or []
+        with suggestions_lock:
+            suggestions = load_suggestions()
+            by_id = {s['id']: s for s in suggestions}
+            reordered = [by_id[i] for i in order if i in by_id]
+            seen = set(order)
+            missing = [s for s in suggestions if s['id'] not in seen]
+            suggestions = reordered + missing
+            save_suggestions(suggestions)
+        return jsonify({'success': True, 'suggestions': suggestions})
+    except Exception as e:
+        print(f"Suggestions reorder error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -2840,6 +2966,154 @@ def extract_pptx_text(file_bytes):
             slides_text.append(f"Slide {i}:\n" + '\n'.join(lines))
     return '\n\n'.join(slides_text) or '(no readable text found in this presentation)'
 
+
+# Dependency-free HTML-to-text for an email's HTML body (used when a message
+# has no plain-text part) - doesn't need to be a real HTML parser, just good
+# enough to turn "<p>Hi <b>Francis</b>,</p>" into readable text for Claude.
+def _html_to_text(html):
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</p>', '\n\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = html_lib.unescape(text)
+    return re.sub(r'\n{3,}', '\n\n', text).strip()
+
+
+# Dragging a real email out of desktop Outlook produces a virtual file whose
+# name/browser-reported MIME type aren't reliable - Outlook usually names it
+# after the subject line with no guarantee of a .msg/.eml extension, and
+# Chromium often reports an empty file.type for extensions it doesn't
+# recognize. Sniffing the actual bytes catches those cases: .msg is always an
+# OLE2 compound file (fixed magic number), .eml is plain RFC 822 text
+# identifiable by its header lines.
+_OLE2_MAGIC = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+_EML_HEADER_MARKERS = ('from:', 'to:', 'subject:', 'date:', 'content-type:', 'mime-version:', 'return-path:', 'received:')
+
+def _looks_like_msg_bytes(file_bytes):
+    return file_bytes[:8] == _OLE2_MAGIC
+
+def _looks_like_eml_bytes(file_bytes):
+    head = file_bytes[:2000].decode('utf-8', errors='ignore').lower()
+    return sum(1 for marker in _EML_HEADER_MARKERS if marker in head) >= 2
+
+# .eml is the standard format most desktop/web mail clients export to - it's
+# plain text (RFC 822), so Python's own email module reads it with no new
+# dependency. The generic text-fallback in build_attachment_content_blocks
+# would technically "work" on one of these too, but often garbles the body
+# if it's MIME-multipart or base64/quoted-printable encoded - this parses it
+# properly instead of hoping Claude can untangle raw MIME.
+def extract_eml_text(file_bytes):
+    parsed = email_lib.message_from_bytes(file_bytes, policy=email.policy.default)
+    body = ''
+    plain_part = parsed.get_body(preferencelist=('plain',))
+    if plain_part is not None:
+        body = plain_part.get_content()
+    else:
+        html_part = parsed.get_body(preferencelist=('html',))
+        if html_part is not None:
+            body = _html_to_text(html_part.get_content())
+    lines = [
+        f"From: {parsed.get('From', '')}",
+        f"To: {parsed.get('To', '')}",
+        f"Date: {parsed.get('Date', '')}",
+        f"Subject: {parsed.get('Subject', '')}",
+        "",
+        (body or '').strip() or '(no readable body found in this email)'
+    ]
+    return '\n'.join(lines)
+
+
+# .msg is Outlook's own binary format (an OLE compound file, not plain text) -
+# what you get when dragging an email straight out of the Outlook desktop
+# app. extract_msg already handles the RTF/HTML deencapsulation that a body
+# can be stored in, so .body is preferred and .htmlBody is only a fallback.
+def extract_msg_text(file_bytes):
+    msg = extract_msg.Message(io.BytesIO(file_bytes))
+    try:
+        body = (msg.body or '').strip()
+        if not body and msg.htmlBody:
+            html_content = msg.htmlBody
+            if isinstance(html_content, bytes):
+                html_content = html_content.decode('utf-8', errors='replace')
+            body = _html_to_text(html_content)
+        lines = [
+            f"From: {msg.sender or ''}",
+            f"To: {msg.to or ''}",
+            f"Date: {msg.date or ''}",
+            f"Subject: {msg.subject or ''}",
+            "",
+            body or '(no readable body found in this email)'
+        ]
+        return '\n'.join(lines)
+    finally:
+        msg.close()
+
+# HTML-body counterparts to extract_eml_text/extract_msg_text - used only by
+# the preview endpoint (build_attachment_content_blocks sends Claude the
+# plain-text version; markup adds nothing for the model to read and just
+# burns tokens). Returns None when the email has no HTML part, which is
+# common for plain-text-only emails.
+def extract_eml_html(file_bytes):
+    parsed = email_lib.message_from_bytes(file_bytes, policy=email.policy.default)
+    html_part = parsed.get_body(preferencelist=('html',))
+    return html_part.get_content() if html_part is not None else None
+
+def extract_msg_html(file_bytes):
+    msg = extract_msg.Message(io.BytesIO(file_bytes))
+    try:
+        html_content = msg.htmlBody
+        if not html_content:
+            return None
+        if isinstance(html_content, bytes):
+            html_content = html_content.decode('utf-8', errors='replace')
+        return html_content
+    finally:
+        msg.close()
+
+def extract_email_like_html(file_bytes, name, mime_type):
+    lower_name = (name or '').lower()
+    mime_type = mime_type or ''
+    if mime_type in ('application/vnd.ms-outlook', 'application/x-msg') or lower_name.endswith('.msg') or _looks_like_msg_bytes(file_bytes):
+        return extract_msg_html(file_bytes)
+    if mime_type in ('message/rfc822', 'application/eml') or lower_name.endswith('.eml') or _looks_like_eml_bytes(file_bytes):
+        return extract_eml_html(file_bytes)
+    return None
+
+# Shared by build_attachment_content_blocks (the /chat pipeline) and
+# /extract-email-preview - name/mimeType are checked first (cheap, and correct
+# when present), falling back to sniffing the bytes when they aren't.
+# Returns None if this doesn't look like an email at all.
+def extract_email_like_text(file_bytes, name, mime_type):
+    lower_name = (name or '').lower()
+    mime_type = mime_type or ''
+    if mime_type in ('application/vnd.ms-outlook', 'application/x-msg') or lower_name.endswith('.msg') or _looks_like_msg_bytes(file_bytes):
+        return extract_msg_text(file_bytes)
+    if mime_type in ('message/rfc822', 'application/eml') or lower_name.endswith('.eml') or _looks_like_eml_bytes(file_bytes):
+        return extract_eml_text(file_bytes)
+    return None
+
+@app.route('/extract-email-preview', methods=['POST'])
+def extract_email_preview():
+    try:
+        data = request.json or {}
+        name = data.get('name') or ''
+        mime_type = data.get('mimeType') or ''
+        file_bytes = base64.b64decode(data.get('data') or '')
+
+        text = extract_email_like_text(file_bytes, name, mime_type)
+        if text is None:
+            return jsonify({'success': False, 'error': 'Unsupported file type for preview'}), 400
+
+        try:
+            html = extract_email_like_html(file_bytes, name, mime_type)
+        except Exception:
+            html = None
+
+        return jsonify({'success': True, 'text': text, 'html': html})
+    except Exception as e:
+        print(f"Email preview extract error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Converts frontend-provided attachments (images, PDFs, Word, Excel, plain text)
 # into Claude message content blocks. Images and PDFs go straight to Claude as
 # native binary content (real vision / document understanding); Office formats
@@ -2885,8 +3159,12 @@ def build_attachment_content_blocks(attachments):
             elif mime_type == 'application/vnd.ms-powerpoint' or lower_name.endswith('.ppt'):
                 text = "(Legacy .ppt format can't be read directly - please save as .pptx and re-attach.)"
             else:
-                # Plain text and anything else decodable as text (.txt, .csv, .md, etc.)
-                text = file_bytes.decode('utf-8', errors='replace')
+                email_text = extract_email_like_text(file_bytes, name, mime_type)
+                if email_text is not None:
+                    text = email_text
+                else:
+                    # Plain text and anything else decodable as text (.txt, .csv, .md, etc.)
+                    text = file_bytes.decode('utf-8', errors='replace')
 
             blocks.append({'type': 'text', 'text': f"[Attached file: {name}]\n{text.strip()}"})
         except Exception as e:
@@ -2907,6 +3185,7 @@ FILE_TYPE_MIME = {
     'pdf': 'application/pdf',
     'txt': 'text/plain',
     'csv': 'text/csv',
+    'html': 'text/html',
 }
 
 # A small set of named color schemes an agent can pick between when generating
@@ -3248,7 +3527,7 @@ def generate_file_bytes(file_type, content, theme=DEFAULT_THEME, primary_color=N
         return create_pdf_bytes(content, theme, primary_color, accent_color)
     if file_type == 'csv':
         return create_csv_bytes(content)
-    if file_type == 'txt':
+    if file_type in ('txt', 'html'):
         return content.encode('utf-8')
     raise ValueError(f"Unsupported file_type: {file_type}")
 
@@ -3258,17 +3537,20 @@ CREATE_FILE_TOOL = {
     "name": "create_file",
     "description": (
         "Call this when you've prepared something Francis asked for as an actual file he can download "
-        "and use directly - a document, spreadsheet, presentation, or PDF - rather than pasting the "
-        "content into chat. Use it when Francis asks for something 'as a doc/Word file/spreadsheet/Excel/"
-        "PDF/deck/PowerPoint', or when handing over a finished deliverable (a report, a template, a "
-        "workbook) that naturally belongs in a real file. Don't use this for short answers or anything "
-        "that reads fine as a normal chat message - only when a downloadable file is genuinely what's "
-        "being asked for. Always pair this with a short reply of your own describing what you made - "
-        "never call it as your only output. This tool always builds the file fresh from the content and "
-        "theme you pass in - there's no way to edit a previously generated file in place. So if Francis "
-        "asks to revise, tweak, redo, or change anything about a file you already made (the wording, a "
-        "section, the color scheme, the whole look), just call create_file again with the updated content "
-        "and/or a different theme - that regenerates the whole file with the changes applied."
+        "and use directly - a document, spreadsheet, presentation, PDF, or web page/mockup - rather than "
+        "pasting the content into chat. Use it when Francis asks for something 'as a doc/Word file/"
+        "spreadsheet/Excel/PDF/deck/PowerPoint/HTML page/mockup', or when handing over a finished "
+        "deliverable (a report, a template, a workbook, a visual preview) that naturally belongs in a "
+        "real file. Don't use this for short answers or anything that reads fine as a normal chat "
+        "message - only when a downloadable file is genuinely what's being asked for, and never claim "
+        "in your reply that you attached or generated a file unless you actually called this tool in the "
+        "same turn - a description of what a file would contain is not a file. Always pair this with a "
+        "short reply of your own describing what you made - never call it as your only output. This tool "
+        "always builds the file fresh from the content and theme you pass in - there's no way to edit a "
+        "previously generated file in place. So if Francis asks to revise, tweak, redo, or change "
+        "anything about a file you already made (the wording, a section, the color scheme, the whole "
+        "look), just call create_file again with the updated content and/or a different theme - that "
+        "regenerates the whole file with the changes applied."
     ),
     "input_schema": {
         "type": "object",
@@ -3279,15 +3561,16 @@ CREATE_FILE_TOOL = {
             },
             "file_type": {
                 "type": "string",
-                "enum": ["docx", "xlsx", "pptx", "pdf", "txt", "csv"]
+                "enum": ["docx", "xlsx", "pptx", "pdf", "txt", "csv", "html"]
             },
             "theme": {
                 "type": "string",
                 "enum": ["navy_gold", "charcoal_teal", "burgundy_slate", "forest_emerald", "slate_blue"],
                 "description": (
-                    "Preset color scheme for docx/xlsx/pptx/pdf (ignored for txt/csv, which have no "
-                    "styling). Defaults to navy_gold if omitted. Used as-is if Francis just wants 'a "
-                    "different look', or as the fallback for whichever of primary_color/accent_color "
+                    "Preset color scheme for docx/xlsx/pptx/pdf (ignored for txt/csv/html, which have no "
+                    "built-in styling - an html file's look comes entirely from the CSS you write into its "
+                    "content instead). Defaults to navy_gold if omitted. Used as-is if Francis just wants "
+                    "'a different look', or as the fallback for whichever of primary_color/accent_color "
                     "below is left blank when he names a specific color."
                 )
             },
@@ -3307,7 +3590,7 @@ CREATE_FILE_TOOL = {
             "content": {
                 "type": "string",
                 "description": (
-                    "The file's content, written in PLAIN TEXT using ONLY these conventions - no other "
+                    "For every file_type except html, PLAIN TEXT using ONLY these conventions - no other "
                     "markdown syntax at all (no **bold**, no backtick code, no stray # outside the heading "
                     "rule below), since none of these file formats render markdown and it will show up as "
                     "literal asterisks/hashes in the finished file: "
@@ -3317,7 +3600,12 @@ CREATE_FILE_TOOL = {
                     "for xlsx/csv - one row per line, cells separated by \"|\", first row is the header, "
                     "plain numbers and text only in cells; for pptx - slides separated by a line containing "
                     "only \"---\", each slide's first line is its title (plain text, no \"#\") and the "
-                    "remaining lines are its bullet points (plain text, no \"-\" needed - one point per line)."
+                    "remaining lines are its bullet points (plain text, no \"-\" needed - one point per line). "
+                    "For file_type html, write a COMPLETE, self-contained HTML document instead (starting "
+                    "with <!DOCTYPE html>, including <html>/<head>/<body>) with any CSS inline in a <style> "
+                    "tag - no external stylesheets, fonts, or scripts, since the preview renders it "
+                    "sandboxed with those blocked. Use this for mockups, color/design previews, or any "
+                    "other visual page Francis wants to look at rather than read as a document."
                 )
             }
         },

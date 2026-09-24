@@ -988,6 +988,15 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            position: relative;
+        }
+
+        .home-back-btn {
+            position: absolute;
+            left: 0;
+            top: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
         }
 
         .home-scroll-area {
@@ -2519,6 +2528,7 @@
             font-weight: 700;
             color: #222;
             margin: 0;
+            cursor: text;
         }
 
         .topics-preview-title.discussed {
@@ -2530,6 +2540,7 @@
             font-size: 13px;
             color: #444;
             line-height: 1.7;
+            cursor: text;
         }
 
         .topics-preview-details ul {
@@ -2543,6 +2554,128 @@
             flex-wrap: wrap;
             padding-top: 4px;
             border-top: 1px solid #f0f0f0;
+        }
+
+        /* Shared attachment UI - reused by To-Do, Calendar events, Discussion
+           Topics, and Tasks (see buildAttachmentDropzone/renderAttachmentChips
+           in index.html and /attachments/* in app.py). One drop zone + one
+           chip-list component, wired into each of those four create/edit
+           surfaces rather than four bespoke implementations. Named
+           item-attachment-* (not attachment-*) specifically to avoid colliding
+           with the chat message attachment picker's own .attachment-chip
+           classes further down - two unrelated systems that happened to want
+           the same obvious name. */
+        .item-attachment-dropzone {
+            border: 2px dashed #ccd;
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+            font-size: 12px;
+            color: #888;
+            cursor: pointer;
+            transition: border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .item-attachment-dropzone:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .item-attachment-dropzone.dragover {
+            border-color: #667eea;
+            background: #f2f4ff;
+            color: #667eea;
+        }
+
+        .item-attachment-chip-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .item-attachment-chip-list:empty {
+            margin-top: 0;
+        }
+
+        .item-attachment-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #f7f8fa;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .item-attachment-chip a {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #1F3A5F;
+            text-decoration: none;
+        }
+
+        .item-attachment-chip a:hover {
+            text-decoration: underline;
+        }
+
+        .item-attachment-size {
+            flex-shrink: 0;
+            color: #999;
+        }
+
+        .item-attachment-remove {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #ccc;
+            font-size: 15px;
+            line-height: 1;
+            padding: 0 2px;
+        }
+
+        .item-attachment-remove:hover {
+            color: #c0392b;
+        }
+
+        .topics-item[draggable="true"] {
+            cursor: grab;
+        }
+
+        .topics-item.suggestion-dragging {
+            opacity: 0.4;
+        }
+
+        .topics-item.suggestion-drag-over {
+            border-top: 2px solid #667eea;
+        }
+
+        .suggestion-reorder-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #aaa;
+            font-size: 10px;
+            line-height: 1;
+            padding: 2px 4px;
+        }
+
+        .suggestion-reorder-btn:hover:not(:disabled) {
+            color: #1F3A5F;
+        }
+
+        .suggestion-reorder-btn:disabled {
+            color: #e0e0e0;
+            cursor: default;
+        }
+
+        .suggestions-meta {
+            font-size: 12px;
+            color: #999;
         }
 
         .topics-preview-edit-btn {
@@ -2933,6 +3066,16 @@
             flex-direction: column;
             background: white;
             min-width: 0;
+        }
+
+        /* Dropping a file anywhere in the chat area (messages or the input
+           row) attaches it the same way the "+" picker does - see the
+           dragover/drop listeners on .main-area in index.html. Outline
+           (not border) so it doesn't shift any layout while dragging. */
+        .main-area.chat-dragover {
+            outline: 3px dashed #667eea;
+            outline-offset: -3px;
+            background: #f2f4ff;
         }
 
         .chat-header {
@@ -3582,10 +3725,86 @@
             padding: 6px 10px;
             border-radius: 6px;
             font-size: 12px;
+            cursor: pointer;
+        }
+
+        .message-attachment-file:hover {
+            background: rgba(0, 0, 0, 0.12);
         }
 
         .message.user .message-attachment-file {
             background: rgba(255, 255, 255, 0.2);
+        }
+
+        .message.user .message-attachment-file:hover {
+            background: rgba(255, 255, 255, 0.32);
+        }
+
+        .attachment-preview-card {
+            background: white;
+            border-radius: 10px;
+            width: 600px;
+            max-width: 90vw;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .attachment-preview-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .attachment-preview-header h3 {
+            font-size: 15px;
+            margin: 0;
+            word-break: break-all;
+        }
+
+        .attachment-preview-close-btn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            color: #888;
+            flex-shrink: 0;
+            margin-left: 12px;
+        }
+
+        .attachment-preview-close-btn:hover {
+            color: #333;
+        }
+
+        .attachment-preview-body {
+            padding: 16px 18px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        .attachment-preview-footer {
+            padding: 12px 18px;
+            border-top: 1px solid #eee;
+            text-align: right;
+        }
+
+        .attachment-preview-footer a {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 13px;
+            text-decoration: none;
+        }
+
+        .attachment-preview-footer a:hover {
+            text-decoration: underline;
         }
 
         /* A file an agent generated via create_file - downloadable straight
@@ -4323,6 +4542,21 @@
     width: 100%;
 }
 
+.email-preview-frame {
+    width: 100%;
+    height: 60vh;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    background: white;
+}
+
+.email-preview-remote-images-note {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 6px;
+    font-style: italic;
+}
+
 .wp-preview-body {
     flex: 1;
     overflow-y: auto;
@@ -4560,7 +4794,7 @@
                         </div>
                         <div id="attachments-preview" class="attachments-preview" style="display: none;"></div>
                         <div class="input-area">
-                            <input type="file" id="attach-file-input" style="display: none;" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md">
+                            <input type="file" id="attach-file-input" style="display: none;" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.eml,.msg">
                             <button id="attach-btn" class="attach-btn" title="Attach a file">+</button>
                             <textarea placeholder="Type a message..." id="input-box" rows="1"></textarea>
                             <button id="send-btn">Send</button>
@@ -4579,6 +4813,7 @@
                 <div class="landing-auth-actions" id="landing-auth-actions" style="display: none;">
                     <button type="button" class="landing-auth-btn landing-auth-btn-primary" id="landing-login-btn">Login</button>
                     <button type="button" class="landing-auth-btn" id="landing-getstarted-btn">Get Started</button>
+                    <button type="button" class="landing-auth-btn" id="landing-meetteam-btn">Meet The Team</button>
                 </div>
             </div>
         </div>
@@ -4588,6 +4823,23 @@
              /auth/reset-password in app.py. One modal, four modes (see
              AUTH_MODAL_MODES in the script) so the fields can be reused
              instead of building four separate modals. -->
+        <!-- Preview for a file attached to a chat message (click a
+             .message-attachment-file chip) - .eml/.msg get their text
+             extracted server-side, plain-text files decode client-side,
+             everything else just offers Download. -->
+        <div id="attachment-preview-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1250; align-items: center; justify-content: center;">
+            <div class="attachment-preview-card">
+                <div class="attachment-preview-header">
+                    <h3 id="attachment-preview-title"></h3>
+                    <button type="button" class="attachment-preview-close-btn" id="attachment-preview-close-btn">&times;</button>
+                </div>
+                <div class="attachment-preview-body" id="attachment-preview-body"></div>
+                <div class="attachment-preview-footer">
+                    <a id="attachment-preview-download-link" href="#" download>&#11015; Download</a>
+                </div>
+            </div>
+        </div>
+
         <div id="auth-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1200; align-items: center; justify-content: center;">
             <div class="auth-modal-card">
                 <h3 id="auth-modal-title">Log In</h3>
@@ -4621,6 +4873,7 @@
         <!-- Meet The Team Page -->
         <div class="home-view" id="home-view" style="display: none;">
             <div class="home-top-fixed">
+                <button type="button" class="landing-auth-btn home-back-btn" id="home-back-btn" style="display: none;">&#8592; Back</button>
                 <div class="home-agents-carousel-wrap">
                     <button class="home-agents-carousel-arrow" id="home-carousel-prev">&#8249;</button>
                     <div class="home-agents-carousel" id="home-agents-carousel"></div>
@@ -4876,6 +5129,8 @@
                             <button type="button" class="task-action-btn solid-complete" id="topics-new-btn">Add New Topic</button>
                         </div>
                         <textarea id="topics-new-details" rows="2" placeholder="Details - what should be discussed? (one point per line)"></textarea>
+                        <div id="topics-new-attachments-zone"></div>
+                        <div class="item-attachment-chip-list" id="topics-new-attachments-list"></div>
                     </div>
                 </div>
                 <div class="preview-pane">
@@ -4929,6 +5184,11 @@
                                 <option value="240">Half day (4 hours)</option>
                                 <option value="480">Full day (8 hours)</option>
                             </select>
+                        </div>
+                        <div class="topics-new-field">
+                            <label>Attachments</label>
+                            <div id="todos-new-attachments-zone"></div>
+                            <div class="item-attachment-chip-list" id="todos-new-attachments-list"></div>
                         </div>
                         <button type="button" class="task-action-btn solid-complete" id="todos-new-btn">Add To-Do</button>
                     </div>
@@ -5081,6 +5341,11 @@
                 <label for="calendar-event-description">Notes</label>
                 <textarea id="calendar-event-description" rows="2" placeholder="Optional"></textarea>
             </div>
+            <div class="calendar-form-row">
+                <label>Attachments</label>
+                <div id="calendar-event-attachments-zone"></div>
+                <div class="item-attachment-chip-list" id="calendar-event-attachments-list"></div>
+            </div>
             <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
                 <button id="calendar-event-delete-btn" type="button" style="padding: 10px 20px; background: #fbeaea; color: #c0392b; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none;">Delete</button>
                 <button id="calendar-event-complete-btn" type="button" style="padding: 10px 20px; background: #1a3a8a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none; margin-right: auto;">Mark Completed</button>
@@ -5139,8 +5404,17 @@
                 <select id="task-modal-agent"></select>
             </div>
             <div class="calendar-form-row">
+                <label for="task-modal-name">Title</label>
+                <input type="text" id="task-modal-name" placeholder="Short title - auto-generated from the description if left blank">
+            </div>
+            <div class="calendar-form-row">
                 <label for="task-modal-text">Task Description <span class="required-asterisk">*</span></label>
                 <textarea id="task-modal-text" rows="3" placeholder="What should this agent do?"></textarea>
+            </div>
+            <div class="calendar-form-row">
+                <label>Attachments</label>
+                <div id="task-modal-attachments-zone"></div>
+                <div class="item-attachment-chip-list" id="task-modal-attachments-list"></div>
             </div>
             <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
                 <button id="task-modal-cancel-btn" type="button" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
@@ -6996,7 +7270,77 @@ function buildRawFilePreview(file) {
         const text = base64ToText(file.data);
         if (text !== null) return `<div class="archive-detail-text-preview">${escapeHtml(text.slice(0, 8000))}</div>`;
     }
-    return '<div class="archive-detail-unavailable">Preview not available for this file type - use Download to view it.</div>';
+    // Might be a .eml/.msg the server can identify by sniffing its bytes -
+    // Outlook's own drag-and-drop often hands over a blank mimeType and a
+    // filename with no extension (it names the file after the subject line).
+    // Render a placeholder synchronously (this function's callers all expect
+    // a string back right away) and patch in the real result once the async
+    // extraction call resolves.
+    const previewId = `raw-file-email-preview-${++rawFileEmailPreviewSeq}`;
+    fetchEmailPreviewInto(previewId, file.name, mime, file.data);
+    return `<div class="archive-detail-text-preview" id="${previewId}">Checking for a readable preview...</div>`;
+}
+
+let rawFileEmailPreviewSeq = 0;
+
+// Fills `container` in place with extracted email content - used by both the
+// Workspace/Archive file preview (a placeholder div, looked up by id since
+// the fetch resolves asynchronously) and the chat-attachment preview modal
+// (a fixed body element, passed directly). When the email has an HTML part,
+// it renders in a sandboxed iframe (fonts, bold/italic, links, and layout all
+// come through) with a CSP blocking scripts and remote images - email HTML is
+// untrusted content, and remote images in particular are a classic
+// tracking-pixel vector, so those stay blocked even though it means
+// inline-linked (non-data-URI) images won't load. Plain-text-only emails just
+// get the formatted text block.
+function renderEmailPreviewContent(container, text, html) {
+    container.innerHTML = '';
+    if (!html) {
+        const textDiv = document.createElement('div');
+        textDiv.className = 'archive-detail-text-preview';
+        textDiv.textContent = text;
+        container.appendChild(textDiv);
+        return;
+    }
+    const note = document.createElement('div');
+    note.className = 'email-preview-remote-images-note';
+    note.textContent = 'Remote images and scripts are blocked in this preview for privacy - text, links, and formatting still render.';
+    const iframe = document.createElement('iframe');
+    iframe.className = 'email-preview-frame';
+    iframe.setAttribute('sandbox', '');
+    container.appendChild(note);
+    container.appendChild(iframe);
+    const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;";
+    iframe.srcdoc = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"></head><body>${html}</body></html>`;
+}
+
+function renderNoEmailPreview(container) {
+    container.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'archive-detail-unavailable';
+    div.textContent = 'Preview not available for this file type - use Download to view it.';
+    container.appendChild(div);
+}
+
+async function fetchEmailPreviewInto(elementId, name, mimeType, base64Data) {
+    try {
+        const response = await fetch('/extract-email-preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, mimeType, data: base64Data })
+        });
+        const data = await response.json();
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        if (data.success) {
+            renderEmailPreviewContent(el, data.text, data.html);
+        } else {
+            renderNoEmailPreview(el);
+        }
+    } catch (e) {
+        const el = document.getElementById(elementId);
+        if (el) renderNoEmailPreview(el);
+    }
 }
 
 // Agent-generated files carry their own source content/theme (see
@@ -8151,6 +8495,13 @@ function buildWorkspacePreviewBody(file) {
         return `<iframe class="wp-pdf-frame" src="data:${file.mimeType};base64,${file.data}"></iframe>`;
     }
 
+    // Rendered from its own bytes as a data: URL, same as the PDF case above -
+    // sandboxed (no scripts, no same-origin access) since it's arbitrary HTML,
+    // even though the agent wrote it itself rather than a third party.
+    if (file.fileType === 'html') {
+        return `<iframe class="wp-pdf-frame" sandbox="" src="data:${file.mimeType || 'text/html'};base64,${file.data}"></iframe>`;
+    }
+
     if (!file.content) {
         // No reconstructable source text - either a raw upload (image/PDF/
         // plain text), which renders straight from its own bytes, or a
@@ -8173,7 +8524,7 @@ function buildWorkspacePreviewBody(file) {
 // preview's markup doesn't map back to its source CSV/pptx-script content, and a
 // raw upload has no source text at all, so editing stays off for those.
 function isFileContentEditable(file) {
-    return !!file.content && file.fileType !== 'pdf' && file.fileType !== 'xlsx' && file.fileType !== 'csv' && file.fileType !== 'pptx';
+    return !!file.content && file.fileType !== 'pdf' && file.fileType !== 'xlsx' && file.fileType !== 'csv' && file.fileType !== 'pptx' && file.fileType !== 'html';
 }
 
 function buildWorkspacePreviewToolbar(file, extraButtonsHtml) {
@@ -8635,6 +8986,28 @@ function saveProjectModal() {
     displayProjectsList();
 }
 
+// Attachments currently shown in the task modal. When editing an existing
+// task there's no separate "Save" step for attachments specifically (the
+// modal's Save button is replaced by "Discuss" for edits, see below) - so
+// changes here persist immediately via refreshTaskModalAttachments. When
+// creating a new task, they're just held here until saveTaskModal actually
+// creates the task and attaches them.
+let taskModalAttachments = [];
+
+function refreshTaskModalAttachments() {
+    renderAttachmentChips(document.getElementById('task-modal-attachments-list'), taskModalAttachments, refreshTaskModalAttachments);
+    const taskId = document.getElementById('task-modal-task-id').value;
+    const origAgent = document.getElementById('task-modal-agent-orig').value;
+    if (taskId) {
+        const task = findWorkspaceTaskById(origAgent, taskId);
+        if (task) {
+            task.attachments = taskModalAttachments;
+            saveWorkspaceTasks();
+            refreshTaskViewsForAgent(origAgent);
+        }
+    }
+}
+
 // projectId is null for a solo task - one that isn't part of any project.
 function openTaskModal(projectId, agent, taskId) {
     const editing = !!taskId;
@@ -8645,6 +9018,10 @@ function openTaskModal(projectId, agent, taskId) {
     document.getElementById('task-modal-project-id').value = projectId || '';
     document.getElementById('task-modal-agent-orig').value = editing ? agent : '';
     document.getElementById('task-modal-task-id').value = taskId || '';
+
+    taskModalAttachments.length = 0;
+    if (editing && task.attachments) taskModalAttachments.push(...task.attachments);
+    refreshTaskModalAttachments();
 
     const agentSelect = document.getElementById('task-modal-agent');
     agentSelect.innerHTML = '';
@@ -8657,6 +9034,7 @@ function openTaskModal(projectId, agent, taskId) {
     // possible: delete it and add a new one under the right agent.
     agentSelect.disabled = editing;
 
+    document.getElementById('task-modal-name').value = editing ? (task.name || '') : '';
     document.getElementById('task-modal-text').value = editing ? task.task : '';
 
     // Editing an existing task (solo or project) swaps Save for a "Discuss
@@ -8683,6 +9061,7 @@ function saveTaskModal() {
     const taskId = document.getElementById('task-modal-task-id').value || null;
     const origAgent = document.getElementById('task-modal-agent-orig').value || null;
     const agent = document.getElementById('task-modal-agent').value;
+    const taskName = document.getElementById('task-modal-name').value.trim();
     const taskText = document.getElementById('task-modal-text').value.trim();
     if (!agent || !taskText) { alert('Please choose an agent and describe the task.'); return; }
 
@@ -8696,7 +9075,7 @@ function saveTaskModal() {
         const task = findWorkspaceTaskById(origAgent, taskId);
         if (!task) { closeTaskModal(); return; }
         task.task = taskText;
-        task.name = deriveShortName(taskText);
+        task.name = taskName || deriveShortName(taskText);
         if (project) {
             const entry = project.tasks.find(e => e.taskId === taskId && e.agent === origAgent);
             if (entry) { entry.task = task.task; entry.name = task.name; }
@@ -8704,13 +9083,15 @@ function saveTaskModal() {
         }
         refreshTaskViewsForAgent(origAgent);
     } else if (project) {
-        const created = createProjectTaskEntry(agent, projectId, project.name, taskText, new Date());
+        const created = createProjectTaskEntry(agent, projectId, project.name, taskText, new Date(), taskName || null);
+        created.attachments = [...taskModalAttachments];
         project.tasks.push({ agent, task: taskText, taskId: created.id, name: created.name });
         saveWorkspaceTasks();
         saveProjects();
         setActivePreview({ type: 'project', projectId });
     } else {
-        const created = createSoloTaskEntry(agent, taskText, new Date());
+        const created = createSoloTaskEntry(agent, taskText, new Date(), taskName || null);
+        created.attachments = [...taskModalAttachments];
         saveWorkspaceTasks();
         setActivePreview({ type: 'task', agent, taskId: created.id });
     }
@@ -8899,6 +9280,37 @@ function capitalizeAgent(agent) {
 }
 
         // Display messages
+// Generic "click outside to cancel" for every inline edit mode in the app -
+// To-Do, Discussion Topics, Suggestions, and Knowledge Base notes all swap
+// static text for input/textarea fields the same way, and all get this same
+// behavior: click anywhere outside the field(s) and it cancels, same as
+// hitting the Cancel button. Bound on the next tick (setTimeout 0) so the
+// very click that opened edit mode - which is happening as this function is
+// called - doesn't immediately fire the listener and close it again. The
+// handler removes itself once it fires (or is explicitly told to via
+// unbindClickOutsideToCancel, which the Save/Cancel buttons call so a stale
+// handler doesn't linger and fire once more on the next unrelated click).
+function bindClickOutsideToCancel(container, onCancel) {
+    setTimeout(() => {
+        function handler(e) {
+            if (container.isConnected && container.contains(e.target)) return;
+            document.removeEventListener('mousedown', handler, true);
+            container._clickOutsideHandler = null;
+            onCancel();
+        }
+        unbindClickOutsideToCancel(container);
+        document.addEventListener('mousedown', handler, true);
+        container._clickOutsideHandler = handler;
+    }, 0);
+}
+
+function unbindClickOutsideToCancel(container) {
+    if (container && container._clickOutsideHandler) {
+        document.removeEventListener('mousedown', container._clickOutsideHandler, true);
+        container._clickOutsideHandler = null;
+    }
+}
+
 function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
@@ -8953,15 +9365,74 @@ function toApiAttachments(attachments) {
     }));
 }
 
-function renderAttachmentsHtml(attachments) {
+function renderAttachmentsHtml(attachments, msgIndex) {
     if (!attachments || !attachments.length) return '';
-    const items = attachments.map(att => {
+    const items = attachments.map((att, attIndex) => {
         if (att.mimeType && att.mimeType.startsWith('image/')) {
             return `<img class="message-attachment-image" src="${att.dataUrl}" alt="${escapeHtml(att.name)}">`;
         }
-        return `<div class="message-attachment-file">\u{1F4CE} ${escapeHtml(att.name)}</div>`;
+        return `<div class="message-attachment-file" data-msg-index="${msgIndex}" data-att-index="${attIndex}">\u{1F4CE} ${escapeHtml(att.name)}</div>`;
     }).join('');
     return `<div class="message-attachments">${items}</div>`;
+}
+
+// Click a non-image attachment chip on a sent message to preview it - .eml/.msg
+// get their text extracted server-side (their raw bytes already live in the
+// message's own dataUrl, held in chatHistory/localStorage), plain-text files
+// decode client-side, everything else falls back to the Download link.
+async function openAttachmentPreview(att) {
+    const modal = document.getElementById('attachment-preview-modal');
+    const title = document.getElementById('attachment-preview-title');
+    const body = document.getElementById('attachment-preview-body');
+    const downloadLink = document.getElementById('attachment-preview-download-link');
+
+    title.textContent = att.name || 'Attachment';
+    downloadLink.href = att.dataUrl || '#';
+    downloadLink.setAttribute('download', att.name || 'attachment');
+    modal.style.display = 'flex';
+
+    const lowerName = (att.name || '').toLowerCase();
+    const mimeType = att.mimeType || '';
+    const base64 = (att.dataUrl || '').split(',')[1] || '';
+    const isPlainText = mimeType.startsWith('text/') || /\.(txt|csv|md|json|log)$/.test(lowerName);
+    // Office/PDF/image formats are either already rendered inline (images) or
+    // have no cheap in-browser preview - only those skip the email-sniff
+    // fallback below. Everything else (including a .msg/.eml with a mangled
+    // name/type, which happens with Outlook's own drag-and-drop) gets a shot
+    // at server-side extraction, since the server sniffs the actual bytes.
+    const isKnownNonEmailBinary = mimeType.startsWith('image/') || mimeType === 'application/pdf' ||
+        /\.(docx|xlsx|pptx|doc|xls|ppt|pdf)$/.test(lowerName);
+
+    if (isPlainText) {
+        try {
+            body.textContent = decodeURIComponent(escape(atob(base64)));
+        } catch (e) {
+            body.textContent = 'Could not decode this file for preview.';
+        }
+    } else if (!isKnownNonEmailBinary) {
+        body.textContent = 'Loading preview...';
+        try {
+            const response = await fetch('/extract-email-preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: att.name, mimeType: att.mimeType, data: base64 })
+            });
+            const data = await response.json();
+            if (data.success) {
+                renderEmailPreviewContent(body, data.text, data.html);
+            } else {
+                body.textContent = 'No inline preview available for this file type - use Download below.';
+            }
+        } catch (e) {
+            body.textContent = `Couldn't preview this file: ${e.message}`;
+        }
+    } else {
+        body.textContent = 'No inline preview available for this file type - use Download below.';
+    }
+}
+
+function closeAttachmentPreviewModal() {
+    document.getElementById('attachment-preview-modal').style.display = 'none';
 }
 
 // Renders a file an agent generated (via create_file) as a downloadable chip -
@@ -8970,6 +9441,123 @@ function renderGeneratedFileHtml(file) {
     if (!file || !file.data) return '';
     const dataUrl = `data:${file.mimeType};base64,${file.data}`;
     return `<a class="generated-file-chip" href="${dataUrl}" download="${escapeHtml(file.name)}">\u{1F4C4} ${escapeHtml(file.name)} <span class="generated-file-download">⬇ Download</span></a>`;
+}
+
+// --- Item attachments -------------------------------------------------
+// Shared drag-and-drop file attachment system for To-Do items, Calendar
+// events, Discussion Topics, and Tasks (see /attachments/* in app.py) -
+// unrelated to the chat message attachments above (those are base64
+// data: URLs held in memory for one message; these are real files stored
+// server-side, referenced by a small {id, name, size, mimeType} descriptor
+// that lives on whichever item owns them). One upload/list/remove
+// component, reused across all four surfaces instead of four copies.
+
+async function uploadItemAttachment(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/attachments', { method: 'POST', body: formData });
+    return response.json();
+}
+
+function itemAttachmentUrl(id) {
+    return `/attachments/${id}`;
+}
+
+// Fire-and-forget - called when an attachment is explicitly removed from an
+// item (not when the whole item is deleted server-side, which cleans up its
+// own attachments - see _delete_item_attachments in app.py).
+function deleteItemAttachmentFile(id) {
+    fetch(itemAttachmentUrl(id), { method: 'DELETE' }).catch(e => console.error('Failed to delete attachment file:', e));
+}
+
+function formatAttachmentSize(bytes) {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Builds a click-or-drop upload zone. `attachments` is a live array the
+// caller owns - files get pushed into it as they finish uploading, and
+// `onChange` is called after each one so the caller's own chip list
+// re-renders. Multiple files can be dropped/selected at once.
+function buildAttachmentDropzone(attachments, onChange) {
+    const wrap = document.createElement('div');
+
+    const zone = document.createElement('div');
+    zone.className = 'item-attachment-dropzone';
+    zone.textContent = '\u{1F4CE} Drag & drop files here, or click to browse';
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.style.display = 'none';
+
+    async function handleFiles(fileList) {
+        for (const file of Array.from(fileList)) {
+            const data = await uploadItemAttachment(file);
+            if (data.success) {
+                attachments.push(data.attachment);
+                onChange();
+            } else {
+                alert(data.error || `Could not upload "${file.name}".`);
+            }
+        }
+    }
+
+    zone.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+        if (input.files.length) handleFiles(input.files);
+        input.value = '';
+    });
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+    });
+
+    wrap.appendChild(zone);
+    wrap.appendChild(input);
+    return wrap;
+}
+
+// Renders `attachments` as removable chips into `container` (cleared and
+// rebuilt each call - cheap given these lists are always short). Removing a
+// chip both edits the live array in place and deletes the file server-side.
+function renderAttachmentChips(container, attachments, onChange) {
+    container.innerHTML = '';
+    attachments.forEach((att, index) => {
+        const chip = document.createElement('div');
+        chip.className = 'item-attachment-chip';
+
+        const link = document.createElement('a');
+        link.href = itemAttachmentUrl(att.id);
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = att.name;
+        chip.appendChild(link);
+
+        const size = document.createElement('span');
+        size.className = 'item-attachment-size';
+        size.textContent = formatAttachmentSize(att.size);
+        chip.appendChild(size);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'item-attachment-remove';
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Remove attachment';
+        removeBtn.addEventListener('click', () => {
+            deleteItemAttachmentFile(att.id);
+            attachments.splice(index, 1);
+            onChange();
+        });
+        chip.appendChild(removeBtn);
+
+        container.appendChild(chip);
+    });
 }
 
 function renderQuickRepliesHtml(options) {
@@ -9058,7 +9646,7 @@ function displayMessages(agent) {
         msgDiv.innerHTML = `
             ${referralLabel}
             ${msg.promptResponse ? '<div class="prompt-response-label">&#9889; Auto-logged</div>' : ''}
-            ${renderAttachmentsHtml(msg.attachments)}
+            ${renderAttachmentsHtml(msg.attachments, msgIndex)}
             <div class="message-body">${renderMessageWithQuote(msg.text)}</div>
             ${renderGeneratedFileHtml(msg.generatedFile)}
             ${renderQuickRepliesHtml(msg.quickReplies)}
@@ -9639,6 +10227,33 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const file = imageItem.getAsFile();
             if (file) addPendingAttachment(file);
         });
+
+        // Dropping a file anywhere in the chat area (messages or the input
+        // row) attaches it the same way the "+" picker does - most useful
+        // for dragging an email straight out of a desktop mail client (e.g.
+        // Outlook) as a .msg/.eml file for an agent to read/summarize/reply
+        // to, without ever connecting an actual email account (see
+        // extract_eml_text/extract_msg_text in app.py).
+        const chatMainArea = document.querySelector('.main-area');
+        if (chatMainArea) {
+            chatMainArea.addEventListener('dragover', (e) => {
+                if (!currentAgent) return;
+                e.preventDefault();
+                chatMainArea.classList.add('chat-dragover');
+            });
+            chatMainArea.addEventListener('dragleave', (e) => {
+                if (!chatMainArea.contains(e.relatedTarget)) chatMainArea.classList.remove('chat-dragover');
+            });
+            chatMainArea.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                chatMainArea.classList.remove('chat-dragover');
+                if (!currentAgent) return;
+                const files = Array.from(e.dataTransfer.files || []);
+                for (const file of files) {
+                    await addPendingAttachment(file);
+                }
+            });
+        }
 
         document.getElementById('toggle-third-pane-btn').addEventListener('click', () => {
             const lowerContent = document.querySelector('.lower-content');
@@ -10922,6 +11537,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // saveEventModal links the freshly-created event's id back onto that
         // to-do afterward, same as the chat-driven manage_calendar path does.
         let calendarModalLinkedTodoId = null;
+        // Attachments currently on the event being added/edited in the modal
+        // - populated from event.attachments on open, submitted as part of
+        // the save payload. See buildAttachmentDropzone/renderAttachmentChips.
+        let calendarModalAttachments = [];
+
+        function refreshCalendarModalAttachments() {
+            renderAttachmentChips(document.getElementById('calendar-event-attachments-list'), calendarModalAttachments, refreshCalendarModalAttachments);
+        }
 
         // Week grid geometry - 60px/hour makes a 15-minute slot 15px, tall
         // enough to read a short event title in. Grid covers a full 24h day;
@@ -11617,6 +12240,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             toggleCalendarAllDayFields(allDay);
             document.getElementById('calendar-event-delete-btn').style.display = event ? 'inline-block' : 'none';
 
+            // Mutated in place, not reassigned - the dropzone built once at
+            // init time (see the calendar-event-save-btn listener below)
+            // closed over this exact array object, so replacing it with a
+            // new one here would silently disconnect future uploads from it.
+            calendarModalAttachments.length = 0;
+            if (event && event.attachments) calendarModalAttachments.push(...event.attachments);
+            refreshCalendarModalAttachments();
+
             // A to-do scheduled onto the calendar (see discussTodoWithAshanti)
             // can be marked complete right from its own event, not just from
             // the To-Do page - completing it here cascades the same way
@@ -11649,6 +12280,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
             document.getElementById('calendar-event-readonly-notice').style.display = readOnly ? 'block' : 'none';
             document.getElementById('calendar-event-save-btn').style.display = readOnly ? 'none' : 'inline-block';
+            document.getElementById('calendar-event-attachments-zone').style.display = readOnly ? 'none' : 'block';
 
             document.getElementById('calendar-event-modal').style.display = 'flex';
         }
@@ -11699,7 +12331,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 end,
                 allDay,
                 location: document.getElementById('calendar-event-location').value.trim(),
-                description: document.getElementById('calendar-event-description').value.trim()
+                description: document.getElementById('calendar-event-description').value.trim(),
+                attachments: calendarModalAttachments
             };
 
             if (calendarEditingEventId) {
@@ -11847,6 +12480,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let topicsDiscussedExpanded = false;
         let topicsCollapsedCategories = {};
         let selectedTopicId = null;
+        // Files attached to a new topic before it's actually submitted -
+        // same pattern as newTodoAttachments.
+        let newTopicAttachments = [];
+
+        function refreshNewTopicAttachments() {
+            renderAttachmentChips(document.getElementById('topics-new-attachments-list'), newTopicAttachments, refreshNewTopicAttachments);
+        }
         // Topic id currently in inline title/details edit mode in the
         // preview pane (see renderTopicsPreviewPane) - null when nothing's
         // being edited. Reset whenever the selection changes so switching
@@ -12074,6 +12714,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         alert('Please fill in both the topic and its details.');
                         return;
                     }
+                    unbindClickOutsideToCancel(contentEl);
                     editingTopicId = null;
                     await updateTopic(topic.id, { text: newText, details: newDetails });
                 });
@@ -12083,10 +12724,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 cancelBtn.type = 'button';
                 cancelBtn.className = 'pane-toolbar-btn';
                 cancelBtn.textContent = 'Cancel';
-                cancelBtn.addEventListener('click', () => { editingTopicId = null; renderTopicsPage(); });
+                cancelBtn.addEventListener('click', () => {
+                    unbindClickOutsideToCancel(contentEl);
+                    editingTopicId = null;
+                    renderTopicsPage();
+                });
                 editActions.appendChild(cancelBtn);
 
                 contentEl.appendChild(editActions);
+                bindClickOutsideToCancel(contentEl, () => { editingTopicId = null; renderTopicsPage(); });
                 titleInput.focus();
                 return;
             }
@@ -12094,10 +12740,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const title = document.createElement('h3');
             title.className = 'topics-preview-title' + (topic.discussed ? ' discussed' : '');
             title.textContent = topic.text;
+            title.addEventListener('dblclick', () => { editingTopicId = topic.id; renderTopicsPage(); });
             contentEl.appendChild(title);
 
             const details = document.createElement('div');
             details.className = 'topics-preview-details';
+            details.addEventListener('dblclick', () => { editingTopicId = topic.id; renderTopicsPage(); });
             const points = (topic.details || '').split('\n').map(l => l.trim()).filter(Boolean);
             if (points.length) {
                 const ul = document.createElement('ul');
@@ -12112,6 +12760,21 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 details.style.color = '#999';
             }
             contentEl.appendChild(details);
+
+            // Plain (non-persisting) initial render, same reasoning as the
+            // To-Do preview pane's saveTodoAttachments - only actual changes
+            // (via the dropzone or a chip's remove button) should call
+            // updateTopic, not every render.
+            if (!topic.attachments) topic.attachments = [];
+            const chipList = document.createElement('div');
+            chipList.className = 'item-attachment-chip-list';
+            const saveTopicAttachments = () => {
+                renderAttachmentChips(chipList, topic.attachments, saveTopicAttachments);
+                updateTopic(topic.id, { attachments: topic.attachments });
+            };
+            renderAttachmentChips(chipList, topic.attachments, saveTopicAttachments);
+            contentEl.appendChild(buildAttachmentDropzone(topic.attachments, saveTopicAttachments));
+            contentEl.appendChild(chipList);
 
             const actions = document.createElement('div');
             actions.className = 'topics-preview-actions';
@@ -12291,7 +12954,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(categoryId ? { category_id: categoryId, text, details } : { text, details })
+                        body: JSON.stringify(categoryId
+                            ? { category_id: categoryId, text, details, attachments: newTopicAttachments }
+                            : { text, details, attachments: newTopicAttachments })
                     }
                 );
                 const data = await response.json();
@@ -12313,6 +12978,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     renderTopicsPage();
                     input.value = '';
                     detailsInput.value = '';
+                    newTopicAttachments.length = 0;
+                    refreshNewTopicAttachments();
                 } else {
                     alert(data.error || 'Could not file that topic - try again.');
                 }
@@ -12573,6 +13240,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return 'todo-status-not-scheduled';
         }
 
+        // Tracks which to-do (by id) currently has its title/details swapped
+        // for an editable input+textarea in the preview pane - same pattern
+        // as editingTopicId for Discussion Topics.
+        let editingTodoId = null;
+
         function renderTodosPreviewPane() {
             const emptyEl = document.getElementById('todos-preview-empty');
             const contentEl = document.getElementById('todos-preview-content');
@@ -12589,21 +13261,86 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             contentEl.style.display = 'flex';
             contentEl.innerHTML = '';
 
+            const editingThis = editingTodoId === todo.id;
+
+            const tags = document.createElement('div');
+            tags.className = 'topics-preview-tags';
+            if (todo.estimatedMinutes) {
+                const duration = document.createElement('span');
+                duration.className = 'topics-category-agent-badge';
+                duration.textContent = `⏱️ ${formatTodoDuration(todo.estimatedMinutes)}`;
+                tags.appendChild(duration);
+            }
+            if (!editingThis) {
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'topics-preview-edit-btn';
+                editBtn.textContent = '✎ Edit';
+                editBtn.title = 'Edit title and details';
+                editBtn.addEventListener('click', () => { editingTodoId = todo.id; renderTodosPage(); });
+                tags.appendChild(editBtn);
+            }
+            contentEl.appendChild(tags);
+
+            if (editingThis) {
+                const titleInput = document.createElement('input');
+                titleInput.type = 'text';
+                titleInput.className = 'topics-preview-edit-title';
+                titleInput.value = todo.title;
+                contentEl.appendChild(titleInput);
+
+                const detailsTextarea = document.createElement('textarea');
+                detailsTextarea.className = 'topics-preview-edit-details';
+                detailsTextarea.rows = 4;
+                detailsTextarea.value = todo.details || '';
+                contentEl.appendChild(detailsTextarea);
+
+                const editActions = document.createElement('div');
+                editActions.className = 'topics-preview-actions';
+
+                const saveBtn = document.createElement('button');
+                saveBtn.type = 'button';
+                saveBtn.className = 'task-action-btn solid-complete';
+                saveBtn.textContent = 'Save';
+                saveBtn.addEventListener('click', async () => {
+                    const newTitle = titleInput.value.trim();
+                    const newDetails = detailsTextarea.value.trim();
+                    if (!newTitle || !newDetails) {
+                        alert('Please fill in both the title and details.');
+                        return;
+                    }
+                    unbindClickOutsideToCancel(contentEl);
+                    editingTodoId = null;
+                    await updateTodoItem(todo.id, { title: newTitle, details: newDetails });
+                });
+                editActions.appendChild(saveBtn);
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'pane-toolbar-btn';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.addEventListener('click', () => {
+                    unbindClickOutsideToCancel(contentEl);
+                    editingTodoId = null;
+                    renderTodosPage();
+                });
+                editActions.appendChild(cancelBtn);
+
+                contentEl.appendChild(editActions);
+                titleInput.focus();
+                bindClickOutsideToCancel(contentEl, () => { editingTodoId = null; renderTodosPage(); });
+                return;
+            }
+
             const title = document.createElement('h3');
             title.className = 'topics-preview-title' + (todo.completed ? ' completed' : '');
             title.textContent = todo.title;
+            title.addEventListener('dblclick', () => { editingTodoId = todo.id; renderTodosPage(); });
             contentEl.appendChild(title);
-
-            if (todo.estimatedMinutes) {
-                const duration = document.createElement('div');
-                duration.className = 'topics-category-agent-badge';
-                duration.style.width = 'fit-content';
-                duration.textContent = `⏱️ ${formatTodoDuration(todo.estimatedMinutes)}`;
-                contentEl.appendChild(duration);
-            }
 
             const details = document.createElement('div');
             details.className = 'topics-preview-details';
+            details.addEventListener('dblclick', () => { editingTodoId = todo.id; renderTodosPage(); });
             const points = (todo.details || '').split('\n').map(l => l.trim()).filter(Boolean);
             if (points.length) {
                 const ul = document.createElement('ul');
@@ -12618,6 +13355,23 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 details.style.color = '#999';
             }
             contentEl.appendChild(details);
+
+            // renderAttachmentChips here is a plain (non-persisting) render -
+            // only saveTodoAttachments (passed as the dropzone's onChange and
+            // each chip's remove handler) actually calls updateTodoItem. Doing
+            // the save on every render, including this first one, would touch
+            // the server on every keystroke-free selection and - since
+            // updateTodoItem triggers a full re-render - loop forever.
+            if (!todo.attachments) todo.attachments = [];
+            const chipList = document.createElement('div');
+            chipList.className = 'item-attachment-chip-list';
+            const saveTodoAttachments = () => {
+                renderAttachmentChips(chipList, todo.attachments, saveTodoAttachments);
+                updateTodoItem(todo.id, { attachments: todo.attachments });
+            };
+            renderAttachmentChips(chipList, todo.attachments, saveTodoAttachments);
+            contentEl.appendChild(buildAttachmentDropzone(todo.attachments, saveTodoAttachments));
+            contentEl.appendChild(chipList);
 
             const actions = document.createElement('div');
             actions.className = 'topics-preview-actions';
@@ -12737,6 +13491,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return TODO_DURATION_LABELS[minutes] || `${minutes} minutes`;
         }
 
+        // Files dropped/selected in the new-To-Do bar before it's actually
+        // submitted - already uploaded (so the dropzone can show them right
+        // away), just not attached to a real to-do yet until submitNewTodo
+        // sends their descriptors along with the rest of the form.
+        let newTodoAttachments = [];
+
+        function refreshNewTodoAttachments() {
+            renderAttachmentChips(document.getElementById('todos-new-attachments-list'), newTodoAttachments, refreshNewTodoAttachments);
+        }
+
         async function submitNewTodo() {
             const titleInput = document.getElementById('todos-new-title');
             const detailsInput = document.getElementById('todos-new-details');
@@ -12758,7 +13522,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const response = await fetch('/todos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, details, estimated_minutes: estimatedMinutes })
+                    body: JSON.stringify({ title, details, estimated_minutes: estimatedMinutes, attachments: newTodoAttachments })
                 });
                 const data = await response.json();
                 if (data.success) {
@@ -12768,6 +13532,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     titleInput.value = '';
                     detailsInput.value = '';
                     durationInput.value = '';
+                    newTodoAttachments.length = 0;
+                    refreshNewTodoAttachments();
                 } else {
                     alert(data.error || 'Could not add that to-do - try again.');
                 }
@@ -12791,6 +13557,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let suggestionsList = [];
         let selectedSuggestionId = null;
         let suggestionsCompletedExpanded = false;
+        // Same pattern as editingTodoId/editingTopicId - which suggestion (by
+        // id) currently has its title/details swapped for an editable
+        // input+textarea in the preview pane.
+        let editingSuggestionId = null;
 
         async function loadSuggestionsData() {
             try {
@@ -12818,12 +13588,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function renderSuggestionsPage() {
             const activeContainer = document.getElementById('suggestions-active-list');
             activeContainer.innerHTML = '';
+            // Active items keep whatever order they're stored in (the user's
+            // own manual priority order, via moveSuggestion/reorder) rather
+            // than being re-sorted - Completed is the only section sorted
+            // automatically, by how recently each was finished.
             const active = suggestionsList.filter(s => !s.completed);
             const completed = suggestionsList.filter(s => s.completed)
                 .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
 
             document.getElementById('suggestions-empty').style.display = suggestionsList.length ? 'none' : 'block';
-            active.forEach(s => activeContainer.appendChild(buildSuggestionItemEl(s)));
+            active.forEach((s, i) => activeContainer.appendChild(buildSuggestionItemEl(s, i, active.length)));
 
             const completedSection = document.getElementById('suggestions-completed-section');
             const completedList = document.getElementById('suggestions-completed-list');
@@ -12833,19 +13607,127 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             completedChevron.classList.toggle('expanded', suggestionsCompletedExpanded);
             completedList.style.display = suggestionsCompletedExpanded ? 'block' : 'none';
             completedList.innerHTML = '';
-            completed.forEach(s => completedList.appendChild(buildSuggestionItemEl(s)));
+            completed.forEach(s => completedList.appendChild(buildSuggestionItemEl(s, null, null)));
 
             renderSuggestionsPreviewPane();
         }
 
-        function buildSuggestionItemEl(suggestion) {
+        // index/activeCount are only meaningful for an active (not completed)
+        // row - they gate the up/down reorder buttons, which don't apply to
+        // Completed (that section has its own fixed, date-based order).
+        function buildSuggestionItemEl(suggestion, index, activeCount) {
             const row = document.createElement('div');
             row.className = 'topics-item'
                 + (suggestion.completed ? ' completed' : '')
                 + (suggestion.id === selectedSuggestionId ? ' selected' : '');
-            row.textContent = suggestion.title;
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '8px';
+
+            const titleEl = document.createElement('span');
+            titleEl.textContent = suggestion.title;
+            titleEl.style.flex = '1';
+            titleEl.style.minWidth = '0';
+            titleEl.style.overflow = 'hidden';
+            titleEl.style.textOverflow = 'ellipsis';
+            titleEl.style.whiteSpace = 'nowrap';
+            row.appendChild(titleEl);
+
+            if (index !== null) {
+                const reorderControls = document.createElement('span');
+                reorderControls.style.display = 'flex';
+                reorderControls.style.flexShrink = '0';
+
+                const upBtn = document.createElement('button');
+                upBtn.type = 'button';
+                upBtn.className = 'suggestion-reorder-btn';
+                upBtn.textContent = '▲';
+                upBtn.title = 'Move up';
+                upBtn.disabled = index === 0;
+                upBtn.addEventListener('click', (e) => { e.stopPropagation(); moveSuggestion(suggestion.id, -1); });
+                reorderControls.appendChild(upBtn);
+
+                const downBtn = document.createElement('button');
+                downBtn.type = 'button';
+                downBtn.className = 'suggestion-reorder-btn';
+                downBtn.textContent = '▼';
+                downBtn.title = 'Move down';
+                downBtn.disabled = index === activeCount - 1;
+                downBtn.addEventListener('click', (e) => { e.stopPropagation(); moveSuggestion(suggestion.id, 1); });
+                reorderControls.appendChild(downBtn);
+
+                row.appendChild(reorderControls);
+
+                row.draggable = true;
+                row.addEventListener('dragstart', (e) => {
+                    draggedSuggestionId = suggestion.id;
+                    row.classList.add('suggestion-dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+                row.addEventListener('dragend', () => row.classList.remove('suggestion-dragging'));
+                row.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    row.classList.add('suggestion-drag-over');
+                });
+                row.addEventListener('dragleave', () => row.classList.remove('suggestion-drag-over'));
+                row.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    row.classList.remove('suggestion-drag-over');
+                    if (draggedSuggestionId && draggedSuggestionId !== suggestion.id) {
+                        dropSuggestionOnto(suggestion.id);
+                    }
+                    draggedSuggestionId = null;
+                });
+            }
+
             row.addEventListener('click', () => { selectedSuggestionId = suggestion.id; renderSuggestionsPage(); });
             return row;
+        }
+
+        // Persists `activeInNewOrder` (the active suggestions, already
+        // rearranged by the caller) followed by whatever's completed - the
+        // shared tail end of both the up/down buttons and drag-and-drop
+        // reordering. See /suggestions/reorder in app.py.
+        async function persistSuggestionOrder(activeInNewOrder) {
+            const completed = suggestionsList.filter(s => s.completed);
+            const order = [...activeInNewOrder, ...completed].map(s => s.id);
+            const response = await fetch('/suggestions/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order })
+            });
+            const data = await response.json();
+            if (data.success) {
+                suggestionsList = data.suggestions;
+                renderSuggestionsPage();
+            }
+        }
+
+        // Swaps a suggestion with its neighbor in the active list.
+        async function moveSuggestion(id, direction) {
+            const active = suggestionsList.filter(s => !s.completed);
+            const idx = active.findIndex(s => s.id === id);
+            if (idx === -1) return;
+            const newIdx = idx + direction;
+            if (newIdx < 0 || newIdx >= active.length) return;
+            [active[idx], active[newIdx]] = [active[newIdx], active[idx]];
+            await persistSuggestionOrder(active);
+        }
+
+        // Drag-and-drop reordering - draggedSuggestionId tracks what's being
+        // dragged (set on dragstart, read on drop) since dataTransfer's own
+        // payload isn't readable during dragover for the drop-target styling.
+        let draggedSuggestionId = null;
+
+        async function dropSuggestionOnto(targetId) {
+            const active = suggestionsList.filter(s => !s.completed);
+            const fromIdx = active.findIndex(s => s.id === draggedSuggestionId);
+            const toIdx = active.findIndex(s => s.id === targetId);
+            if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+            const [moved] = active.splice(fromIdx, 1);
+            active.splice(toIdx, 0, moved);
+            await persistSuggestionOrder(active);
         }
 
         function renderSuggestionsPreviewPane() {
@@ -12864,13 +13746,86 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             contentEl.style.display = 'flex';
             contentEl.innerHTML = '';
 
+            const editingThis = editingSuggestionId === suggestion.id;
+
+            const tags = document.createElement('div');
+            tags.className = 'topics-preview-tags';
+            const meta = document.createElement('span');
+            meta.className = 'suggestions-meta';
+            meta.textContent = suggestion.createdAt
+                ? `Added ${new Date(suggestion.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`
+                : '';
+            tags.appendChild(meta);
+            if (!editingThis) {
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'topics-preview-edit-btn';
+                editBtn.textContent = '✎ Edit';
+                editBtn.title = 'Edit title and details';
+                editBtn.addEventListener('click', () => { editingSuggestionId = suggestion.id; renderSuggestionsPage(); });
+                tags.appendChild(editBtn);
+            }
+            contentEl.appendChild(tags);
+
+            if (editingThis) {
+                const titleInput = document.createElement('input');
+                titleInput.type = 'text';
+                titleInput.className = 'topics-preview-edit-title';
+                titleInput.value = suggestion.title;
+                contentEl.appendChild(titleInput);
+
+                const detailsTextarea = document.createElement('textarea');
+                detailsTextarea.className = 'topics-preview-edit-details';
+                detailsTextarea.rows = 5;
+                detailsTextarea.value = suggestion.details || '';
+                contentEl.appendChild(detailsTextarea);
+
+                const editActions = document.createElement('div');
+                editActions.className = 'topics-preview-actions';
+
+                const saveBtn = document.createElement('button');
+                saveBtn.type = 'button';
+                saveBtn.className = 'task-action-btn solid-complete';
+                saveBtn.textContent = 'Save';
+                saveBtn.addEventListener('click', async () => {
+                    const newTitle = titleInput.value.trim();
+                    const newDetails = detailsTextarea.value.trim();
+                    if (!newTitle || !newDetails) {
+                        alert('Please fill in both the title and details.');
+                        return;
+                    }
+                    unbindClickOutsideToCancel(contentEl);
+                    editingSuggestionId = null;
+                    await updateSuggestion(suggestion.id, { title: newTitle, details: newDetails });
+                });
+                editActions.appendChild(saveBtn);
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'pane-toolbar-btn';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.addEventListener('click', () => {
+                    unbindClickOutsideToCancel(contentEl);
+                    editingSuggestionId = null;
+                    renderSuggestionsPage();
+                });
+                editActions.appendChild(cancelBtn);
+
+                contentEl.appendChild(editActions);
+                bindClickOutsideToCancel(contentEl, () => { editingSuggestionId = null; renderSuggestionsPage(); });
+                titleInput.focus();
+                return;
+            }
+
             const title = document.createElement('h3');
             title.className = 'topics-preview-title' + (suggestion.completed ? ' completed' : '');
             title.textContent = suggestion.title;
+            title.addEventListener('dblclick', () => { editingSuggestionId = suggestion.id; renderSuggestionsPage(); });
             contentEl.appendChild(title);
 
             const details = document.createElement('div');
             details.className = 'topics-preview-details';
+            details.addEventListener('dblclick', () => { editingSuggestionId = suggestion.id; renderSuggestionsPage(); });
             const points = (suggestion.details || '').split('\n').map(l => l.trim()).filter(Boolean);
             if (points.length) {
                 const ul = document.createElement('ul');
@@ -13113,11 +14068,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             viewEl.classList.add('editing');
             document.getElementById(`kb-edit-actions-${side}`).style.display = 'flex';
             viewEl.focus();
+            // Bound against the whole column (header, ask bar, notes, Save/
+            // Cancel) rather than just the notes view itself, so clicking
+            // Save/Cancel or anything else in this agent's KB column doesn't
+            // count as "outside" - only leaving the column entirely cancels.
+            const col = viewEl.closest('.kb-col');
+            if (col) bindClickOutsideToCancel(col, () => cancelKbEdit(side));
         }
 
         function cancelKbEdit(side) {
             kbEditing[side] = false;
             const viewEl = document.getElementById(`kb-notes-view-${side}`);
+            const col = viewEl.closest('.kb-col');
+            if (col) unbindClickOutsideToCancel(col);
             if (viewEl.dataset.originalHtml !== undefined) {
                 viewEl.innerHTML = viewEl.dataset.originalHtml;
                 delete viewEl.dataset.originalHtml;
@@ -13151,6 +14114,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save';
+            const col = viewEl.closest('.kb-col');
+            if (col) unbindClickOutsideToCancel(col);
             kbEditing[side] = false;
             delete viewEl.dataset.originalHtml;
             viewEl.contentEditable = 'false';
@@ -13260,6 +14225,23 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('landing-nav-btn').addEventListener('click', showLandingPage);
         document.getElementById('home-nav-btn').addEventListener('click', showHomePage);
         document.getElementById('landing-cta-btn').addEventListener('click', showHomePage);
+        document.getElementById('landing-meetteam-btn').addEventListener('click', showHomePage);
+        document.getElementById('home-back-btn').addEventListener('click', showLandingPage);
+
+        document.getElementById('attachment-preview-close-btn').addEventListener('click', closeAttachmentPreviewModal);
+        document.getElementById('attachment-preview-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'attachment-preview-modal') closeAttachmentPreviewModal();
+        });
+        document.addEventListener('click', (e) => {
+            const chip = e.target.closest('.message-attachment-file');
+            if (!chip) return;
+            const msgIndex = parseInt(chip.dataset.msgIndex, 10);
+            const attIndex = parseInt(chip.dataset.attIndex, 10);
+            const att = chatHistory[currentAgent] && chatHistory[currentAgent][msgIndex] &&
+                chatHistory[currentAgent][msgIndex].attachments && chatHistory[currentAgent][msgIndex].attachments[attIndex];
+            if (att) openAttachmentPreview(att);
+        });
+
         document.getElementById('projects-nav-btn').addEventListener('click', showProjectsPage);
         document.getElementById('archive-nav-btn').addEventListener('click', showArchivePage);
         document.getElementById('agents-nav-btn').addEventListener('click', showAgentsPage);
@@ -13284,6 +14266,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('calendar-week-today-btn').addEventListener('click', calendarWeekGoToday);
         document.getElementById('calendar-event-cancel-btn').addEventListener('click', closeEventModal);
         document.getElementById('calendar-event-save-btn').addEventListener('click', saveEventModal);
+        document.getElementById('calendar-event-attachments-zone').appendChild(buildAttachmentDropzone(calendarModalAttachments, refreshCalendarModalAttachments));
         document.getElementById('calendar-event-delete-btn').addEventListener('click', deleteEventModal);
         document.getElementById('calendar-event-complete-btn').addEventListener('click', completeCalendarLinkedTodo);
         document.getElementById('calendar-event-allday').addEventListener('change', (e) => toggleCalendarAllDayFields(e.target.checked));
@@ -13321,9 +14304,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderTopicsPage();
         });
         document.getElementById('topics-new-btn').addEventListener('click', submitNewTopic);
+        document.getElementById('topics-new-attachments-zone').appendChild(buildAttachmentDropzone(newTopicAttachments, refreshNewTopicAttachments));
         document.getElementById('topics-new-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitNewTopic();
         });
+
+        document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
 
         document.getElementById('todos-nav-btn').addEventListener('click', showTodosPage);
         document.getElementById('todos-new-btn').addEventListener('click', submitNewTodo);
@@ -13390,6 +14376,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         document.getElementById('task-modal-cancel-btn').addEventListener('click', closeTaskModal);
         document.getElementById('task-modal-save-btn').addEventListener('click', saveTaskModal);
+        document.getElementById('task-modal-attachments-zone').appendChild(buildAttachmentDropzone(taskModalAttachments, refreshTaskModalAttachments));
         document.getElementById('task-modal-discuss-btn').addEventListener('click', discussTaskWithAgent);
         document.getElementById('task-modal').addEventListener('click', (e) => {
             if (e.target.id === 'task-modal') closeTaskModal();
@@ -13496,6 +14483,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.querySelector('.sidebar').style.display = locked ? 'none' : '';
             document.getElementById('landing-cta-btn').style.display = locked ? 'none' : '';
             document.getElementById('landing-auth-actions').style.display = locked ? 'flex' : 'none';
+            document.getElementById('home-back-btn').style.display = locked ? 'inline-block' : 'none';
         }
 
         // One modal, four modes - reuses the same email/password/confirm
