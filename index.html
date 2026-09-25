@@ -7878,6 +7878,10 @@ function buildTaskActionsRow(agent, task) {
             startBtn.className = 'task-action-btn solid-start';
             startBtn.textContent = 'Start';
             startBtn.addEventListener('click', stop(() => startProjectTask(agent, task.id)));
+        } else if (task.status === 'paused') {
+            startBtn.className = 'task-action-btn solid-start';
+            startBtn.textContent = 'Resume';
+            startBtn.addEventListener('click', stop(() => startProjectTask(agent, task.id)));
         } else if (task.status === 'in_progress') {
             startBtn.className = 'task-action-btn start working';
             startBtn.innerHTML = 'Working<span class="working-dots"><span>.</span><span>.</span><span>.</span></span>';
@@ -8152,14 +8156,24 @@ function markTaskViewed(agent, id) {
 
 let taskAbortControllers = {}; // taskId -> AbortController, for a project task currently running
 
+// How many times a task can auto-resume itself after pausing (see
+// PAUSE_TASK_TOOL in app.py) before it's left for Francis to continue by
+// hand. Each turn gets its own fresh web_search budget (max_uses: 10), so
+// this caps runaway cost/time on a task that keeps needing more room rather
+// than actually making progress - 5 continues is up to ~50 searches, which
+// is a lot of headroom for even a "research the whole site" ask.
+const MAX_TASK_AUTO_CONTINUES = 5;
+
 // "Start" sends the task description into the agent's own 1:1 chat as an
 // instruction and lets them actually do it with their real tools (create_file,
 // web_search, ...) - the same turn that would run if Francis typed it himself.
-async function startProjectTask(agent, taskId) {
+// continueCount is internal (see the auto-continue loop below) - always omit
+// it when calling this from a Start/Resume button.
+async function startProjectTask(agent, taskId, continueCount = 0) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task || task.status === 'in_progress') return;
     task.status = 'in_progress';
-    task.startedAt = new Date();
+    if (!task.startedAt) task.startedAt = new Date();
     // Starting work moves the conversation on - drop any pending project-task
     // discussion for this chat (see activeDiscussTask) so a later message
     // here doesn't still carry a stale task_context.
@@ -8169,7 +8183,12 @@ async function startProjectTask(agent, taskId) {
     if (!chatHistory[agent]) chatHistory[agent] = [];
     chatHistory[agent].push({
         type: 'user',
-        text: `Please go ahead and do this now: ${task.task}`,
+        // A resumed turn already has its own prior progress/explanation in
+        // this same chat history - repeating the full task text would read
+        // as "start over" rather than "keep going from where you paused".
+        text: continueCount === 0
+            ? `Please go ahead and do this now: ${task.task}`
+            : `Please continue where you left off.`,
         timestamp: new Date()
     });
     saveToLocalStorage(agent);
@@ -8177,10 +8196,25 @@ async function startProjectTask(agent, taskId) {
 
     const controller = new AbortController();
     taskAbortControllers[taskId] = controller;
+    let paused = false;
     try {
-        await runOneOnOneAgentTurn(agent, [], taskId, controller.signal);
+        paused = await runOneOnOneAgentTurn(agent, [], taskId, controller.signal);
     } finally {
         delete taskAbortControllers[taskId];
+    }
+
+    if (paused && continueCount + 1 < MAX_TASK_AUTO_CONTINUES) {
+        await startProjectTask(agent, taskId, continueCount + 1);
+    } else if (paused) {
+        // Hit the cap - stays 'paused' (already set by pauseProjectTask) for
+        // Francis to Resume by hand instead of silently looping forever.
+        chatHistory[agent].push({
+            type: 'agent',
+            text: `I've paused ${MAX_TASK_AUTO_CONTINUES} times on this without finishing - click Resume when you'd like me to keep going.`,
+            timestamp: new Date()
+        });
+        saveToLocalStorage(agent);
+        if (currentAgent === agent) displayMessages(agent);
     }
 }
 
@@ -8189,8 +8223,7 @@ function stopProjectTask(agent, taskId) {
     if (controller) controller.abort();
     const task = findWorkspaceTaskById(agent, taskId);
     if (task && task.status === 'in_progress') {
-        task.status = 'not_started';
-        task.startedAt = null;
+        task.status = 'paused';
         refreshTaskViewsForAgent(agent);
     }
 }
@@ -8356,12 +8389,15 @@ function markProjectTaskComplete(agent, taskId) {
 }
 
 // Undoes Mark Complete - drops the task back to whatever state it was
-// actually in (in progress if it had been started, not started if it
-// hadn't), rather than being stuck "done" forever once clicked.
+// actually in (paused if it had been started, not started if it hadn't),
+// rather than being stuck "done" forever once clicked. Goes to 'paused'
+// rather than 'in_progress' - nothing is actually running right now, and
+// 'in_progress' shows a disabled "Working..." button with no request behind
+// it and no way to Stop it.
 function unmarkProjectTaskComplete(agent, taskId) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task || task.status !== 'completed') return;
-    task.status = task.startedAt ? 'in_progress' : 'not_started';
+    task.status = task.startedAt ? 'paused' : 'not_started';
     task.completedAt = null;
     refreshTaskViewsForAgent(agent);
 }
@@ -8380,6 +8416,20 @@ function completeProjectTaskFromChat(agent, taskId, createdFile) {
         task.resultType = 'file';
         createWorkspaceFile(agent, taskId, createdFile);
     }
+    refreshTaskViewsForAgent(agent);
+}
+
+// The agent called pause_task instead of finishing (see PAUSE_TASK_TOOL in
+// app.py) - most often hitting its web_search cap partway through deep
+// research. A distinct 'paused' status, not 'not_started' - it HAS been
+// started, it just isn't done. startProjectTask below auto-resumes it
+// (up to a cap); this only stays visible if that cap is hit or the run
+// errors out, at which point Resume is available to continue it by hand.
+// startedAt is deliberately left alone so it still reads as "started".
+function pauseProjectTask(agent, taskId) {
+    const task = findWorkspaceTaskById(agent, taskId);
+    if (!task) return;
+    task.status = 'paused';
     refreshTaskViewsForAgent(agent);
 }
 
@@ -10061,7 +10111,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         if (taskId) {
-            completeProjectTaskFromChat(agent, taskId, data.created_file || null);
+            if (data.task_paused) {
+                pauseProjectTask(agent, taskId);
+                return true;
+            } else {
+                completeProjectTaskFromChat(agent, taskId, data.created_file || null);
+            }
         } else if (data.created_file) {
             addFileWorkspaceTask(agent, data.created_file);
         }

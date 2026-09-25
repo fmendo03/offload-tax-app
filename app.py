@@ -3613,6 +3613,39 @@ CREATE_FILE_TOOL = {
     }
 }
 
+# Lets an agent explicitly say "I'm not actually done" - e.g. hitting its
+# web_search cap partway through deep research - instead of that just
+# reading as a normal finished reply. Only matters for a Started task (see
+# task_paused handling in /chat and pauseProjectTask on the frontend); for an
+# ordinary chat message the reply still shows normally either way.
+PAUSE_TASK_TOOL = {
+    "name": "pause_task",
+    "description": (
+        "Call this INSTEAD of just replying normally when you're working a background task (one "
+        "Francis started from his Workspace) and genuinely cannot finish it in this turn - most "
+        "commonly because you used up your available web searches partway through deep research and "
+        "need to continue in a follow-up, but also if the task turns out to need something else "
+        "(missing information, a decision from Francis) before you can complete it. Don't call this "
+        "for a task you've actually completed, and don't call it outside of a Started task - for a "
+        "normal quick question, just answer directly."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": (
+                    "A short, friendly note explaining why you're pausing and what's left - this is "
+                    "shown to Francis directly as your reply, so write it that way (e.g. \"I've covered "
+                    "eligibility and benefit calculation so far, but used up my searches before getting "
+                    "to Medicare and covered services - click Start again and I'll pick up there.\")"
+                )
+            }
+        },
+        "required": ["reason"]
+    }
+}
+
 # Triage tool for /classify-task-needed below - forced via tool_choice so the
 # call always returns exactly this shape instead of free text to parse.
 CLASSIFY_TASK_TOOL = {
@@ -3789,7 +3822,8 @@ def chat():
             CREATE_FILE_TOOL,
             REFER_TEAMMATE_TOOL,
             PROPOSE_TASK_TOOL,
-            PROPOSE_PROJECT_TOOL
+            PROPOSE_PROJECT_TOOL,
+            PAUSE_TASK_TOOL
         ]
         if task_context:
             tools.append(UPDATE_TASK_TOOL)
@@ -3859,6 +3893,7 @@ def chat():
         created_file = None
         task_update = None
         calendar_update = None
+        task_paused = False
         for block in response.content:
             if getattr(block, 'type', None) != 'tool_use':
                 continue
@@ -3937,6 +3972,16 @@ def chat():
                 new_task_name = str(block_input.get('name', '')).strip()
                 if new_task_text:
                     task_update = {'task': new_task_text, 'name': new_task_name}
+            elif block_name == 'pause_task':
+                block_input = block.input or {}
+                reason = str(block_input.get('reason', '')).strip()
+                if reason:
+                    task_paused = True
+                    # The reason IS the reply in this case - there's rarely
+                    # separate text alongside this tool call, so this is the
+                    # same fallback pattern as the max_tokens case above.
+                    if not response_text.strip():
+                        response_text = reason
             elif block_name == 'manage_calendar' and agent == 'ashanti':
                 block_input = block.input or {}
                 action = block_input.get('action')
@@ -3999,7 +4044,8 @@ def chat():
             'propose_task': propose_task,
             'created_file': created_file,
             'task_update': task_update,
-            'calendar_update': calendar_update
+            'calendar_update': calendar_update,
+            'task_paused': task_paused
         })
     
     except Exception as e:
