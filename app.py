@@ -3550,7 +3550,10 @@ CREATE_FILE_TOOL = {
         "previously generated file in place. So if Francis asks to revise, tweak, redo, or change "
         "anything about a file you already made (the wording, a section, the color scheme, the whole "
         "look), just call create_file again with the updated content and/or a different theme - that "
-        "regenerates the whole file with the changes applied."
+        "regenerates the whole file with the changes applied. If he asked for the SAME content as more "
+        "than one file type (e.g. 'a PDF and a Word version', or 'a PDF, a Word doc, and a PowerPoint'), "
+        "call create_file once per format, all as separate calls - every file you produce gets attached, "
+        "not just the last one."
     ),
     "input_schema": {
         "type": "object",
@@ -3722,6 +3725,7 @@ def chat():
         attachments = data.get('attachments', [])
         task_context = str(data.get('task_context', '') or '').strip()
         project_context = str(data.get('project_context', '') or '').strip()
+        is_task_run = bool(data.get('is_task_run'))
 
         print(f"Agent: {agent}, Message: {message}")
 
@@ -3808,6 +3812,32 @@ def chat():
                 f"reply so Francis knows, but you can't update the other task from here."
             )
 
+        # is_task_run means this message came from Francis clicking Start/Resume
+        # on a Workspace task (see startProjectTask), not a normal typed
+        # message - the model otherwise has no way to know that, and without
+        # this it can (and has) narrated a multi-step plan in prose as if
+        # walking through building something, without ever actually calling
+        # create_file or pause_task, which the frontend then wrongly reads as
+        # a finished result.
+        if is_task_run:
+            system_prompt += (
+                "\n\nThis message is Francis starting a background task from his Workspace - he's "
+                "expecting you to actually complete the work in this conversation, not describe a plan "
+                "for how you'd do it. If what he asked for calls for a downloadable file (a document, "
+                "spreadsheet, presentation, PDF, or HTML page), you must actually call create_file with "
+                "the real, finished content before you're done - narrating that you're about to build it, "
+                "checking a step works, or drafting it in some intermediate format is not the same as "
+                "producing it, since you have no way to actually run code here; create_file is the only "
+                "way a file gets made. If several file formats were asked for (e.g. a PDF, a Word doc, "
+                "AND a PowerPoint), call create_file once per format - every file you produce this way "
+                "gets attached to the task, across as many turns as it takes, so it's fine to make one or "
+                "two now and the rest later rather than trying to force them all into a single reply. If "
+                "you genuinely can't finish everything in this turn - either from using up your available "
+                "web searches partway through research, or because there's more to generate than "
+                "comfortably fits in one reply - call pause_task with a short note on what's done and "
+                "what's left (e.g. \"PDF and Word doc are done, PowerPoint is next\"), rather than ending "
+                "the turn without having either fully finished or explicitly paused."
+            )
 
         # Tools: quick replies and referrals always available. propose_task lets
         # any agent turn a single settled piece of their own work into a real,
@@ -3890,7 +3920,7 @@ def chat():
         refer = None
         propose_project = None
         propose_task = None
-        created_file = None
+        created_files = []
         task_update = None
         calendar_update = None
         task_paused = False
@@ -3913,7 +3943,7 @@ def chat():
                     try:
                         file_bytes = generate_file_bytes(file_type, file_content, file_theme, file_primary_color, file_accent_color)
                         primary_rgb, accent_rgb = resolve_theme(file_theme, file_primary_color, file_accent_color)
-                        created_file = {
+                        created_files.append({
                             'name': f"{filename}.{file_type}",
                             'mimeType': FILE_TYPE_MIME[file_type],
                             'data': base64.b64encode(file_bytes).decode('ascii'),
@@ -3925,7 +3955,7 @@ def chat():
                             'theme': file_theme,
                             'primaryColor': '#{:02X}{:02X}{:02X}'.format(*primary_rgb),
                             'accentColor': '#{:02X}{:02X}{:02X}'.format(*accent_rgb)
-                        }
+                        })
                     except Exception as e:
                         print(f"File generation error: {e}")
             elif block_name == 'refer_to_teammate':
@@ -4042,7 +4072,7 @@ def chat():
             'refer': refer,
             'propose_project': propose_project,
             'propose_task': propose_task,
-            'created_file': created_file,
+            'created_files': created_files,
             'task_update': task_update,
             'calendar_update': calendar_update,
             'task_paused': task_paused

@@ -8403,33 +8403,51 @@ function unmarkProjectTaskComplete(agent, taskId) {
 }
 
 
+// Links one or more agent-generated files to a task (createWorkspaceFile
+// once per file, all sharing the same taskId - see the "call create_file
+// once per format" guidance in CREATE_FILE_TOOL for why there can be
+// several at once). Shared by completion and pause below so a file already
+// produced before a pause (e.g. "PDF and Word are done, PowerPoint is next")
+// gets attached right away instead of waiting on - or being lost by - a
+// later turn.
+function attachFilesToTask(agent, taskId, createdFiles) {
+    const files = (createdFiles || []).filter(f => f && f.data);
+    if (!files.length) return;
+    const task = findWorkspaceTaskById(agent, taskId);
+    if (!task) return;
+    task.resultType = 'file';
+    files.forEach(file => createWorkspaceFile(agent, taskId, file));
+}
+
 // Called when a Started task's chat turn finishes - marks that SAME task
-// complete and, if the agent produced a file, links it as its own file card
-// (see createWorkspaceFile) rather than attaching it to the task directly.
-function completeProjectTaskFromChat(agent, taskId, createdFile) {
+// complete and links whatever files the agent produced (see
+// attachFilesToTask) as their own file cards rather than attaching them to
+// the task directly.
+function completeProjectTaskFromChat(agent, taskId, createdFiles) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task) return;
     task.status = 'completed';
     task.completedAt = new Date();
     task.viewed = false;
-    if (createdFile && createdFile.data) {
-        task.resultType = 'file';
-        createWorkspaceFile(agent, taskId, createdFile);
-    }
+    attachFilesToTask(agent, taskId, createdFiles);
     refreshTaskViewsForAgent(agent);
 }
 
 // The agent called pause_task instead of finishing (see PAUSE_TASK_TOOL in
 // app.py) - most often hitting its web_search cap partway through deep
-// research. A distinct 'paused' status, not 'not_started' - it HAS been
-// started, it just isn't done. startProjectTask below auto-resumes it
-// (up to a cap); this only stays visible if that cap is hit or the run
-// errors out, at which point Resume is available to continue it by hand.
-// startedAt is deliberately left alone so it still reads as "started".
-function pauseProjectTask(agent, taskId) {
+// research, or partway through producing several requested file formats. A
+// distinct 'paused' status, not 'not_started' - it HAS been started, it just
+// isn't done. Any files already produced THIS turn are attached now (see
+// attachFilesToTask) rather than discarded just because the task as a whole
+// isn't finished yet. startProjectTask below auto-resumes it (up to a cap);
+// this only stays visible if that cap is hit or the run errors out, at which
+// point Resume is available to continue it by hand. startedAt is
+// deliberately left alone so it still reads as "started".
+function pauseProjectTask(agent, taskId, createdFiles) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task) return;
     task.status = 'paused';
+    attachFilesToTask(agent, taskId, createdFiles);
     refreshTaskViewsForAgent(agent);
 }
 
@@ -9485,12 +9503,18 @@ function closeAttachmentPreviewModal() {
     document.getElementById('attachment-preview-modal').style.display = 'none';
 }
 
-// Renders a file an agent generated (via create_file) as a downloadable chip -
-// the base64 data is embedded directly as a data: URL, no server round-trip needed.
-function renderGeneratedFileHtml(file) {
-    if (!file || !file.data) return '';
-    const dataUrl = `data:${file.mimeType};base64,${file.data}`;
-    return `<a class="generated-file-chip" href="${dataUrl}" download="${escapeHtml(file.name)}">\u{1F4C4} ${escapeHtml(file.name)} <span class="generated-file-download">⬇ Download</span></a>`;
+// Renders one or more agent-generated files (via create_file, possibly
+// called several times in one turn for the same content in different
+// formats) as downloadable chips - the base64 data is embedded directly as
+// a data: URL, no server round-trip needed. Accepts a single file object
+// (older call shape) or an array.
+function renderGeneratedFileHtml(fileOrFiles) {
+    const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
+    return files.map(file => {
+        if (!file || !file.data) return '';
+        const dataUrl = `data:${file.mimeType};base64,${file.data}`;
+        return `<a class="generated-file-chip" href="${dataUrl}" download="${escapeHtml(file.name)}">\u{1F4C4} ${escapeHtml(file.name)} <span class="generated-file-download">⬇ Download</span></a>`;
+    }).join('');
 }
 
 // --- Item attachments -------------------------------------------------
@@ -9698,7 +9722,7 @@ function displayMessages(agent) {
             ${msg.promptResponse ? '<div class="prompt-response-label">&#9889; Auto-logged</div>' : ''}
             ${renderAttachmentsHtml(msg.attachments, msgIndex)}
             <div class="message-body">${renderMessageWithQuote(msg.text)}</div>
-            ${renderGeneratedFileHtml(msg.generatedFile)}
+            ${renderGeneratedFileHtml(msg.generatedFiles)}
             ${renderQuickRepliesHtml(msg.quickReplies)}
             <div style="font-size: 11px; color: rgba(0,0,0,0.5); margin-top: 4px; opacity: 0.7;">${timestamp}</div>
         `;
@@ -9990,7 +10014,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 history: historyToSend,
                 attachments: attachments || [],
                 task_context: taskContext,
-                project_context: projectContext
+                project_context: projectContext,
+                is_task_run: !!taskId
             }),
             signal
         });
@@ -10039,17 +10064,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Download live there) - the chat just gets a short notice instead of
         // a duplicate attachment.
         let displayText;
-        let generatedFileForChat = data.created_file || null;
-        if (taskId && data.created_file) {
+        const createdFiles = data.created_files || [];
+        let generatedFilesForChat = createdFiles.length ? createdFiles : null;
+        if (taskId && createdFiles.length) {
             const completedTask = findWorkspaceTaskById(agent, taskId);
             displayText = `I've completed the "${completedTask ? completedTask.task : 'task'}" task.`;
-            generatedFileForChat = null;
+            generatedFilesForChat = null;
         } else {
             displayText = (data.response || '').trim()
                 || (data.refer ? `Let me get you over to ${capitalizeAgent(data.refer.agent)}.` : '')
                 || (projectProposal ? projectProposal.summary : '')
                 || (taskProposal ? taskProposal.task : '')
-                || (data.created_file ? `Here you go — ${data.created_file.name}` : '')
+                || (createdFiles.length ? `Here you go — ${createdFiles.map(f => f.name).join(', ')}` : '')
                 || (data.calendar_update ? describeCalendarUpdate(data.calendar_update) : '')
                 // Belt-and-suspenders fallback - the system prompt asks for a
                 // confirming reply alongside update_task, but if it's ever
@@ -10057,7 +10083,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 // actually landed instead of a silent tool call.
                 || (discussInfo && data.task_update ? `Updated: "${data.task_update.task}"` : '');
         }
-        if (displayText || generatedFileForChat || (data.quick_replies && data.quick_replies.length > 0)) {
+        if (displayText || generatedFilesForChat || (data.quick_replies && data.quick_replies.length > 0)) {
             chatHistory[agent].push({
                 type: 'agent',
                 text: displayText,
@@ -10065,7 +10091,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 referral: data.refer ? { agent: data.refer.agent, summary: data.refer.summary, used: false } : null,
                 projectProposal: projectProposal,
                 taskProposal: taskProposal,
-                generatedFile: generatedFileForChat,
+                generatedFiles: generatedFilesForChat,
                 relatedItemId: relatedItemId || undefined,
                 timestamp: new Date()
             });
@@ -10112,13 +10138,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         if (taskId) {
             if (data.task_paused) {
-                pauseProjectTask(agent, taskId);
+                pauseProjectTask(agent, taskId, data.created_files);
                 return true;
             } else {
-                completeProjectTaskFromChat(agent, taskId, data.created_file || null);
+                completeProjectTaskFromChat(agent, taskId, data.created_files);
             }
-        } else if (data.created_file) {
-            addFileWorkspaceTask(agent, data.created_file);
+        } else if (data.created_files && data.created_files.length) {
+            data.created_files.forEach(f => addFileWorkspaceTask(agent, f));
         }
     } catch (error) {
         if (error.name === 'AbortError') {
