@@ -3613,6 +3613,71 @@ CREATE_FILE_TOOL = {
     }
 }
 
+# Triage tool for /classify-task-needed below - forced via tool_choice so the
+# call always returns exactly this shape instead of free text to parse.
+CLASSIFY_TASK_TOOL = {
+    "name": "classify",
+    "description": "Classify whether this request needs a background task.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "needs_task": {
+                "type": "boolean",
+                "description": (
+                    "True if answering this well genuinely requires deep research (several web "
+                    "searches to dig through a topic or a whole site) or creating a downloadable file "
+                    "(a Word doc, spreadsheet, presentation, PDF, or HTML page/mockup) - real work that "
+                    "takes meaningful time. False for anything answerable directly in a normal quick "
+                    "reply: short questions, chit-chat, a quick opinion or explanation, or ordinary task/"
+                    "project management (creating, editing, or discussing a task)."
+                )
+            },
+            "task_name": {
+                "type": "string",
+                "description": "A short (4-8 word) task name, only when needs_task is true."
+            }
+        },
+        "required": ["needs_task"]
+    }
+}
+
+
+@app.route('/classify-task-needed', methods=['POST'])
+def classify_task_needed():
+    try:
+        data = request.json or {}
+        message = str(data.get('message') or '').strip()
+        if not message:
+            return jsonify({'success': True, 'needs_task': False})
+
+        response = client.messages.create(
+            model="claude-sonnet-5",
+            max_tokens=200,
+            system=(
+                "You triage incoming requests to a team of AI assistants. Decide whether the request "
+                "needs a background task - deep research (several web searches) or generating a "
+                "downloadable file - versus something answerable directly in a normal quick chat reply. "
+                "Call the classify tool with your answer and nothing else."
+            ),
+            messages=[{"role": "user", "content": message}],
+            tools=[CLASSIFY_TASK_TOOL],
+            tool_choice={"type": "tool", "name": "classify"}
+        )
+
+        for block in response.content:
+            if getattr(block, 'type', None) == 'tool_use' and block.name == 'classify':
+                block_input = block.input or {}
+                return jsonify({
+                    'success': True,
+                    'needs_task': bool(block_input.get('needs_task')),
+                    'task_name': str(block_input.get('task_name') or '').strip()
+                })
+
+        return jsonify({'success': True, 'needs_task': False})
+    except Exception as e:
+        print(f"Classify task error: {e}")
+        return jsonify({'success': False, 'needs_task': False, 'error': str(e)})
+
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -3719,7 +3784,7 @@ def chat():
         # REFER_TEAMMATE_TOOL/PROPOSE_PROJECT_TOOL for the referral-to-Manny
         # flow that gets him there).
         tools = [
-            {"type": "web_search_20260209", "name": "web_search", "max_uses": 3},
+            {"type": "web_search_20260209", "name": "web_search", "max_uses": 10},
             QUICK_REPLIES_TOOL,
             CREATE_FILE_TOOL,
             REFER_TEAMMATE_TOOL,

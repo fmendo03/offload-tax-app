@@ -9820,6 +9820,52 @@ function buildProjectContextText(projectId) {
     return `Project "${project.name}"${project.summary ? ' - ' + project.summary : ''}\nTasks:\n${lines.join('\n')}`;
 }
 
+// A fast, forced-tool-choice classification call (~1-2s) - separate from the
+// real reply so a message that needs real work (deep research, a generated
+// file) can be turned into a task BEFORE any of that work starts, instead of
+// only finding out after a long "typing..." wait. Returns null on any
+// failure so a classification hiccup falls back to answering normally rather
+// than silently dropping the message.
+async function classifyIfNeedsTask(message) {
+    try {
+        const response = await fetch('/classify-task-needed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+        const data = await response.json();
+        return data.success ? data : null;
+    } catch (e) {
+        console.error('Task classification failed:', e);
+        return null;
+    }
+}
+
+// Creates a not-started solo task from a chat message that turned out to need
+// real work, and replies in-chat to say so - Francis starts it himself
+// (the existing Start button) whenever he's ready, rather than it launching
+// immediately. Reuses the exact same task lifecycle as a hand-created task:
+// Start shows "Working..." in the Workspace, and the result (including any
+// generated file) lands on the task card, not as a fresh chat bubble.
+function createTaskFromChatMessage(agent, message, taskName) {
+    const name = taskName || deriveShortName(message);
+    createSoloTaskEntry(agent, message, new Date(), name);
+    refreshTaskViewsForAgent(agent);
+
+    chatHistory[agent].push({
+        type: 'agent',
+        text: `I've created a task for this: "${name}" — go ahead and start it whenever you're ready.`,
+        timestamp: new Date()
+    });
+    saveToLocalStorage(agent);
+    if (currentAgent === agent) {
+        displayMessages(agent);
+        markAgentRead(agent);
+        updateChatUnreadBadge(agent);
+    }
+    updateAgentBadge(agent);
+}
+
 async function sendMessageInner(message, attachments, attachmentsForApi, relatedItemId) {
     attachments = attachments || [];
     attachmentsForApi = attachmentsForApi || [];
@@ -9840,6 +9886,20 @@ async function sendMessageInner(message, attachments, attachmentsForApi, related
     // Anything the user attaches lands in this agent's Workspace too, not
     // just in the chat log - see addUploadedFileWorkspaceTask.
     attachmentsForApi.forEach(file => addUploadedFileWorkspaceTask(agentAtSendTime, Object.assign({}, file)));
+
+    // Skip classification while discussing an existing project task
+    // (activeDiscussTask) - that's about updating that task, not starting new
+    // work, so it shouldn't spawn a redundant second one. Attachments/replies
+    // also skip it - a plain "quick text" message is the case this targets.
+    if (!activeDiscussTask[agentAtSendTime] && !attachments.length && !relatedItemId) {
+        if (currentAgent === agentAtSendTime) showTypingIndicator(agentAtSendTime);
+        const classification = await classifyIfNeedsTask(message);
+        if (classification && classification.needs_task) {
+            hideTypingIndicatorForAgent(agentAtSendTime);
+            createTaskFromChatMessage(agentAtSendTime, message, classification.task_name);
+            return;
+        }
+    }
 
     await runOneOnOneAgentTurn(agentAtSendTime, attachmentsForApi, undefined, undefined, activeDiscussTask[agentAtSendTime], relatedItemId);
 }
@@ -10010,6 +10070,24 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             console.log(`Task run for ${agent} was stopped.`);
         } else {
             console.error(`Error getting response from ${agent}:`, error);
+            // Without this, a network error or a timed-out request (a very
+            // long generation can outlast the server's own request timeout)
+            // just clears the typing indicator with nothing to show for it -
+            // indistinguishable from the app silently hanging. A short bubble
+            // at least tells Francis to retry instead of wondering why the
+            // agent never answered.
+            chatHistory[agent].push({
+                type: 'agent',
+                text: "Sorry, something went wrong on my end and I couldn't finish that response - please try again.",
+                timestamp: new Date()
+            });
+            saveToLocalStorage(agent);
+            if (currentAgent === agent) {
+                displayMessages(agent);
+                markAgentRead(agent);
+                updateChatUnreadBadge(agent);
+            }
+            updateAgentBadge(agent);
         }
     } finally {
         hideTypingIndicatorForAgent(agent);
