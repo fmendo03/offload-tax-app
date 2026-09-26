@@ -3874,15 +3874,15 @@ def chat():
             content_blocks.extend(attachment_blocks)
             last_turn['content'] = content_blocks
 
-        # Get response from Claude. 8192 (up from 4096) because create_file's
-        # content now covers full HTML documents (see file_type "html") on top
-        # of everything else that shares this same budget - web search
-        # results, other file types, and the reply text itself. A styled
-        # multi-section page with several services easily used the old ceiling
-        # on the file alone, leaving nothing for the reply.
+        # Get response from Claude. Raised from 4096 -> 8192 -> 16000: a heavy
+        # multi-search research turn's real total (search-result processing
+        # plus the model's own generation) can run well past what looks like
+        # a generous ceiling - confirmed directly (a real turn hit stop_reason
+        # 'max_tokens' at usage.output_tokens=9972, already above the previous
+        # 8192 cap, with no tool calls to show for it).
         response = client.messages.create(
             model="claude-sonnet-5",
-            max_tokens=8192,
+            max_tokens=16000,
             system=system_prompt,
             messages=claude_messages,
             tools=tools
@@ -3900,17 +3900,9 @@ def chat():
         # leaving room for the actual reply text. Rather than silently
         # returning nothing, surface that so the user isn't left waiting with
         # no visible outcome.
-        if not response_text.strip() and response.stop_reason == 'max_tokens':
+        hit_max_tokens_empty = not response_text.strip() and response.stop_reason == 'max_tokens'
+        if hit_max_tokens_empty:
             response_text = "That took more room to work through than expected and I ran out of space to answer - try asking again, maybe split into smaller steps."
-            # TEMPORARY diagnostics - this keeps happening even at the raised
-            # 8192 ceiling and there's no Railway log access to inspect it
-            # directly, so surface what actually consumed the budget right in
-            # the reply. Remove once the real cause is confirmed.
-            tool_calls = [
-                {'name': getattr(b, 'name', None), 'input_size': len(str(getattr(b, 'input', '') or ''))}
-                for b in response.content if getattr(b, 'type', None) == 'tool_use'
-            ]
-            response_text += f"\n\n(debug: output_tokens={response.usage.output_tokens}, tool_calls={tool_calls})"
 
         # If the agent just asked a short multiple-choice clarifying question, it may
         # have called the (purely cosmetic) quick-replies tool to suggest tappable
@@ -3923,7 +3915,13 @@ def chat():
         created_files = []
         task_update = None
         calendar_update = None
-        task_paused = False
+        # A hard token-limit cutoff during a Started task leaves nothing to
+        # show and no tool call for the model to have signaled a real pause
+        # with - it just ran out of room mid-thought. Treat that as a pause
+        # anyway so the existing auto-continue picks it back up, rather than
+        # the task falsely landing on 'completed' with an apology as its
+        # only "result".
+        task_paused = hit_max_tokens_empty and is_task_run
         for block in response.content:
             if getattr(block, 'type', None) != 'tool_use':
                 continue
