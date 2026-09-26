@@ -2040,9 +2040,24 @@
 
         .calendar-week-event-title {
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .calendar-week-event-title-text {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .calendar-week-event-done-checkbox {
+            flex-shrink: 0;
+            width: 11px;
+            height: 11px;
+            margin: 0;
         }
 
         .calendar-week-event-time {
@@ -2484,6 +2499,71 @@
             color: #c0392b;
         }
 
+        .todos-personal-checkbox-label {
+            flex-direction: row !important;
+            align-items: center;
+            gap: 6px !important;
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            color: #444 !important;
+        }
+
+        .todos-bulk-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 16px;
+            border-bottom: 1px solid #e6e6e6;
+            background: #fafafa;
+            flex-shrink: 0;
+        }
+
+        .todos-bulk-select-all {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #444;
+            cursor: pointer;
+        }
+
+        .todos-item-checkbox {
+            margin-right: 8px;
+        }
+
+        .todo-priority-badge, .todo-personal-badge {
+            font-size: 12px;
+            margin-right: 4px;
+        }
+
+        .bulk-schedule-period-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .bulk-schedule-period-options label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .bulk-schedule-period-date {
+            color: #888;
+            font-size: 12px;
+        }
+
+        #bulk-schedule-custom-range input[type="date"] {
+            flex: 1;
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
         .topics-new-bar button {
             flex-shrink: 0;
             white-space: nowrap;
@@ -2558,6 +2638,11 @@
         .todo-status-badge.todo-status-not-scheduled {
             background: #f0f0f0;
             color: #777;
+        }
+
+        .todo-status-badge.todo-status-not-finished {
+            background: #fdecea;
+            color: #a13a2f;
         }
 
         .topics-preview-title.completed {
@@ -4409,6 +4494,22 @@
     flex-wrap: wrap;
 }
 
+/* Only present when a task has produced/attached files - toggles that
+   task's own file list (see buildTaskRowWithFiles) independently of the
+   Solo/Project Tasks group's own collapse. */
+.workspace-task-files-chevron {
+    font-size: 10px;
+    color: #999;
+    width: 10px;
+    flex-shrink: 0;
+    text-align: center;
+    cursor: pointer;
+}
+
+.workspace-task-files-chevron:hover {
+    color: #667eea;
+}
+
 .workspace-project-task-text {
     flex: 1 1 160px;
     min-width: 0;
@@ -5145,6 +5246,13 @@
             <div class="page-view-header"><h1>To-Do</h1><div class="agent-quickbar" id="todos-agent-quickbar"></div></div>
             <div class="topics-split">
                 <div class="topics-pane">
+                    <div class="todos-bulk-toolbar">
+                        <label class="todos-bulk-select-all">
+                            <input type="checkbox" id="todos-select-all-checkbox">
+                            <span>Select All</span>
+                        </label>
+                        <button type="button" class="task-action-btn solid-complete" id="todos-bulk-schedule-btn" disabled>Schedule Selected with Ashanti</button>
+                    </div>
                     <div class="split-pane-scroll" id="todos-list-scroll">
                         <div class="topics-categories" id="todos-active-list"></div>
                         <div class="topics-empty" id="todos-empty" style="display:none;">Nothing on your to-do list yet - add one below to get started.</div>
@@ -5179,6 +5287,20 @@
                                 <option value="240">Half day (4 hours)</option>
                                 <option value="480">Full day (8 hours)</option>
                             </select>
+                        </div>
+                        <div class="topics-new-field">
+                            <label for="todos-new-priority">Priority</label>
+                            <select id="todos-new-priority">
+                                <option value="high">High - must get done</option>
+                                <option value="medium" selected>Medium - should get done</option>
+                                <option value="low">Low - hope to get done</option>
+                            </select>
+                        </div>
+                        <div class="topics-new-field">
+                            <label class="todos-personal-checkbox-label">
+                                <input type="checkbox" id="todos-new-personal">
+                                Personal (only ever scheduled outside business hours)
+                            </label>
                         </div>
                         <div class="topics-new-field">
                             <label>Attachments</label>
@@ -5341,11 +5463,12 @@
                 <div id="calendar-event-attachments-zone"></div>
                 <div class="item-attachment-chip-list" id="calendar-event-attachments-list"></div>
             </div>
-            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
-                <button id="calendar-event-delete-btn" type="button" style="padding: 10px 20px; background: #fbeaea; color: #c0392b; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none;">Delete</button>
-                <button id="calendar-event-complete-btn" type="button" style="padding: 10px 20px; background: #1a3a8a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none; margin-right: auto;">Mark Completed</button>
-                <button id="calendar-event-cancel-btn" type="button" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
-                <button id="calendar-event-save-btn" type="button" style="padding: 10px 20px; background: #1F3A5F; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Save</button>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 8px;">
+                <button id="calendar-event-delete-btn" type="button" style="padding: 10px 16px; background: #fbeaea; color: #c0392b; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none;">Delete</button>
+                <button id="calendar-event-unschedule-btn" type="button" title="Take this off the calendar but keep the to-do (reverts it to Not Scheduled)" style="padding: 10px 16px; background: white; color: #667eea; border: 2px solid #667eea; border-radius: 4px; cursor: pointer; font-weight: 600; display: none;">Unschedule</button>
+                <button id="calendar-event-complete-btn" type="button" style="padding: 10px 16px; background: #1a3a8a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none; margin-right: auto;">Mark Completed</button>
+                <button id="calendar-event-cancel-btn" type="button" style="padding: 10px 16px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                <button id="calendar-event-save-btn" type="button" style="padding: 10px 16px; background: #1F3A5F; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Save</button>
             </div>
         </div>
     </div>
@@ -5427,6 +5550,32 @@
             <div style="display: flex; gap: 12px; justify-content: flex-end;">
                 <button id="bulk-confirm-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
                 <button id="bulk-confirm-ok-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk-schedule period picker - "Schedule Selected with Ashanti" on the
+         To-Do page opens this to pick the target period, then POSTs to
+         /todos/bulk-schedule (see runBulkScheduleTodos). -->
+    <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 12px; padding: 26px; max-width: 420px; width: 90%;">
+            <h3 style="margin: 0 0 6px;">Schedule with Ashanti</h3>
+            <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 18px;"></div>
+            <div class="bulk-schedule-period-options" id="bulk-schedule-period-options">
+                <label><input type="radio" name="bulk-schedule-period" value="today" checked> Today <span class="bulk-schedule-period-date" data-period="today"></span></label>
+                <label><input type="radio" name="bulk-schedule-period" value="tomorrow"> Tomorrow <span class="bulk-schedule-period-date" data-period="tomorrow"></span></label>
+                <label><input type="radio" name="bulk-schedule-period" value="this_week"> This week <span class="bulk-schedule-period-date" data-period="this_week"></span></label>
+                <label><input type="radio" name="bulk-schedule-period" value="next_week"> Next week <span class="bulk-schedule-period-date" data-period="next_week"></span></label>
+                <label><input type="radio" name="bulk-schedule-period" value="custom"> Custom range</label>
+            </div>
+            <div id="bulk-schedule-custom-range" style="display: none; gap: 10px; margin-top: 10px;">
+                <input type="date" id="bulk-schedule-start-date">
+                <span style="align-self: center;">to</span>
+                <input type="date" id="bulk-schedule-end-date">
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 22px;">
+                <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                <button id="bulk-schedule-confirm-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
             </div>
         </div>
     </div>
@@ -7702,26 +7851,7 @@ function renderWorkspaceTasks(agent) {
     const soloTasks = tasks.filter(t => !t.projectId);
     if (soloTasks.length > 0) {
         const body = appendWorkspaceGroup(container, agent, 'solo', `${TASK_ICON} Solo Tasks`, soloTasks.length);
-        soloTasks.forEach(task => {
-            const row = document.createElement('div');
-            row.className = 'workspace-task-row workspace-project-task-row';
-            row.dataset.taskId = task.id;
-
-            const text = document.createElement('span');
-            text.className = 'workspace-project-task-text';
-            if (task.status === 'completed') text.classList.add('completed');
-            text.textContent = `${TASK_ICON} ${task.name || task.task}`;
-            text.title = task.task;
-            text.addEventListener('click', () => markTaskViewed(agent, task.id));
-
-            row.appendChild(text);
-            row.appendChild(buildTaskActionsRow(agent, task));
-            body.appendChild(row);
-
-            getTaskFiles(agent, task.id).forEach(file => {
-                body.appendChild(buildWorkspaceFileRow(agent, file));
-            });
-        });
+        soloTasks.forEach(task => buildTaskRowWithFiles(agent, task, body));
     }
 
     // Group the rest by project so it reads as "here's everything from
@@ -7752,30 +7882,52 @@ function renderWorkspaceTasks(agent) {
             }
             body.appendChild(projectHeader);
 
-            group.items.forEach(task => {
-                const row = document.createElement('div');
-                row.className = 'workspace-task-row workspace-project-task-row';
-                row.dataset.taskId = task.id;
-
-                const text = document.createElement('span');
-                text.className = 'workspace-project-task-text';
-                if (task.status === 'completed') text.classList.add('completed');
-                text.textContent = `${TASK_ICON} ${task.name || task.task}`;
-                text.title = task.task;
-                text.addEventListener('click', () => markTaskViewed(agent, task.id));
-
-                row.appendChild(text);
-                row.appendChild(buildTaskActionsRow(agent, task));
-                body.appendChild(row);
-
-                // Every file this task produced (uploaded, or generated on
-                // completion) shows as its own indented card right beneath it -
-                // a separate, linked entry with its own Preview/Download/Archive.
-                getTaskFiles(agent, task.id).forEach(file => {
-                    body.appendChild(buildWorkspaceFileRow(agent, file));
-                });
-            });
+            group.items.forEach(task => buildTaskRowWithFiles(agent, task, body));
         });
+    }
+}
+
+// Builds one task row (Solo or Project Tasks) and, if it has any linked
+// files (uploaded, or generated by create_file on completion - see
+// attachFilesToTask), a small chevron that collapses/expands just that
+// task's own file list, independent of the Solo/Project Tasks group's own
+// collapse. A file shows as its own indented card (Preview/Download/Archive)
+// right beneath its task - clicking its name opens it in the Workspace
+// preview panel (see buildWorkspaceFileRow).
+function buildTaskRowWithFiles(agent, task, body) {
+    const row = document.createElement('div');
+    row.className = 'workspace-task-row workspace-project-task-row';
+    row.dataset.taskId = task.id;
+
+    const files = getTaskFiles(agent, task.id);
+    const groupKey = `task:${task.id}`;
+    const collapsed = files.length > 0 && !!workspaceGroupsCollapsed[`${agent}:${groupKey}`];
+
+    if (files.length > 0) {
+        const chevron = document.createElement('span');
+        chevron.className = 'workspace-task-files-chevron';
+        chevron.textContent = collapsed ? '▸' : '▾';
+        chevron.title = collapsed ? 'Show files' : 'Hide files';
+        chevron.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleWorkspaceGroup(agent, groupKey);
+        });
+        row.appendChild(chevron);
+    }
+
+    const text = document.createElement('span');
+    text.className = 'workspace-project-task-text';
+    if (task.status === 'completed') text.classList.add('completed');
+    text.textContent = `${TASK_ICON} ${task.name || task.task}`;
+    text.title = task.task;
+    text.addEventListener('click', () => markTaskViewed(agent, task.id));
+
+    row.appendChild(text);
+    row.appendChild(buildTaskActionsRow(agent, task));
+    body.appendChild(row);
+
+    if (!collapsed) {
+        files.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
     }
 }
 
@@ -12177,6 +12329,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return !!(todo && todo.completed);
         }
 
+        // For a to-do-origin event, its linked to-do's priority icon plus a
+        // business/personal icon (see TODO_PRIORITY_ICON) - empty for a
+        // manual/external/discussion event, or a todo-origin event whose
+        // to-do has since been deleted.
+        function calendarEventTodoIcons(e) {
+            if (e.origin !== 'todo') return '';
+            const todo = findTodoForCalendarEvent(e.id);
+            if (!todo) return '';
+            const priorityIcon = TODO_PRIORITY_ICON[todo.priority] || TODO_PRIORITY_ICON.medium;
+            const typeIcon = todo.personal ? '\u{1F3E0}' : '\u{1F4BC}';
+            return `${priorityIcon}${typeIcon}`;
+        }
+
         // --- Calendar event drag/resize (no modal needed) ------------------
         // Direct manipulation on the week grid: drag the body to move an
         // event to a different day/time, or drag its top/bottom edge to
@@ -12328,14 +12493,43 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 + (e.id === selectedCalendarEventId ? ' selected' : '');
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(16, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            block.title = `${calendarEventSourceIcon(e)} ${e.title}` + (e.location ? ` @ ${e.location}` : '');
+            block.title = `${calendarEventSourceIcon(e)}${calendarEventTodoIcons(e)} ${e.title}` + (e.location ? ` @ ${e.location}` : '');
 
             const timeEl = document.createElement('div');
             timeEl.className = 'calendar-week-event-time';
             timeEl.textContent = formatCalendarTime(e.start);
             const titleEl = document.createElement('div');
             titleEl.className = 'calendar-week-event-title';
-            titleEl.textContent = `${calendarEventSourceIcon(e)} ${e.title}`;
+
+            // Inline complete/incomplete toggle, right on the card - a
+            // todo-linked event toggles the to-do itself (same effect as
+            // "Mark Completed" in the Edit Event modal); a plain event
+            // toggles its own status between confirmed/done.
+            const doneCheckbox = document.createElement('input');
+            doneCheckbox.type = 'checkbox';
+            doneCheckbox.className = 'calendar-week-event-done-checkbox';
+            const linkedTodoForCheckbox = findTodoForCalendarEvent(e.id);
+            doneCheckbox.checked = linkedTodoForCheckbox ? !!linkedTodoForCheckbox.completed : e.status === 'done';
+            doneCheckbox.title = 'Mark completed';
+            doneCheckbox.addEventListener('mousedown', (evt) => evt.stopPropagation());
+            doneCheckbox.addEventListener('click', (evt) => evt.stopPropagation());
+            doneCheckbox.addEventListener('change', async (evt) => {
+                evt.stopPropagation();
+                const checked = evt.target.checked;
+                const todo = findTodoForCalendarEvent(e.id);
+                if (todo) {
+                    await updateTodoItem(todo.id, { completed: checked });
+                } else {
+                    await updateCalendarEvent(e.id, { status: checked ? 'done' : 'confirmed' });
+                    renderCalendarWeek();
+                }
+            });
+            titleEl.appendChild(doneCheckbox);
+
+            const titleTextEl = document.createElement('span');
+            titleTextEl.className = 'calendar-week-event-title-text';
+            titleTextEl.textContent = `${calendarEventSourceIcon(e)}${calendarEventTodoIcons(e)} ${e.title}`;
+            titleEl.appendChild(titleTextEl);
 
             block.appendChild(titleEl);
             if (durationMin >= 30) block.appendChild(timeEl);
@@ -12429,15 +12623,48 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // Workspace item and the chat exchange that quoted it - see
             // deleteTodoItem) - "delete" means gone everywhere, regardless
             // of which of the three places (To-Do page/Workspace/Calendar)
-            // it's deleted from, not just unscheduled.
+            // it's deleted from, not just unscheduled. Use Unschedule instead
+            // to remove just the calendar placement and keep the to-do.
             const linkedTodo = todosList.find(t => t.calendarEventId === id);
             if (linkedTodo) {
                 return await deleteTodoItem(linkedTodo.id);
             }
-            const response = await fetch(`/calendar/events/${id}`, { method: 'DELETE' });
-            const data = await response.json();
-            if (data.success) loadCalendarData();
-            return data;
+            try {
+                const response = await fetch(`/calendar/events/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    loadCalendarData();
+                } else {
+                    alert(data.error || 'Could not delete that event - try again.');
+                }
+                return data;
+            } catch (e) {
+                console.error('Failed to delete calendar event:', e);
+                alert('Could not delete that event - check the app is running and try again.');
+                return { success: false };
+            }
+        }
+
+        // Removes just this event's calendar placement, keeping the to-do
+        // itself intact (reverts it to "Not Scheduled" so it can be
+        // rescheduled later) - the non-destructive counterpart to Delete,
+        // which removes the to-do entirely.
+        async function unscheduleCalendarEvent(id) {
+            const linkedTodo = todosList.find(t => t.calendarEventId === id);
+            if (!linkedTodo) return;
+            try {
+                const response = await fetch(`/calendar/events/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (!data.success) {
+                    alert(data.error || 'Could not unschedule that item - try again.');
+                    return;
+                }
+                await updateTodoItem(linkedTodo.id, { calendar_event_id: null });
+                loadCalendarData();
+            } catch (e) {
+                console.error('Failed to unschedule calendar event:', e);
+                alert('Could not unschedule that item - check the app is running and try again.');
+            }
         }
 
         function toDateInputValue(d) {
@@ -12509,14 +12736,17 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // as Delete staying available on a synced event.
             const linkedTodo = event ? findTodoForCalendarEvent(event.id) : null;
             const completeBtn = document.getElementById('calendar-event-complete-btn');
+            const unscheduleBtn = document.getElementById('calendar-event-unschedule-btn');
             if (linkedTodo) {
                 completeBtn.style.display = 'inline-block';
                 // Same label pattern and color as the To-Do page's own
                 // toggle (task-action-btn solid-complete, #1a3a8a in both
                 // states) - reversible, stays visible instead of vanishing.
                 completeBtn.textContent = linkedTodo.completed ? 'Mark Not Completed' : 'Mark Completed';
+                unscheduleBtn.style.display = 'inline-block';
             } else {
                 completeBtn.style.display = 'none';
+                unscheduleBtn.style.display = 'none';
             }
 
             // Synced events are a straight, exact import - editing them here
@@ -12555,6 +12785,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const todo = findTodoForCalendarEvent(calendarEditingEventId);
             if (!todo) return;
             await updateTodoItem(todo.id, { completed: !todo.completed });
+            closeEventModal();
+        }
+
+        async function unscheduleEventModal() {
+            if (!calendarEditingEventId) return;
+            const todo = findTodoForCalendarEvent(calendarEditingEventId);
+            if (!todo) return;
+            if (!confirm(`Take "${todo.title}" off the calendar? It stays on your To-Do list, ready to reschedule.`)) return;
+            await unscheduleCalendarEvent(calendarEditingEventId);
             closeEventModal();
         }
 
@@ -13343,6 +13582,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let todosList = [];
         let selectedTodoId = null;
         let todosCompletedExpanded = false;
+        // Multi-select for "Schedule Selected with Ashanti" (see
+        // openBulkScheduleModal/runBulkScheduleTodos) - pruned against
+        // currently-live active todos on every render, same pattern as the
+        // Projects page's selectedProjectIds.
+        let selectedTodoIds = new Set();
+
+        const TODO_PRIORITY_ICON = { high: '\u{1F534}', medium: '\u{1F7E1}', low: '\u{1F7E2}' };
+        const TODO_PRIORITY_LABEL = { high: 'High priority', medium: 'Medium priority', low: 'Low priority' };
 
         async function loadTodosData() {
             try {
@@ -13374,6 +13621,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const completed = todosList.filter(t => t.completed)
                 .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
 
+            // Prune stale ids (deleted/completed since selected) - same
+            // pattern as the Projects page's selectedProjectIds.
+            const activeIds = new Set(active.map(t => t.id));
+            Array.from(selectedTodoIds).forEach(id => { if (!activeIds.has(id)) selectedTodoIds.delete(id); });
+
             document.getElementById('todos-empty').style.display = todosList.length ? 'none' : 'block';
             active.forEach(todo => activeContainer.appendChild(buildTodoItemEl(todo)));
 
@@ -13387,7 +13639,21 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             completedList.innerHTML = '';
             completed.forEach(todo => completedList.appendChild(buildTodoItemEl(todo)));
 
+            const selectAllCheckbox = document.getElementById('todos-select-all-checkbox');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = active.length > 0 && active.every(t => selectedTodoIds.has(t.id));
+                selectAllCheckbox.disabled = active.length === 0;
+            }
+            const bulkBtn = document.getElementById('todos-bulk-schedule-btn');
+            if (bulkBtn) bulkBtn.disabled = selectedTodoIds.size === 0;
+
             renderTodosPreviewPane();
+        }
+
+        function toggleTodoSelection(todoId) {
+            if (selectedTodoIds.has(todoId)) selectedTodoIds.delete(todoId);
+            else selectedTodoIds.add(todoId);
+            renderTodosPage();
         }
 
         function buildTodoItemEl(todo) {
@@ -13404,8 +13670,33 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             row.style.justifyContent = 'space-between';
             row.style.gap = '8px';
 
+            if (!todo.completed) {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'todos-item-checkbox';
+                checkbox.checked = selectedTodoIds.has(todo.id);
+                checkbox.addEventListener('click', (e) => e.stopPropagation());
+                checkbox.addEventListener('change', () => toggleTodoSelection(todo.id));
+                row.appendChild(checkbox);
+            }
+
+            const priorityIcon = document.createElement('span');
+            priorityIcon.className = 'todo-priority-badge';
+            priorityIcon.textContent = TODO_PRIORITY_ICON[todo.priority] || TODO_PRIORITY_ICON.medium;
+            priorityIcon.title = TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.medium;
+            row.appendChild(priorityIcon);
+
+            if (todo.personal) {
+                const personalIcon = document.createElement('span');
+                personalIcon.className = 'todo-personal-badge';
+                personalIcon.textContent = '\u{1F3E0}';
+                personalIcon.title = 'Personal - only scheduled outside business hours';
+                row.appendChild(personalIcon);
+            }
+
             const titleEl = document.createElement('span');
             titleEl.textContent = todo.title;
+            titleEl.style.flex = '1';
             titleEl.style.overflow = 'hidden';
             titleEl.style.textOverflow = 'ellipsis';
             titleEl.style.whiteSpace = 'nowrap';
@@ -13472,16 +13763,21 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             inputBox.focus();
         }
 
-        // Two independent axes, not one status: Scheduled/Not Scheduled says
+        // Three independent axes, not one status: Scheduled/Not Scheduled says
         // whether it's on the calendar at all, Completed says whether it's
-        // done - a to-do can be Completed with either the other one, so both
-        // show together rather than Completed replacing it. "Scheduled" only
-        // counts while the linked calendar event still exists (if it was
-        // deleted from the Calendar page, it falls back to Not Scheduled
-        // rather than pointing at nothing).
+        // done, Not Finished says it missed at least one scheduled window -
+        // a to-do can carry any combination, so all that apply show together
+        // rather than one replacing another. "Scheduled" only counts while
+        // the linked calendar event still exists (if it was deleted from the
+        // Calendar page, it falls back to Not Scheduled rather than pointing
+        // at nothing). notFinished itself is set server-side (see
+        // _apply_todo_rollovers in app.py) once a scheduled day passes
+        // without the to-do being completed, and clears on completion or a
+        // fresh reschedule.
         function todoStatusLabels(todo) {
             const scheduled = !!(todo.calendarEventId && calendarEvents.some(e => e.id === todo.calendarEventId));
             const labels = [scheduled ? 'Scheduled' : 'Not Scheduled'];
+            if (todo.notFinished) labels.push('Not Finished');
             if (todo.completed) labels.push('Completed');
             return labels;
         }
@@ -13489,6 +13785,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function todoStatusBadgeClass(status) {
             if (status === 'Completed') return 'todo-status-completed';
             if (status === 'Scheduled') return 'todo-status-scheduled';
+            if (status === 'Not Finished') return 'todo-status-not-finished';
             return 'todo-status-not-scheduled';
         }
 
@@ -13523,6 +13820,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 duration.textContent = `⏱️ ${formatTodoDuration(todo.estimatedMinutes)}`;
                 tags.appendChild(duration);
             }
+            const priorityTag = document.createElement('span');
+            priorityTag.className = 'topics-category-agent-badge';
+            priorityTag.textContent = `${TODO_PRIORITY_ICON[todo.priority] || TODO_PRIORITY_ICON.medium} ${TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.medium}`;
+            tags.appendChild(priorityTag);
+            if (todo.personal) {
+                const personalTag = document.createElement('span');
+                personalTag.className = 'topics-category-agent-badge';
+                personalTag.textContent = '\u{1F3E0} Personal';
+                tags.appendChild(personalTag);
+            }
             if (!editingThis) {
                 const editBtn = document.createElement('button');
                 editBtn.type = 'button';
@@ -13547,6 +13854,29 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 detailsTextarea.value = todo.details || '';
                 contentEl.appendChild(detailsTextarea);
 
+                const editFieldsRow = document.createElement('div');
+                editFieldsRow.style.display = 'flex';
+                editFieldsRow.style.gap = '14px';
+                editFieldsRow.style.alignItems = 'center';
+                editFieldsRow.style.margin = '8px 0';
+
+                const prioritySelect = document.createElement('select');
+                ['high', 'medium', 'low'].forEach(p => {
+                    prioritySelect.appendChild(new Option(TODO_PRIORITY_LABEL[p], p, false, (todo.priority || 'medium') === p));
+                });
+                editFieldsRow.appendChild(prioritySelect);
+
+                const personalLabel = document.createElement('label');
+                personalLabel.className = 'todos-personal-checkbox-label';
+                const personalCheckbox = document.createElement('input');
+                personalCheckbox.type = 'checkbox';
+                personalCheckbox.checked = !!todo.personal;
+                personalLabel.appendChild(personalCheckbox);
+                personalLabel.appendChild(document.createTextNode('Personal'));
+                editFieldsRow.appendChild(personalLabel);
+
+                contentEl.appendChild(editFieldsRow);
+
                 const editActions = document.createElement('div');
                 editActions.className = 'topics-preview-actions';
 
@@ -13563,7 +13893,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     }
                     unbindClickOutsideToCancel(contentEl);
                     editingTodoId = null;
-                    await updateTodoItem(todo.id, { title: newTitle, details: newDetails });
+                    await updateTodoItem(todo.id, { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked });
                 });
                 editActions.appendChild(saveBtn);
 
@@ -13706,29 +14036,40 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // back to it.
             const todo = todosList.find(t => t.id === id);
 
-            const response = await fetch(`/todos/${id}`, { method: 'DELETE' });
-            const data = await response.json();
-            if (data.success) {
-                todosList = data.todos;
-                renderTodosPage();
+            try {
+                const response = await fetch(`/todos/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    todosList = data.todos;
+                    renderTodosPage();
 
-                // Deleting a to-do from here means gone everywhere - its
-                // calendar event (if it was ever scheduled) and any
-                // Workspace item(s) referencing it (which also drops the
-                // chat exchange that quoted it - see removeWorkspaceItem) go
-                // with it.
-                if (todo && todo.calendarEventId) {
-                    fetch(`/calendar/events/${todo.calendarEventId}`, { method: 'DELETE' })
-                        .then(() => loadCalendarData())
-                        .catch(() => {});
+                    // Deleting a to-do from here means gone everywhere - its
+                    // calendar event (if it was ever scheduled) and any
+                    // Workspace item(s) referencing it (which also drops the
+                    // chat exchange that quoted it - see removeWorkspaceItem) go
+                    // with it.
+                    if (todo && todo.calendarEventId) {
+                        fetch(`/calendar/events/${todo.calendarEventId}`, { method: 'DELETE' })
+                            .then(() => loadCalendarData())
+                            .catch(() => {});
+                    }
+                    Object.keys(workspaceItems).forEach(agent => {
+                        (workspaceItems[agent] || [])
+                            .filter(i => i.kind === 'todo' && i.sourceId === id)
+                            .forEach(i => removeWorkspaceItem(agent, i.id));
+                    });
+                } else {
+                    // Previously silent - a failed delete (e.g. the to-do was
+                    // already removed elsewhere) looked identical to nothing
+                    // happening at all when clicking Delete.
+                    alert(data.error || 'Could not delete that to-do - try again.');
                 }
-                Object.keys(workspaceItems).forEach(agent => {
-                    (workspaceItems[agent] || [])
-                        .filter(i => i.kind === 'todo' && i.sourceId === id)
-                        .forEach(i => removeWorkspaceItem(agent, i.id));
-                });
+                return data;
+            } catch (e) {
+                console.error('Failed to delete to-do:', e);
+                alert('Could not delete that to-do - check the app is running and try again.');
+                return { success: false };
             }
-            return data;
         }
 
         // Duration label lookup for the preview pane / workspace item text -
@@ -13757,6 +14098,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const titleInput = document.getElementById('todos-new-title');
             const detailsInput = document.getElementById('todos-new-details');
             const durationInput = document.getElementById('todos-new-duration');
+            const priorityInput = document.getElementById('todos-new-priority');
+            const personalInput = document.getElementById('todos-new-personal');
             const title = titleInput.value.trim();
             const details = detailsInput.value.trim();
             const estimatedMinutes = parseInt(durationInput.value, 10);
@@ -13774,7 +14117,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const response = await fetch('/todos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, details, estimated_minutes: estimatedMinutes, attachments: newTodoAttachments })
+                    body: JSON.stringify({
+                        title, details, estimated_minutes: estimatedMinutes, attachments: newTodoAttachments,
+                        priority: priorityInput.value, personal: personalInput.checked
+                    })
                 });
                 const data = await response.json();
                 if (data.success) {
@@ -13784,6 +14130,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     titleInput.value = '';
                     detailsInput.value = '';
                     durationInput.value = '';
+                    priorityInput.value = 'medium';
+                    personalInput.checked = false;
                     newTodoAttachments.length = 0;
                     refreshNewTodoAttachments();
                 } else {
@@ -13799,6 +14147,146 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             btn.disabled = false;
             btn.textContent = 'Add To-Do';
             titleInput.focus();
+        }
+
+        // "Schedule Selected with Ashanti" - opens the period picker
+        // (openBulkScheduleModal), then runBulkScheduleTodos posts to the
+        // deterministic /todos/bulk-schedule endpoint (app.py) and narrates
+        // the result in Ashanti's chat. The actual placement math (priority
+        // ordering, the medium-priority next-period rollover, personal vs
+        // business hours) is never something the model computes - same
+        // reasoning as the 15-minute post-meeting buffer.
+        function computeBulkSchedulePeriod(periodType) {
+            const toISO = (d) => {
+                const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${day}`;
+            };
+            const today = new Date();
+            if (periodType === 'today') return { start: toISO(today), end: toISO(today) };
+            if (periodType === 'tomorrow') {
+                const t = new Date(today);
+                t.setDate(t.getDate() + 1);
+                return { start: toISO(t), end: toISO(t) };
+            }
+            // Sunday-start week, matching the Calendar page's own week grid
+            // (see the "start.getDate() - start.getDay()" pattern there).
+            if (periodType === 'this_week') {
+                const start = new Date(today);
+                start.setDate(start.getDate() - start.getDay());
+                const end = new Date(start);
+                end.setDate(end.getDate() + 6);
+                return { start: toISO(start), end: toISO(end) };
+            }
+            if (periodType === 'next_week') {
+                const start = new Date(today);
+                start.setDate(start.getDate() - start.getDay() + 7);
+                const end = new Date(start);
+                end.setDate(end.getDate() + 6);
+                return { start: toISO(start), end: toISO(end) };
+            }
+            return null;
+        }
+
+        // "2026-09-26" -> "9/26/26" - matches how Francis wrote the examples
+        // (no leading zeros, 2-digit year), shown next to each period option
+        // so it's clear exactly which dates "This week"/"Next week" mean
+        // before committing to one.
+        function formatShortDate(isoDate) {
+            const [y, m, d] = isoDate.split('-').map(Number);
+            return `${m}/${d}/${String(y).slice(-2)}`;
+        }
+
+        function populateBulkSchedulePeriodDates() {
+            document.querySelectorAll('.bulk-schedule-period-date').forEach(span => {
+                const range = computeBulkSchedulePeriod(span.dataset.period);
+                if (!range) return;
+                span.textContent = range.start === range.end
+                    ? `(${formatShortDate(range.start)})`
+                    : `(${formatShortDate(range.start)}-${formatShortDate(range.end)})`;
+            });
+        }
+
+        function openBulkScheduleModal() {
+            if (selectedTodoIds.size === 0) return;
+            document.getElementById('bulk-schedule-count').textContent =
+                `${selectedTodoIds.size} to-do${selectedTodoIds.size === 1 ? '' : 's'} selected`;
+            const todayRadio = document.querySelector('input[name="bulk-schedule-period"][value="today"]');
+            if (todayRadio) todayRadio.checked = true;
+            document.getElementById('bulk-schedule-custom-range').style.display = 'none';
+            populateBulkSchedulePeriodDates();
+            const todayIso = computeBulkSchedulePeriod('today').start;
+            document.getElementById('bulk-schedule-start-date').value = todayIso;
+            document.getElementById('bulk-schedule-end-date').value = todayIso;
+            document.getElementById('bulk-schedule-modal').style.display = 'flex';
+        }
+
+        function closeBulkScheduleModal() {
+            document.getElementById('bulk-schedule-modal').style.display = 'none';
+        }
+
+        async function runBulkScheduleTodos() {
+            const periodType = document.querySelector('input[name="bulk-schedule-period"]:checked').value;
+            let range;
+            if (periodType === 'custom') {
+                const start = document.getElementById('bulk-schedule-start-date').value;
+                const end = document.getElementById('bulk-schedule-end-date').value;
+                if (!start || !end || end < start) {
+                    alert('Please choose a valid date range.');
+                    return;
+                }
+                range = { start, end };
+            } else {
+                range = computeBulkSchedulePeriod(periodType);
+            }
+
+            const confirmBtn = document.getElementById('bulk-schedule-confirm-btn');
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Scheduling…';
+            try {
+                const response = await fetch('/todos/bulk-schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ todo_ids: Array.from(selectedTodoIds), start_date: range.start, end_date: range.end })
+                });
+                const data = await response.json();
+                closeBulkScheduleModal();
+                if (!data.success) {
+                    alert(data.error || 'Could not schedule those to-dos.');
+                } else {
+                    await loadTodosData();
+                    await loadCalendarData();
+                    selectedTodoIds.clear();
+                    renderTodosPage();
+                    if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
+
+                    const lines = [];
+                    if (data.scheduled.length) {
+                        lines.push(`Scheduled ${data.scheduled.length} item${data.scheduled.length === 1 ? '' : 's'}:`);
+                        data.scheduled.forEach(s => {
+                            const when = new Date(s.event.start).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                            lines.push(`- ${s.title}: ${when}${s.pushedToNextPeriod ? ' (pushed to the next period - no room in the original one)' : ''}`);
+                        });
+                    }
+                    if (data.unscheduled.length) {
+                        lines.push(`${lines.length ? '\n' : ''}Couldn't find room for ${data.unscheduled.length} item${data.unscheduled.length === 1 ? '' : 's'}:`);
+                        data.unscheduled.forEach(u => lines.push(`- ${u.title}: ${u.reason}`));
+                    }
+                    if (!chatHistory['ashanti']) chatHistory['ashanti'] = [];
+                    chatHistory['ashanti'].push({ type: 'agent', text: lines.join('\n') || 'Nothing to schedule.', timestamp: new Date() });
+                    saveToLocalStorage('ashanti');
+                    if (currentAgent === 'ashanti') {
+                        displayMessages('ashanti');
+                        markAgentRead('ashanti');
+                        updateChatUnreadBadge('ashanti');
+                    }
+                    updateAgentBadge('ashanti');
+                }
+            } catch (e) {
+                console.error('Bulk schedule failed:', e);
+                alert('Could not schedule those to-dos - check the app is running and try again.');
+            }
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Schedule';
         }
 
         // --- Suggestions ---------------------------------------------------
@@ -14520,6 +15008,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('calendar-event-save-btn').addEventListener('click', saveEventModal);
         document.getElementById('calendar-event-attachments-zone').appendChild(buildAttachmentDropzone(calendarModalAttachments, refreshCalendarModalAttachments));
         document.getElementById('calendar-event-delete-btn').addEventListener('click', deleteEventModal);
+        document.getElementById('calendar-event-unschedule-btn').addEventListener('click', unscheduleEventModal);
         document.getElementById('calendar-event-complete-btn').addEventListener('click', completeCalendarLinkedTodo);
         document.getElementById('calendar-event-allday').addEventListener('change', (e) => toggleCalendarAllDayFields(e.target.checked));
         document.getElementById('calendar-event-modal').addEventListener('click', (e) => {
@@ -14664,6 +15153,25 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (e.target.id === 'bulk-confirm-modal') {
                 document.getElementById('bulk-confirm-modal').style.display = 'none';
             }
+        });
+
+        document.getElementById('todos-select-all-checkbox').addEventListener('change', (e) => {
+            const active = todosList.filter(t => !t.completed);
+            if (e.target.checked) active.forEach(t => selectedTodoIds.add(t.id));
+            else active.forEach(t => selectedTodoIds.delete(t.id));
+            renderTodosPage();
+        });
+        document.getElementById('todos-bulk-schedule-btn').addEventListener('click', openBulkScheduleModal);
+        document.querySelectorAll('input[name="bulk-schedule-period"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                const checked = document.querySelector('input[name="bulk-schedule-period"]:checked').value;
+                document.getElementById('bulk-schedule-custom-range').style.display = checked === 'custom' ? 'flex' : 'none';
+            });
+        });
+        document.getElementById('bulk-schedule-cancel-btn').addEventListener('click', closeBulkScheduleModal);
+        document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', runBulkScheduleTodos);
+        document.getElementById('bulk-schedule-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'bulk-schedule-modal') closeBulkScheduleModal();
         });
 
         document.getElementById('archive-detail-close-btn').addEventListener('click', closeArchiveDetailModal);

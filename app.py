@@ -1739,16 +1739,20 @@ def _format_day_label(day):
     return f"{day.strftime('%a %b')} {day.day}"
 
 
-# The actual open windows in business hours on `day`, after blocking out
-# every non-cancelled, non-all-day event already on the calendar that day -
-# handed to Ashanti so she picks an actual free slot instead of doing this
-# interval math herself (which is exactly where double-booking and
-# past-the-end-of-day overflow bugs come from). For today specifically, the
-# window also can't start before right now. Gaps under 15 minutes are
-# dropped as not practically bookable.
-def compute_free_slots(day_events, day, now):
-    business_start = datetime.combine(day, datetime.min.time()) + timedelta(hours=CALENDAR_BUSINESS_START_HOUR)
-    business_end = datetime.combine(day, datetime.min.time()) + timedelta(hours=CALENDAR_BUSINESS_END_HOUR)
+# The actual open windows within [window_start_hour, window_end_hour) on
+# `day`, after blocking out every non-cancelled, non-all-day event already on
+# the calendar that day - handed to Ashanti so she picks an actual free slot
+# instead of doing this interval math herself (which is exactly where
+# double-booking and past-the-end-of-day overflow bugs come from). For today
+# specifically, the window also can't start before right now. Gaps under 15
+# minutes are dropped as not practically bookable. An event an hour or longer
+# gets a 15-minute buffer padded onto its end before it blocks out busy time -
+# baked in here rather than left as a prompt instruction, so it's guaranteed
+# by the math Ashanti already treats as the source of truth, not something
+# she has to remember to apply herself.
+def compute_free_slots_in_window(day_events, day, now, window_start_hour, window_end_hour):
+    business_start = datetime.combine(day, datetime.min.time()) + timedelta(hours=window_start_hour)
+    business_end = datetime.combine(day, datetime.min.time()) + timedelta(hours=window_end_hour)
     window_start = business_start
     if day == now.date():
         window_start = max(business_start, _round_up_to_quarter_hour(now))
@@ -1764,6 +1768,8 @@ def compute_free_slots(day_events, day, now):
             en = datetime.fromisoformat(e.get('end') or e['start'])
         except (ValueError, KeyError, TypeError):
             continue
+        if en - s >= timedelta(hours=1):
+            en = en + timedelta(minutes=15)
         s = max(s, window_start)
         en = min(en, business_end)
         if en > s:
@@ -1787,6 +1793,18 @@ def compute_free_slots(day_events, day, now):
         free.append((cursor, business_end))
 
     return [(s, en) for s, en in free if (en - s) >= timedelta(minutes=15)]
+
+
+def compute_free_slots(day_events, day, now):
+    return compute_free_slots_in_window(day_events, day, now, CALENDAR_BUSINESS_START_HOUR, CALENDAR_BUSINESS_END_HOUR)
+
+
+# For a personal to-do (see /todos/bulk-schedule) - only the parts of `day`
+# outside business hours: before business_start and after business_end.
+def compute_personal_free_slots(day_events, day, now):
+    morning = compute_free_slots_in_window(day_events, day, now, 0, CALENDAR_BUSINESS_START_HOUR)
+    evening = compute_free_slots_in_window(day_events, day, now, CALENDAR_BUSINESS_END_HOUR, 24)
+    return morning + evening
 
 
 # Short, chat-context-friendly rundown of what's on the calendar - given to
@@ -2407,10 +2425,47 @@ def load_todos():
             with open(TODOS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             if isinstance(data, list):
-                return data
+                return _apply_todo_rollovers(data)
         except (json.JSONDecodeError, OSError):
             pass
     return []
+
+
+# A to-do scheduled onto the calendar whose day has fully passed (it's now a
+# later calendar date) without being marked completed reverts to "Not
+# Scheduled" and picks up a standing "Not Finished" flag - by design, this
+# doesn't fire until the scheduled day is actually over (not just once its
+# time slot ends), matching "not completed by 11:59:59pm". The calendar event
+# itself is left alone - it stays as a real record of what was planned that
+# day; only the to-do's own link and status change. Runs on every load
+# (called from load_todos, which every todos route goes through) rather than
+# needing a scheduler, so it's always current regardless of which route a
+# client happens to hit first. notFinished itself clears the moment the to-do
+# is completed or given a fresh calendar_event_id (see todos_update) - it
+# means "missed at least one window", not a permanent mark.
+def _apply_todo_rollovers(todos):
+    today = datetime.now().date()
+    events_by_id = None
+    changed = False
+    for todo in todos:
+        if todo.get('completed') or not todo.get('calendarEventId'):
+            continue
+        if events_by_id is None:
+            events_by_id = {e['id']: e for e in load_calendar_events()}
+        event = events_by_id.get(todo['calendarEventId'])
+        if not event:
+            continue
+        try:
+            event_date = datetime.fromisoformat(event.get('start') or '').date()
+        except (ValueError, TypeError):
+            continue
+        if event_date < today:
+            todo['calendarEventId'] = None
+            todo['notFinished'] = True
+            changed = True
+    if changed:
+        save_todos(todos)
+    return todos
 
 
 def save_todos(data):
@@ -2435,6 +2490,9 @@ def todos_create():
             estimated_minutes = 0
         if not title or not details or estimated_minutes <= 0:
             return jsonify({'success': False, 'error': 'Missing title, details, or estimated time'}), 400
+        priority = str(data.get('priority') or 'medium').strip().lower()
+        if priority not in ('high', 'medium', 'low'):
+            priority = 'medium'
         with todos_lock:
             todos = load_todos()
             todo = {
@@ -2447,7 +2505,19 @@ def todos_create():
                 'createdAt': datetime.now().isoformat(),
                 'completedAt': None,
                 'calendarEventId': None,
-                'attachments': data.get('attachments') or []
+                'attachments': data.get('attachments') or [],
+                # High: must land in the period it's scheduled for. Medium:
+                # should land there, but rolls to the next equivalent period
+                # if it doesn't fit. Low: pure filler, scheduled only with
+                # whatever room is left over - see /todos/bulk-schedule.
+                'priority': priority,
+                # Personal todos only ever get scheduled outside business
+                # hours (see compute_personal_free_slots) - a business todo
+                # never lands there and vice versa.
+                'personal': bool(data.get('personal')),
+                # Set by _apply_todo_rollovers when a scheduled day passes
+                # with the to-do still incomplete - see that function.
+                'notFinished': False
             }
             todos.append(todo)
             save_todos(todos)
@@ -2484,12 +2554,24 @@ def todos_update(todo_id):
                 todo['completedAt'] = datetime.now().isoformat() if todo['completed'] else None
             if 'attachments' in data:
                 todo['attachments'] = data['attachments'] or []
+            if 'priority' in data:
+                new_priority = str(data['priority'] or '').strip().lower()
+                if new_priority in ('high', 'medium', 'low'):
+                    todo['priority'] = new_priority
+            if 'personal' in data:
+                todo['personal'] = bool(data['personal'])
             # Set once Ashanti actually creates the calendar event this to-do
             # was scheduled for (see the calendar_update handling in
             # runOneOnOneAgentTurn) - null explicitly clears it, e.g. if
             # Francis wants to re-schedule it from scratch.
             if 'calendar_event_id' in data:
-                todo['calendarEventId'] = data['calendar_event_id'] or None
+                new_event_id = data['calendar_event_id'] or None
+                todo['calendarEventId'] = new_event_id
+                # A fresh scheduling attempt is a clean slate - notFinished
+                # only means "missed at least one scheduled window", not a
+                # permanent mark, so it clears the moment it's given another one.
+                if new_event_id:
+                    todo['notFinished'] = False
             save_todos(todos)
         return jsonify({'success': True, 'todos': todos})
     except Exception as e:
@@ -2511,6 +2593,133 @@ def todos_delete(todo_id):
         return jsonify({'success': True, 'todos': todos})
     except Exception as e:
         print(f"Todo delete error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Same length of period, immediately following it - "today" -> tomorrow,
+# a Mon-Sun week -> the next Mon-Sun, "tomorrow" -> the day after. This one
+# rule covers every rollover case a medium-priority to-do needs, without
+# hardcoding "day"/"week" as special cases.
+def _next_period_days(start_date, end_date):
+    length = (end_date - start_date).days + 1
+    next_start = end_date + timedelta(days=1)
+    return [next_start + timedelta(days=i) for i in range(length)]
+
+
+# Deterministic bin-packing scheduler behind the To-Do bulk-schedule action -
+# see the priority rules in the create_project_task/create_file style comment
+# blocks elsewhere: this is exactly the kind of precise interval math that
+# should never be left to a model to reason about on the fly (same lesson as
+# the 15-minute post-meeting buffer above) - Ashanti's own reply just narrates
+# what this function actually did.
+@app.route('/todos/bulk-schedule', methods=['POST'])
+def todos_bulk_schedule():
+    try:
+        data = request.json or {}
+        todo_ids = data.get('todo_ids') or []
+        try:
+            start_date = date.fromisoformat(str(data.get('start_date')))
+            end_date = date.fromisoformat(str(data.get('end_date')))
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid start_date/end_date'}), 400
+        if end_date < start_date:
+            return jsonify({'success': False, 'error': 'end_date is before start_date'}), 400
+        if not todo_ids:
+            return jsonify({'success': False, 'error': 'No to-dos selected'}), 400
+
+        now = datetime.now()
+        period_days = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        next_days = _next_period_days(start_date, end_date)
+
+        with todos_lock, calendar_lock:
+            todos = load_todos()
+            todos_by_id = {t['id']: t for t in todos}
+            selected = [todos_by_id[tid] for tid in todo_ids if tid in todos_by_id and not todos_by_id[tid].get('completed')]
+            if not selected:
+                return jsonify({'success': False, 'error': 'None of the selected to-dos were found'}), 400
+
+            working_events = load_calendar_events()
+
+            def day_events_for(day):
+                day_iso = day.isoformat()
+                return [e for e in working_events if e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)]
+
+            def find_slot(todo, days):
+                duration = timedelta(minutes=todo.get('estimatedMinutes') or 30)
+                slot_fn = compute_personal_free_slots if todo.get('personal') else compute_free_slots
+                for day in days:
+                    for s, en in slot_fn(day_events_for(day), day, now):
+                        if en - s >= duration:
+                            return (s, s + duration)
+                return None
+
+            def create_event_for(todo, start_dt, end_dt):
+                now_iso = now.isoformat()
+                event = {
+                    'id': uuid.uuid4().hex,
+                    'userId': current_user_id(),
+                    'title': todo['title'],
+                    'description': todo.get('details') or '',
+                    'location': '',
+                    'start': start_dt.isoformat(),
+                    'end': end_dt.isoformat(),
+                    'allDay': False,
+                    'source': 'internal',
+                    'origin': 'todo',
+                    'externalUid': None,
+                    'status': 'confirmed',
+                    'createdAt': now_iso,
+                    'updatedAt': now_iso
+                }
+                working_events.append(event)
+                return event
+
+            scheduled = []
+            unscheduled = []
+
+            for todo in [t for t in selected if t.get('priority') == 'high']:
+                slot = find_slot(todo, period_days)
+                if slot:
+                    scheduled.append((todo, create_event_for(todo, *slot), False))
+                else:
+                    unscheduled.append((todo, "No room in the period, even at highest priority - needs a manual look."))
+
+            for todo in [t for t in selected if t.get('priority', 'medium') == 'medium']:
+                slot = find_slot(todo, period_days)
+                pushed = False
+                if not slot:
+                    slot = find_slot(todo, next_days)
+                    pushed = True
+                if slot:
+                    scheduled.append((todo, create_event_for(todo, *slot), pushed))
+                else:
+                    unscheduled.append((todo, "Didn't fit in this period or the next one."))
+
+            for todo in [t for t in selected if t.get('priority') == 'low']:
+                slot = find_slot(todo, period_days)
+                if slot:
+                    scheduled.append((todo, create_event_for(todo, *slot), False))
+                else:
+                    unscheduled.append((todo, "No free time left over - stays unscheduled as filler."))
+
+            save_calendar_events(working_events)
+            for todo, event, _pushed in scheduled:
+                todo['calendarEventId'] = event['id']
+            save_todos(todos)
+
+        return jsonify({
+            'success': True,
+            'scheduled': [
+                {'todoId': todo['id'], 'title': todo['title'], 'event': event, 'pushedToNextPeriod': pushed}
+                for todo, event, pushed in scheduled
+            ],
+            'unscheduled': [
+                {'todoId': todo['id'], 'title': todo['title'], 'reason': reason}
+                for todo, reason in unscheduled
+            ]
+        })
+    except Exception as e:
+        print(f"Bulk schedule error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
