@@ -8170,9 +8170,12 @@ const MAX_TASK_AUTO_CONTINUES = 5;
 // "Start" sends the task description into the agent's own 1:1 chat as an
 // instruction and lets them actually do it with their real tools (create_file,
 // web_search, ...) - the same turn that would run if Francis typed it himself.
-// continueCount is internal (see the auto-continue loop below) - always omit
-// it when calling this from a Start/Resume button.
-async function startProjectTask(agent, taskId, continueCount = 0) {
+// continueCount/reminder are internal (see the auto-continue loop below) -
+// always omit them when calling this from a Start/Resume button. reminder,
+// when set, names specific file formats still missing (see
+// completeProjectTaskFromChat) so the continuation is a concrete instruction
+// rather than a vague "keep going".
+async function startProjectTask(agent, taskId, continueCount = 0, reminder = null) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task || task.status === 'in_progress') return;
     task.status = 'in_progress';
@@ -8191,7 +8194,7 @@ async function startProjectTask(agent, taskId, continueCount = 0) {
         // as "start over" rather than "keep going from where you paused".
         text: continueCount === 0
             ? `Please go ahead and do this now: ${task.task}`
-            : `Please continue where you left off.`,
+            : (reminder || `Please continue where you left off.`),
         timestamp: new Date()
     });
     saveToLocalStorage(agent);
@@ -8199,15 +8202,16 @@ async function startProjectTask(agent, taskId, continueCount = 0) {
 
     const controller = new AbortController();
     taskAbortControllers[taskId] = controller;
-    let paused = false;
+    let result = null;
     try {
-        paused = await runOneOnOneAgentTurn(agent, [], taskId, controller.signal);
+        result = await runOneOnOneAgentTurn(agent, [], taskId, controller.signal);
     } finally {
         delete taskAbortControllers[taskId];
     }
+    const paused = !!(result && result.paused);
 
     if (paused && continueCount + 1 < MAX_TASK_AUTO_CONTINUES) {
-        await startProjectTask(agent, taskId, continueCount + 1);
+        await startProjectTask(agent, taskId, continueCount + 1, result.reminder);
     } else if (paused) {
         // Hit the cap - stays 'paused' (already set by pauseProjectTask) for
         // Francis to Resume by hand instead of silently looping forever.
@@ -8422,18 +8426,39 @@ function attachFilesToTask(agent, taskId, createdFiles) {
     files.forEach(file => createWorkspaceFile(agent, taskId, file));
 }
 
-// Called when a Started task's chat turn finishes - marks that SAME task
-// complete and links whatever files the agent produced (see
-// attachFilesToTask) as their own file cards rather than attaching them to
-// the task directly.
+// Called when a Started task's chat turn finishes - links whatever files the
+// agent produced (see attachFilesToTask), then marks the task complete
+// UNLESS its own wording asked for file formats that still haven't shown up
+// (expectedFileTypes, set at creation - see detectRequestedFileTypes). That
+// mismatch is exactly what let a task claiming "PDF, Word doc, and
+// PowerPoint" go to 'completed' after only the first two ever got made - the
+// model saying it's done isn't proof it actually is. Returns whether it
+// actually completed, and if not, which formats are still missing, so the
+// caller can keep auto-continuing with a concrete reminder instead of a
+// generic "keep going".
 function completeProjectTaskFromChat(agent, taskId, createdFiles) {
     const task = findWorkspaceTaskById(agent, taskId);
-    if (!task) return;
+    if (!task) return { completed: false };
+    attachFilesToTask(agent, taskId, createdFiles);
+
+    const expected = task.expectedFileTypes || [];
+    if (expected.length) {
+        const delivered = new Set(
+            (workspaceFiles[agent] || []).filter(f => f.taskId === taskId).map(f => f.fileType)
+        );
+        const missing = expected.filter(t => !delivered.has(t));
+        if (missing.length) {
+            task.status = 'paused';
+            refreshTaskViewsForAgent(agent);
+            return { completed: false, missing };
+        }
+    }
+
     task.status = 'completed';
     task.completedAt = new Date();
     task.viewed = false;
-    attachFilesToTask(agent, taskId, createdFiles);
     refreshTaskViewsForAgent(agent);
+    return { completed: true };
 }
 
 // The agent called pause_task instead of finishing (see PAUSE_TASK_TOOL in
@@ -8896,6 +8921,23 @@ function deriveShortName(text, maxWords) {
     return words.slice(0, limit).join(' ') + '…';
 }
 
+// Loose, deliberately permissive keyword match on a task's own description -
+// only gates the "don't complete until everything's delivered" safety net
+// below, not actual file generation, so a false positive just costs one
+// extra auto-continue turn rather than blocking real work.
+const FILE_TYPE_REQUEST_PATTERNS = {
+    pdf: /\bpdf\b/i,
+    docx: /\b(word doc(ument)?s?|\.docx|docx\b)/i,
+    pptx: /\b(power ?point|\.pptx|pptx\b|slide ?deck|presentation)/i,
+    xlsx: /\b(excel|spreadsheet|\.xlsx|xlsx\b)/i
+};
+
+function detectRequestedFileTypes(text) {
+    return Object.entries(FILE_TYPE_REQUEST_PATTERNS)
+        .filter(([, pattern]) => pattern.test(text || ''))
+        .map(([type]) => type);
+}
+
 // Builds one task in the unified shape both the Projects sidebar and the
 // Workspace pane read/mutate (status/result live only in workspaceTasks -
 // the project's own copy just carries the same taskId to look it up by).
@@ -8916,7 +8958,11 @@ function createProjectTaskEntry(agent, projectId, projectName, taskText, created
         cancelled: false,
         createdAt,
         startedAt: null,
-        completedAt: null
+        completedAt: null,
+        // Which file formats this task's own wording asked for, e.g. "a PDF
+        // and a Word doc" -> ['pdf', 'docx'] - see completeProjectTaskFromChat,
+        // which won't let the task complete until all of these are delivered.
+        expectedFileTypes: detectRequestedFileTypes(taskText)
     };
     if (!workspaceTasks[agent]) workspaceTasks[agent] = [];
     workspaceTasks[agent].push(task);
@@ -10142,9 +10188,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         if (taskId) {
             if (data.task_paused) {
                 pauseProjectTask(agent, taskId, data.created_files);
-                return true;
-            } else {
-                completeProjectTaskFromChat(agent, taskId, data.created_files);
+                return { paused: true };
+            }
+            const result = completeProjectTaskFromChat(agent, taskId, data.created_files);
+            if (!result.completed) {
+                return {
+                    paused: true,
+                    reminder: `You still need to produce: ${(result.missing || []).join(', ')}. Please continue and finish producing those file(s) now.`
+                };
             }
         } else if (data.created_files && data.created_files.length) {
             data.created_files.forEach(f => addFileWorkspaceTask(agent, f));
