@@ -263,6 +263,70 @@
             font-size: 22px;
             font-weight: 800;
             color: #222;
+            margin: 0;
+        }
+
+        .page-view-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        /* Quick way to jump straight to an agent's 1:1 chat from a shared
+           page (Projects, To-Do, Calendar, Discussion Topics, Archive,
+           Knowledge Base) without going back through the sidebar - sits
+           inline next to the page's own heading. */
+        .agent-quickbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .agent-quickbar-avatar {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            object-fit: cover;
+            cursor: pointer;
+            border: 2px solid transparent;
+            background: #f2f2f2;
+            transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+
+        .agent-quickbar-avatar:hover {
+            transform: scale(1.1);
+            border-color: #667eea;
+        }
+
+        .agent-quickbar-item {
+            position: relative;
+            display: inline-block;
+            line-height: 0;
+        }
+
+        .agent-quickbar-badge {
+            display: none;
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #ff0000;
+            color: white;
+            border-radius: 50%;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 4px;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            border: 2px solid white;
+        }
+
+        .agent-quickbar-badge.visible {
+            display: flex;
         }
 
         .page-view-scroll {
@@ -2127,16 +2191,6 @@
         }
 
         /* Discussion Topics */
-        .page-view-header-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .page-view-header-row h1 {
-            margin: 0;
-        }
-
         .topics-split {
             flex: 1;
             min-height: 0;
@@ -2894,14 +2948,8 @@
             border-right: 1px solid #e0e0e0;
             min-width: 0;
             overflow: hidden;
-            transition: flex-grow 0.3s ease, border-color 0.3s ease;
             display: flex;
             flex-direction: column;
-        }
-
-        .lower-content.third-pane-hidden .third-pane {
-            flex-grow: 0;
-            border-right-color: transparent;
         }
 
         .workspace-header {
@@ -3085,6 +3133,7 @@
             flex-shrink: 0;
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 14px;
         }
 
@@ -3100,38 +3149,6 @@
             border-radius: 50%;
             object-fit: cover;
             border: 2px solid white;
-        }
-
-        .pane-toggle-gutter {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            flex-shrink: 0;
-            background: white;
-            border-right: 1px solid #e0e0e0;
-        }
-
-        .toggle-pane-btn {
-            width: 22px;
-            height: 48px;
-            padding: 0;
-            background: white;
-            color: #667eea;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 700;
-            line-height: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .toggle-pane-btn:hover {
-            background: #f0f4ff;
-            border-color: #667eea;
         }
 
         .chat-title-wrap {
@@ -3228,14 +3245,6 @@
             display: flex;
         }
 
-        .lower-content.group-mode .pane-toggle-gutter {
-            display: none;
-        }
-
-        .gutter-button-wrap {
-            position: relative;
-        }
-
         .mini-badge {
             display: none;
             background: #ff0000;
@@ -3253,12 +3262,6 @@
 
         .mini-badge.visible {
             display: flex;
-        }
-
-        .gutter-button-wrap .mini-badge {
-            position: absolute;
-            top: -8px;
-            right: -8px;
         }
 
         .mini-badge-inline {
@@ -4743,6 +4746,7 @@
                     <span class="mini-badge mini-badge-inline" id="chat-unread-badge"></span>
                 </div>
                 <div class="header-avatars" id="header-avatars"></div>
+                <div class="agent-quickbar" id="chat-agent-quickbar"></div>
             </div>
 
             <div class="lower-content">
@@ -4764,13 +4768,6 @@
                     <div class="workspace-preview-panel" id="workspace-preview-panel">
                         <div class="workspace-preview-empty" id="workspace-preview-empty">Select Preview on a file below to view it here.</div>
                         <div class="workspace-preview-content" id="workspace-preview-content" style="display: none;"></div>
-                    </div>
-                </div>
-
-                <!-- Toggle for Third Pane -->
-                <div class="pane-toggle-gutter">
-                    <div class="gutter-button-wrap">
-                        <button id="toggle-third-pane-btn" class="toggle-pane-btn" aria-label="Toggle panel">&#8250;</button>
                     </div>
                 </div>
 
@@ -4887,7 +4884,7 @@
 
         <!-- Projects Page -->
         <div class="page-view" id="projects-view" style="display: none;">
-            <div class="page-view-header"><h1>Projects & Tasks</h1></div>
+            <div class="page-view-header"><h1>Projects & Tasks</h1><div class="agent-quickbar" id="projects-agent-quickbar"></div></div>
             <div class="projects-split">
                 <div class="projects-pane">
                     <div class="split-pane-header has-subtitle">
@@ -4919,7 +4916,7 @@
 
         <!-- Archived Page -->
         <div class="page-view" id="archive-view" style="display: none;">
-            <div class="page-view-header"><h1>Archived</h1></div>
+            <div class="page-view-header"><h1>Archived</h1><div class="agent-quickbar" id="archive-agent-quickbar"></div></div>
             <div class="archive-split">
                 <div class="archive-col">
                     <div class="split-pane-header"><h2>Files</h2></div>
@@ -4970,7 +4967,7 @@
 
         <!-- Knowledge Base Page -->
         <div class="page-view" id="knowledgebase-view" style="display: none;">
-            <div class="page-view-header"><h1>Knowledge Base</h1></div>
+            <div class="page-view-header"><h1>Knowledge Base</h1><div class="agent-quickbar" id="knowledgebase-agent-quickbar"></div></div>
             <div class="kb-split">
                 <div class="kb-col" data-kb-side="firm">
                     <div class="split-pane-header">
@@ -5051,7 +5048,7 @@
 
         <!-- Calendar Page -->
         <div class="page-view" id="calendar-view" style="display: none;">
-            <div class="page-view-header"><h1>Calendar</h1></div>
+            <div class="page-view-header"><h1>Calendar</h1><div class="agent-quickbar" id="calendar-agent-quickbar"></div></div>
             <div class="calendar-layout">
                 <div class="calendar-sync-bar">
                     <div class="calendar-sync-toggle">
@@ -5105,10 +5102,7 @@
 
         <!-- Discussion Topics Page -->
         <div class="page-view" id="topics-view" style="display: none;">
-            <div class="page-view-header page-view-header-row">
-                <h1>Discussion Topics</h1>
-                <button type="button" class="task-action-btn solid-complete" id="topics-add-category-btn">+ Add Category</button>
-            </div>
+            <div class="page-view-header"><h1>Discussion Topics</h1><div class="agent-quickbar" id="topics-agent-quickbar"></div></div>
             <div class="topics-split">
                 <div class="topics-pane">
                     <div class="split-pane-scroll" id="topics-view-scroll">
@@ -5136,6 +5130,7 @@
                 <div class="preview-pane">
                     <div class="split-pane-header">
                         <h2>Topic Details</h2>
+                        <button type="button" class="task-action-btn solid-complete" id="topics-add-category-btn">+ Add Category</button>
                     </div>
                     <div class="split-pane-scroll" id="topics-preview-body">
                         <div class="page-empty" id="topics-preview-empty">Select a topic on the left to view its details here.</div>
@@ -5147,7 +5142,7 @@
 
         <!-- To-Do Page -->
         <div class="page-view" id="todos-view" style="display: none;">
-            <div class="page-view-header"><h1>To-Do</h1></div>
+            <div class="page-view-header"><h1>To-Do</h1><div class="agent-quickbar" id="todos-agent-quickbar"></div></div>
             <div class="topics-split">
                 <div class="topics-pane">
                     <div class="split-pane-scroll" id="todos-list-scroll">
@@ -5738,6 +5733,7 @@
                     badge.classList.remove('visible');
                 }
             }
+            updateAgentQuickbarBadge(agent);
             updateAgentsTotalBadge();
         }
 
@@ -9314,6 +9310,56 @@ function capitalizeAgent(agent) {
             });
         }
 
+        // Small clickable avatar row for jumping straight into an agent's 1:1
+        // chat from a shared page (Projects, To-Do, Calendar, Discussion
+        // Topics, Archive, Knowledge Base) and to switch straight to a
+        // different agent from within an agent's own chat header - static
+        // content, so it's built once at boot (see AGENT_QUICKBAR_PAGES
+        // below) rather than re-built on every page render.
+        function buildAgentQuickbar(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+            agents.forEach(agent => {
+                const wrap = document.createElement('div');
+                wrap.className = 'agent-quickbar-item';
+
+                const img = document.createElement('img');
+                img.src = `avatars/${agent}.png`;
+                img.className = 'agent-quickbar-avatar';
+                img.alt = agentInfo[agent].name;
+                img.title = agentInfo[agent].name;
+                img.addEventListener('click', () => selectAgent(agent));
+
+                const badge = document.createElement('div');
+                badge.className = 'agent-quickbar-badge';
+                badge.dataset.agent = agent;
+
+                wrap.appendChild(img);
+                wrap.appendChild(badge);
+                container.appendChild(wrap);
+            });
+            agents.forEach(updateAgentQuickbarBadge);
+        }
+
+        // Same unread count already shown on the Agents-page card and the chat
+        // title badge (see updateAgentBadge) - mirrored onto every quickbar
+        // instance across the app (there's one per page plus the chat header,
+        // so a class+data-agent lookup is used instead of a single id).
+        function updateAgentQuickbarBadge(agent) {
+            const count = getUnreadCount(agent);
+            document.querySelectorAll(`.agent-quickbar-badge[data-agent="${agent}"]`).forEach(badge => {
+                if (count > 0) {
+                    badge.textContent = formatBadgeCount(count);
+                    badge.classList.add('visible');
+                } else {
+                    badge.classList.remove('visible');
+                }
+            });
+        }
+
+        const AGENT_QUICKBAR_PAGES = ['chat', 'projects', 'todos', 'calendar', 'topics', 'archive', 'knowledgebase'];
+
         // Select an agent
  function selectAgent(agent) {
     hideHomePage();
@@ -10467,13 +10513,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 }
             });
         }
-
-        document.getElementById('toggle-third-pane-btn').addEventListener('click', () => {
-            const lowerContent = document.querySelector('.lower-content');
-            const btn = document.getElementById('toggle-third-pane-btn');
-            const isHidden = lowerContent.classList.toggle('third-pane-hidden');
-            btn.innerHTML = isHidden ? '&#8249;' : '&#8250;';
-        });
 
         // Which agent(s) the insights cards should currently show
         // Prompt cards (About your firm/you, Suggestions...) only belong in an
@@ -14652,6 +14691,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             loadTopicsCollapsedState();
             loadWorkspaceGroupsCollapsed();
             buildAgentsSidebar();
+            AGENT_QUICKBAR_PAGES.forEach(page => buildAgentQuickbar(`${page}-agent-quickbar`));
             updateAllBadges();
             showLandingPage();
             loadLearnSection();
