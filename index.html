@@ -10347,7 +10347,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let generatedFilesForChat = createdFiles.length ? createdFiles : null;
         if (taskId && createdFiles.length) {
             const completedTask = findWorkspaceTaskById(agent, taskId);
-            displayText = `I've completed the "${completedTask ? completedTask.task : 'task'}" task.`;
+            displayText = `I've completed the "${completedTask ? (completedTask.name || completedTask.task) : 'task'}" task.`;
             generatedFilesForChat = null;
         } else {
             displayText = (data.response || '').trim()
