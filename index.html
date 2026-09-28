@@ -2538,26 +2538,58 @@
             margin-right: 4px;
         }
 
-        .bulk-schedule-period-options {
+        /* One row per to-do in the bulk-schedule modal (see
+           buildBulkScheduleTodoRow) - each carries its own period dropdown
+           rather than one period applying to every selected to-do. */
+        .bulk-schedule-todo-list {
+            max-height: 320px;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            font-size: 14px;
+            gap: 10px;
+            margin: 4px 0 16px;
+            padding-right: 4px;
         }
 
-        .bulk-schedule-period-options label {
+        .bulk-schedule-todo-row {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
-            cursor: pointer;
+            flex-wrap: wrap;
         }
 
-        .bulk-schedule-period-date {
-            color: #888;
+        .bulk-schedule-todo-title {
+            flex: 1 1 140px;
+            min-width: 0;
+            font-size: 13px;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .bulk-schedule-todo-period {
             font-size: 12px;
+            padding: 5px 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            color: #333;
+            flex-shrink: 0;
         }
 
-        #bulk-schedule-custom-range input[type="date"] {
+        .bulk-schedule-todo-custom-range {
+            display: none;
+            gap: 6px;
+            width: 100%;
+        }
+
+        .bulk-schedule-todo-custom-range.visible {
+            display: flex;
+        }
+
+        .bulk-schedule-todo-custom-range input[type="date"] {
             flex: 1;
             padding: 6px;
             border: 1px solid #ccc;
@@ -5639,19 +5671,8 @@
     <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
         <div style="background: white; border-radius: 12px; padding: 26px; max-width: 420px; width: 90%;">
             <h3 style="margin: 0 0 6px;">Schedule with Ashanti</h3>
-            <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 18px;"></div>
-            <div class="bulk-schedule-period-options" id="bulk-schedule-period-options">
-                <label><input type="radio" name="bulk-schedule-period" value="today" checked> Today <span class="bulk-schedule-period-date" data-period="today"></span></label>
-                <label><input type="radio" name="bulk-schedule-period" value="tomorrow"> Tomorrow <span class="bulk-schedule-period-date" data-period="tomorrow"></span></label>
-                <label><input type="radio" name="bulk-schedule-period" value="this_week"> This week <span class="bulk-schedule-period-date" data-period="this_week"></span></label>
-                <label><input type="radio" name="bulk-schedule-period" value="next_week"> Next week <span class="bulk-schedule-period-date" data-period="next_week"></span></label>
-                <label><input type="radio" name="bulk-schedule-period" value="custom"> Custom range</label>
-            </div>
-            <div id="bulk-schedule-custom-range" style="display: none; gap: 10px; margin-top: 10px;">
-                <input type="date" id="bulk-schedule-start-date">
-                <span style="align-self: center;">to</span>
-                <input type="date" id="bulk-schedule-end-date">
-            </div>
+            <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 12px;"></div>
+            <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
             <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 22px;">
                 <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
                 <button id="bulk-schedule-confirm-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
@@ -14407,17 +14428,72 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return `${m}/${d}/${String(y).slice(-2)}`;
         }
 
-        function populateBulkSchedulePeriodDates() {
-            document.querySelectorAll('.bulk-schedule-period-date').forEach(span => {
-                const range = computeBulkSchedulePeriod(span.dataset.period);
-                if (!range) return;
-                span.textContent = range.start === range.end
-                    ? `(${formatShortDate(range.start)})`
-                    : `(${formatShortDate(range.start)}-${formatShortDate(range.end)})`;
+        // Each option's date(s), computed fresh per row so "Today"/"This
+        // week"/etc. are always relative to now rather than baked in once.
+        const BULK_SCHEDULE_PERIODS = [
+            ['today', 'Today'],
+            ['tomorrow', 'Tomorrow'],
+            ['this_week', 'This week'],
+            ['next_week', 'Next week']
+        ];
+
+        // One row per selected to-do (title + its own period dropdown +
+        // a custom-range pair that only shows for that row) - lets each
+        // to-do go to a different period instead of one choice for the
+        // whole batch. Used both by the To-Do page's bulk toolbar
+        // (openBulkScheduleModal) and the morning check-in card's per-item
+        // Reschedule button (openBulkScheduleModalForTodoIds).
+        function buildBulkScheduleTodoRow(todo) {
+            const row = document.createElement('div');
+            row.className = 'bulk-schedule-todo-row';
+            row.dataset.todoId = todo.id;
+
+            const title = document.createElement('span');
+            title.className = 'bulk-schedule-todo-title';
+            title.textContent = todo.title;
+            title.title = todo.title;
+
+            const select = document.createElement('select');
+            select.className = 'bulk-schedule-todo-period';
+            BULK_SCHEDULE_PERIODS.forEach(([value, label]) => {
+                const range = computeBulkSchedulePeriod(value);
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = range.start === range.end
+                    ? `${label} (${formatShortDate(range.start)})`
+                    : `${label} (${formatShortDate(range.start)}-${formatShortDate(range.end)})`;
+                select.appendChild(opt);
             });
+            const customOpt = document.createElement('option');
+            customOpt.value = 'custom';
+            customOpt.textContent = 'Custom range';
+            select.appendChild(customOpt);
+
+            const customRange = document.createElement('div');
+            customRange.className = 'bulk-schedule-todo-custom-range';
+            const startInput = document.createElement('input');
+            startInput.type = 'date';
+            startInput.className = 'bulk-schedule-todo-start';
+            const endInput = document.createElement('input');
+            endInput.type = 'date';
+            endInput.className = 'bulk-schedule-todo-end';
+            const todayIso = computeBulkSchedulePeriod('today').start;
+            startInput.value = todayIso;
+            endInput.value = todayIso;
+            customRange.appendChild(startInput);
+            customRange.appendChild(endInput);
+
+            select.addEventListener('change', () => {
+                customRange.classList.toggle('visible', select.value === 'custom');
+            });
+
+            row.appendChild(title);
+            row.appendChild(select);
+            row.appendChild(customRange);
+            return row;
         }
 
-        // Opens the same period-picker used by the To-Do page's bulk toolbar,
+        // Opens the period-picker used by the To-Do page's bulk toolbar,
         // but pre-selected with a specific set of to-dos rather than whatever
         // Francis had checked - used by the morning check-in card's per-item
         // Reschedule button (see buildTodoMorningCheckinCard).
@@ -14430,13 +14506,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (selectedTodoIds.size === 0) return;
             document.getElementById('bulk-schedule-count').textContent =
                 `${selectedTodoIds.size} to-do${selectedTodoIds.size === 1 ? '' : 's'} selected`;
-            const todayRadio = document.querySelector('input[name="bulk-schedule-period"][value="today"]');
-            if (todayRadio) todayRadio.checked = true;
-            document.getElementById('bulk-schedule-custom-range').style.display = 'none';
-            populateBulkSchedulePeriodDates();
-            const todayIso = computeBulkSchedulePeriod('today').start;
-            document.getElementById('bulk-schedule-start-date').value = todayIso;
-            document.getElementById('bulk-schedule-end-date').value = todayIso;
+            const list = document.getElementById('bulk-schedule-todo-list');
+            list.innerHTML = '';
+            Array.from(selectedTodoIds).forEach(id => {
+                const todo = todosList.find(t => t.id === id);
+                if (todo) list.appendChild(buildBulkScheduleTodoRow(todo));
+            });
             document.getElementById('bulk-schedule-modal').style.display = 'flex';
         }
 
@@ -14445,19 +14520,25 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         async function runBulkScheduleTodos() {
-            const periodType = document.querySelector('input[name="bulk-schedule-period"]:checked').value;
-            let range;
-            if (periodType === 'custom') {
-                const start = document.getElementById('bulk-schedule-start-date').value;
-                const end = document.getElementById('bulk-schedule-end-date').value;
-                if (!start || !end || end < start) {
-                    alert('Please choose a valid date range.');
-                    return;
+            const rows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row'));
+            const items = [];
+            for (const row of rows) {
+                const periodType = row.querySelector('.bulk-schedule-todo-period').value;
+                let range;
+                if (periodType === 'custom') {
+                    const start = row.querySelector('.bulk-schedule-todo-start').value;
+                    const end = row.querySelector('.bulk-schedule-todo-end').value;
+                    if (!start || !end || end < start) {
+                        alert('Please choose a valid custom date range for every to-do set to "Custom range".');
+                        return;
+                    }
+                    range = { start, end };
+                } else {
+                    range = computeBulkSchedulePeriod(periodType);
                 }
-                range = { start, end };
-            } else {
-                range = computeBulkSchedulePeriod(periodType);
+                items.push({ todo_id: row.dataset.todoId, start_date: range.start, end_date: range.end });
             }
+            if (!items.length) return;
 
             const confirmBtn = document.getElementById('bulk-schedule-confirm-btn');
             confirmBtn.disabled = true;
@@ -14466,7 +14547,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const response = await fetch('/todos/bulk-schedule', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ todo_ids: Array.from(selectedTodoIds), start_date: range.start, end_date: range.end })
+                    body: JSON.stringify({ items })
                 });
                 const data = await response.json();
                 closeBulkScheduleModal();
@@ -15389,12 +15470,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderTodosPage();
         });
         document.getElementById('todos-bulk-schedule-btn').addEventListener('click', openBulkScheduleModal);
-        document.querySelectorAll('input[name="bulk-schedule-period"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                const checked = document.querySelector('input[name="bulk-schedule-period"]:checked').value;
-                document.getElementById('bulk-schedule-custom-range').style.display = checked === 'custom' ? 'flex' : 'none';
-            });
-        });
         document.getElementById('bulk-schedule-cancel-btn').addEventListener('click', closeBulkScheduleModal);
         document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', runBulkScheduleTodos);
         document.getElementById('bulk-schedule-modal').addEventListener('click', (e) => {

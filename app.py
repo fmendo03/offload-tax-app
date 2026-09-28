@@ -2635,30 +2635,39 @@ def _next_period_days(start_date, end_date):
 # should never be left to a model to reason about on the fly (same lesson as
 # the 15-minute post-meeting buffer above) - Ashanti's own reply just narrates
 # what this function actually did.
+#
+# Each to-do carries its own period (chosen per-row in the modal - see
+# buildBulkScheduleTodoRow) rather than the whole batch sharing one, but the
+# priority rules still apply per to-do against its own period: High must fit
+# there or stays unscheduled, Medium falls back to the period immediately
+# following its own if it doesn't fit, Low is pure filler.
 @app.route('/todos/bulk-schedule', methods=['POST'])
 def todos_bulk_schedule():
     try:
         data = request.json or {}
-        todo_ids = data.get('todo_ids') or []
-        try:
-            start_date = date.fromisoformat(str(data.get('start_date')))
-            end_date = date.fromisoformat(str(data.get('end_date')))
-        except (ValueError, TypeError):
-            return jsonify({'success': False, 'error': 'Invalid start_date/end_date'}), 400
-        if end_date < start_date:
-            return jsonify({'success': False, 'error': 'end_date is before start_date'}), 400
-        if not todo_ids:
+        raw_items = data.get('items') or []
+        if not raw_items:
             return jsonify({'success': False, 'error': 'No to-dos selected'}), 400
 
+        items = []
+        for raw in raw_items:
+            todo_id = raw.get('todo_id')
+            try:
+                start_date = date.fromisoformat(str(raw.get('start_date')))
+                end_date = date.fromisoformat(str(raw.get('end_date')))
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'error': 'Invalid start_date/end_date'}), 400
+            if not todo_id or end_date < start_date:
+                return jsonify({'success': False, 'error': 'Invalid to-do or date range'}), 400
+            items.append({'todo_id': todo_id, 'start_date': start_date, 'end_date': end_date})
+
         now = datetime.now()
-        period_days = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
-        next_days = _next_period_days(start_date, end_date)
 
         with todos_lock, calendar_lock:
             todos = load_todos()
             todos_by_id = {t['id']: t for t in todos}
-            selected = [todos_by_id[tid] for tid in todo_ids if tid in todos_by_id and not todos_by_id[tid].get('completed')]
-            if not selected:
+            valid_items = [it for it in items if it['todo_id'] in todos_by_id and not todos_by_id[it['todo_id']].get('completed')]
+            if not valid_items:
                 return jsonify({'success': False, 'error': 'None of the selected to-dos were found'}), 400
 
             working_events = load_calendar_events()
@@ -2697,31 +2706,33 @@ def todos_bulk_schedule():
                 working_events.append(event)
                 return event
 
+            # High priority across the whole batch gets first pick of its own
+            # period's free time, then Medium, then Low - same ordering as
+            # before, just no longer sharing one period to pick from.
+            priority_rank = {'high': 0, 'medium': 1, 'low': 2}
+            valid_items.sort(key=lambda it: priority_rank.get(todos_by_id[it['todo_id']].get('priority', 'medium'), 1))
+
             scheduled = []
             unscheduled = []
 
-            for todo in [t for t in selected if t.get('priority') == 'high']:
-                slot = find_slot(todo, period_days)
-                if slot:
-                    scheduled.append((todo, create_event_for(todo, *slot), False))
-                else:
-                    unscheduled.append((todo, "No room in the period, even at highest priority - needs a manual look."))
+            for it in valid_items:
+                todo = todos_by_id[it['todo_id']]
+                priority = todo.get('priority', 'medium')
+                period_days = [it['start_date'] + timedelta(days=i) for i in range((it['end_date'] - it['start_date']).days + 1)]
 
-            for todo in [t for t in selected if t.get('priority', 'medium') == 'medium']:
                 slot = find_slot(todo, period_days)
                 pushed = False
-                if not slot:
+                if not slot and priority == 'medium':
+                    next_days = _next_period_days(it['start_date'], it['end_date'])
                     slot = find_slot(todo, next_days)
                     pushed = True
+
                 if slot:
                     scheduled.append((todo, create_event_for(todo, *slot), pushed))
-                else:
+                elif priority == 'high':
+                    unscheduled.append((todo, "No room in the period, even at highest priority - needs a manual look."))
+                elif priority == 'medium':
                     unscheduled.append((todo, "Didn't fit in this period or the next one."))
-
-            for todo in [t for t in selected if t.get('priority') == 'low']:
-                slot = find_slot(todo, period_days)
-                if slot:
-                    scheduled.append((todo, create_event_for(todo, *slot), False))
                 else:
                     unscheduled.append((todo, "No free time left over - stays unscheduled as filler."))
 
