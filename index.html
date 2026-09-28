@@ -14694,9 +14694,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             // Nothing left to submit once every to-do has a spot - the
             // Schedule button (and the now-pointless Apply to all) hide
-            // rather than sit there disabled.
+            // rather than sit there disabled, and Cancel becomes Close since
+            // there's nothing left to cancel.
             document.getElementById('bulk-schedule-confirm-btn').style.display = unscheduledCount === 0 ? 'none' : '';
             document.getElementById('bulk-schedule-apply-all').style.display = unscheduledCount === 0 ? 'none' : '';
+            document.getElementById('bulk-schedule-cancel-btn').textContent = unscheduledCount === 0 ? 'Close' : 'Cancel';
             if (unscheduledCount === 0) {
                 document.getElementById('bulk-schedule-apply-all-custom').classList.remove('visible');
             } else {
@@ -14769,6 +14771,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 `${bulkScheduleRowOrder.length} to-do${bulkScheduleRowOrder.length === 1 ? '' : 's'} selected`;
             document.getElementById('bulk-schedule-confirm-btn').style.display = '';
             document.getElementById('bulk-schedule-apply-all').style.display = '';
+            document.getElementById('bulk-schedule-cancel-btn').textContent = 'Cancel';
             resetBulkScheduleApplyAll();
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
