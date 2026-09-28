@@ -5434,7 +5434,10 @@
                             <input type="checkbox" id="todos-select-all-checkbox">
                             <span>Select All</span>
                         </label>
-                        <button type="button" class="task-action-btn solid-complete" id="todos-bulk-schedule-btn" disabled>Schedule Selected with Ashanti</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" class="task-action-btn" id="todos-bulk-unschedule-btn" disabled>Unschedule Selected</button>
+                            <button type="button" class="task-action-btn solid-complete" id="todos-bulk-schedule-btn" disabled>Schedule Selected with Ashanti</button>
+                        </div>
                     </div>
                     <div class="split-pane-scroll" id="todos-list-scroll">
                         <div class="topics-categories" id="todos-active-list"></div>
@@ -13964,8 +13967,17 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 selectAllCheckbox.checked = active.length > 0 && active.every(t => selectedTodoIds.has(t.id));
                 selectAllCheckbox.disabled = active.length === 0;
             }
+            // The two bulk actions act on opposite subsets of the same
+            // selection - Schedule only makes sense for a selected to-do
+            // that isn't already on the calendar, Unschedule only for one
+            // that is - so each button enables independently based on
+            // whether its own subset is non-empty, not on the selection as
+            // a whole.
+            const selectedActive = Array.from(selectedTodoIds).map(id => todosList.find(t => t.id === id)).filter(Boolean);
             const bulkBtn = document.getElementById('todos-bulk-schedule-btn');
-            if (bulkBtn) bulkBtn.disabled = selectedTodoIds.size === 0;
+            if (bulkBtn) bulkBtn.disabled = !selectedActive.some(t => !isTodoScheduled(t));
+            const unscheduleBtn = document.getElementById('todos-bulk-unschedule-btn');
+            if (unscheduleBtn) unscheduleBtn.disabled = !selectedActive.some(t => isTodoScheduled(t));
 
             renderTodosPreviewPane();
         }
@@ -14094,9 +14106,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // _apply_todo_rollovers in app.py) once a scheduled day passes
         // without the to-do being completed, and clears on completion or a
         // fresh reschedule.
+        // "Scheduled" only counts while the linked calendar event still
+        // exists (if it was deleted from the Calendar page, this falls back
+        // to false rather than pointing at nothing) - used both for the
+        // status badge and to keep an already-scheduled to-do out of the
+        // Schedule Selected bulk action (see renderTodosPage/
+        // openBulkScheduleModal) and, conversely, IN reach of Unschedule
+        // Selected (see runBulkUnscheduleTodos).
+        function isTodoScheduled(todo) {
+            return !!(todo.calendarEventId && calendarEvents.some(e => e.id === todo.calendarEventId));
+        }
+
         function todoStatusLabels(todo) {
-            const scheduled = !!(todo.calendarEventId && calendarEvents.some(e => e.id === todo.calendarEventId));
-            const labels = [scheduled ? 'Scheduled' : 'Not Scheduled'];
+            const labels = [isTodoScheduled(todo) ? 'Scheduled' : 'Not Scheduled'];
             if (todo.notFinished) labels.push('Not Finished');
             if (todo.completed) labels.push('Completed');
             return labels;
@@ -14732,10 +14754,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         function openBulkScheduleModal() {
             if (selectedTodoIds.size === 0) return;
-            bulkScheduleRowOrder = Array.from(selectedTodoIds);
+            // An already-scheduled to-do doesn't belong in here at all - see
+            // isTodoScheduled/renderTodosPage, which keeps the Schedule
+            // Selected button disabled unless the selection has at least one
+            // to-do this filter won't drop. Unschedule it first (see
+            // runBulkUnscheduleTodos) to make it eligible again.
+            bulkScheduleRowOrder = Array.from(selectedTodoIds).filter(id => {
+                const todo = todosList.find(t => t.id === id);
+                return todo && !isTodoScheduled(todo);
+            });
+            if (bulkScheduleRowOrder.length === 0) return;
             bulkScheduleScheduledResults = [];
             document.getElementById('bulk-schedule-count').textContent =
-                `${selectedTodoIds.size} to-do${selectedTodoIds.size === 1 ? '' : 's'} selected`;
+                `${bulkScheduleRowOrder.length} to-do${bulkScheduleRowOrder.length === 1 ? '' : 's'} selected`;
             document.getElementById('bulk-schedule-confirm-btn').style.display = '';
             document.getElementById('bulk-schedule-apply-all').style.display = '';
             resetBulkScheduleApplyAll();
@@ -14817,6 +14848,31 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
             confirmBtn.disabled = false;
             confirmBtn.textContent = 'Schedule';
+        }
+
+        // The bulk counterpart to a single event's Unschedule button (see
+        // unscheduleCalendarEvent) - removes just the calendar placement for
+        // every currently-scheduled to-do in the selection, keeping the
+        // to-dos themselves intact so they can be scheduled again later.
+        // Only ever acts on the scheduled subset of selectedTodoIds -
+        // anything already unscheduled in the selection is left alone.
+        async function runBulkUnscheduleTodos() {
+            const scheduled = Array.from(selectedTodoIds)
+                .map(id => todosList.find(t => t.id === id))
+                .filter(t => t && isTodoScheduled(t));
+            if (scheduled.length === 0) return;
+
+            showBulkConfirm(
+                `Unschedule ${scheduled.length} to-do${scheduled.length === 1 ? '' : 's'}?`,
+                scheduled.map(t => t.title),
+                async () => {
+                    for (const todo of scheduled) {
+                        await unscheduleCalendarEvent(todo.calendarEventId);
+                    }
+                    selectedTodoIds.clear();
+                    renderTodosPage();
+                }
+            );
         }
 
         // --- Suggestions ---------------------------------------------------
@@ -15692,6 +15748,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderTodosPage();
         });
         document.getElementById('todos-bulk-schedule-btn').addEventListener('click', openBulkScheduleModal);
+        document.getElementById('todos-bulk-unschedule-btn').addEventListener('click', runBulkUnscheduleTodos);
         document.getElementById('bulk-schedule-apply-all-select').addEventListener('change', (e) => {
             const value = e.target.value;
             const customDiv = document.getElementById('bulk-schedule-apply-all-custom');
