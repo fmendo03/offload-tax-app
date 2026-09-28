@@ -227,6 +227,7 @@ suggestions.json
 calendar_events.json
 calendar_settings.json
 calendar_checkin_status.json
+todo_checkin_status.json
 discussion_topics.json
 kb_notes.json
 kb_connections.json

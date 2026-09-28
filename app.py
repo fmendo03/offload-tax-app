@@ -1495,6 +1495,24 @@ def save_calendar_checkin_status(data):
         json.dump(data, f, indent=2)
 
 
+TODO_CHECKIN_STATUS_FILE = _data_path('todo_checkin_status.json')
+
+
+def load_todo_checkin_status():
+    if os.path.exists(TODO_CHECKIN_STATUS_FILE):
+        try:
+            with open(TODO_CHECKIN_STATUS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def save_todo_checkin_status(data):
+    with open(TODO_CHECKIN_STATUS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
 def _unescape_ics_text(s):
     return (s.replace('\\N', '\n').replace('\\n', '\n')
              .replace('\\,', ',').replace('\\;', ';').replace('\\\\', '\\'))
@@ -2552,6 +2570,11 @@ def todos_update(todo_id):
             if 'completed' in data:
                 todo['completed'] = bool(data['completed'])
                 todo['completedAt'] = datetime.now().isoformat() if todo['completed'] else None
+                # Resolves the "Not Finished" flag the same as a fresh
+                # reschedule does - it means "missed at least one window",
+                # not a permanent mark once the to-do is actually done.
+                if todo['completed']:
+                    todo['notFinished'] = False
             if 'attachments' in data:
                 todo['attachments'] = data['attachments'] or []
             if 'priority' in data:
@@ -2705,6 +2728,11 @@ def todos_bulk_schedule():
             save_calendar_events(working_events)
             for todo, event, _pushed in scheduled:
                 todo['calendarEventId'] = event['id']
+                # Same clean-slate rule as a manual reschedule (see
+                # todos_update) - this writes calendarEventId directly rather
+                # than going through that route, so it has to clear
+                # notFinished itself too.
+                todo['notFinished'] = False
             save_todos(todos)
 
         return jsonify({
@@ -2721,6 +2749,41 @@ def todos_bulk_schedule():
     except Exception as e:
         print(f"Bulk schedule error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Surfaces once per day, per to-do - same shown-status pattern as
+# calendar_checkin_status.json (see /calendar/checkins/today), so a to-do
+# already asked about today doesn't get re-asked on the next poll. A to-do
+# Francis never acted on (didn't mark done or reschedule) is still
+# notFinished tomorrow, so it comes right back on the next day's first poll -
+# this isn't a one-time nag, it's meant to keep coming back until resolved.
+@app.route('/todos/morning-checkin', methods=['GET'])
+def todos_morning_checkin():
+    try:
+        today_iso = date.today().isoformat()
+        status = load_todo_checkin_status()
+        status = {k: v for k, v in status.items() if k >= (date.today() - timedelta(days=2)).isoformat()}
+        shown_today = set(status.get(today_iso, []))
+
+        pending = [
+            t for t in load_todos()
+            if t.get('notFinished') and not t.get('completed') and t['id'] not in shown_today
+        ]
+
+        if not pending:
+            save_todo_checkin_status(status)
+            return jsonify({'success': True, 'checkin': None})
+
+        status[today_iso] = list(shown_today | {t['id'] for t in pending})
+        save_todo_checkin_status(status)
+
+        return jsonify({
+            'success': True,
+            'checkin': {'todos': [{'id': t['id'], 'title': t['title']} for t in pending]}
+        })
+    except Exception as ex:
+        print(f"Todo morning checkin error: {ex}")
+        return jsonify({'success': False, 'error': str(ex)}), 500
 
 
 # --- Suggestions -----------------------------------------------------------

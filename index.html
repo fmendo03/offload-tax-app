@@ -3193,6 +3193,69 @@
             background: #5568d3;
         }
 
+        /* One row per not-finished to-do inside the morning check-in card
+           (see buildTodoMorningCheckinCard) - each gets its own Done/
+           Reschedule pair so they can be resolved individually rather than
+           as one bulk action. */
+        .todo-checkin-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .todo-checkin-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 8px;
+            background: #fafaff;
+            border: 1px solid #e6e6e6;
+            border-radius: 6px;
+        }
+
+        .todo-checkin-row-title {
+            font-size: 12px;
+            color: #333;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .todo-checkin-row-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .todo-checkin-row-btn {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #e0e0e0;
+            background: white;
+            color: #666;
+        }
+
+        .todo-checkin-row-btn:hover {
+            background: #f5f5f5;
+        }
+
+        .todo-checkin-row-btn.done {
+            background: #2e7d32;
+            color: white;
+            border-color: #2e7d32;
+        }
+
+        .todo-checkin-row-btn.done:hover {
+            background: #276a2b;
+        }
+
         .main-area {
             flex: 1;
             display: flex;
@@ -5875,7 +5938,7 @@
         // unanswered "About you/your firm" questions and pending suggestions.
         function countChatPendingItems(agent) {
             const unreadMessages = Math.max(0, countAgentMessages(agent) - (lastReadCounts[agent] || 0));
-            return unreadMessages + countUnansweredQuestions(agent) + countPendingThoughts(agent) + countPendingCalendarCheckin(agent);
+            return unreadMessages + countUnansweredQuestions(agent) + countPendingThoughts(agent) + countPendingCalendarCheckin(agent) + countPendingTodoMorningCheckin(agent);
         }
 
         function getUnreadCount(agent) {
@@ -10791,7 +10854,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // displayMessages()/displayGroupMessages(), which call this after every
         // redraw of #messages.
         function renderChatInsightCards() {
-            ['learn-message-card', 'personal-message-card', 'thoughts-message-card', 'personal-thoughts-message-card', 'calendar-checkin-card']
+            ['learn-message-card', 'personal-message-card', 'thoughts-message-card', 'personal-thoughts-message-card', 'calendar-checkin-card', 'todo-morning-checkin-card']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
 
             const learnAnchor = resolveInsightCardAnchor('learn', getFlattenedLearnItems(learnQuestionsData).length > 0);
@@ -10813,6 +10876,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const calendarCheckinAnchor = resolveInsightCardAnchor('calendarCheckin', currentAgent === 'ashanti' && !!calendarCheckinData);
             const calendarCheckinCard = calendarCheckinAnchor ? buildCalendarCheckinCard() : null;
             if (calendarCheckinCard) insertCardAtAnchor(calendarCheckinCard, calendarCheckinAnchor);
+
+            const todoCheckinAnchor = resolveInsightCardAnchor('todoMorningCheckin', currentAgent === 'ashanti' && !!todoMorningCheckinData && todoMorningCheckinData.todos.length > 0);
+            const todoCheckinCard = todoCheckinAnchor ? buildTodoMorningCheckinCard() : null;
+            if (todoCheckinCard) insertCardAtAnchor(todoCheckinCard, todoCheckinAnchor);
         }
 
         // Learn About Your Firm
@@ -12981,6 +13048,118 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return (agent === 'ashanti' && calendarCheckinData) ? 1 : 0;
         }
 
+        // Ashanti asking about yesterday's "Not Finished" to-dos - same
+        // app-wide polling pattern as the calendar check-in above, but one
+        // card lists every pending to-do at once (each with its own Done/
+        // Reschedule) rather than one card per item. See
+        // /todos/morning-checkin in app.py for the once-per-day-per-to-do
+        // scheduling logic; this just displays whatever it hands back.
+        let todoMorningCheckinData = null;
+        let todoCheckinPollInterval = null;
+
+        async function loadTodoMorningCheckin() {
+            try {
+                const response = await fetch('/todos/morning-checkin');
+                const data = await response.json();
+                if (!data.success || !data.checkin) return;
+                todoMorningCheckinData = data.checkin;
+                renderChatInsightCards();
+                updateAllBadges();
+                if (currentAgent) updateChatPendingBadge(currentAgent);
+            } catch (error) {
+                console.error('Failed to load to-do morning check-in:', error);
+            }
+        }
+
+        function startTodoCheckinPolling() {
+            loadTodoMorningCheckin();
+            if (todoCheckinPollInterval) clearInterval(todoCheckinPollInterval);
+            todoCheckinPollInterval = setInterval(loadTodoMorningCheckin, 5 * 60 * 1000);
+        }
+
+        function buildTodoMorningCheckinCard() {
+            if (!todoMorningCheckinData || !todoMorningCheckinData.todos.length) return null;
+            const card = document.createElement('div');
+            card.id = 'todo-morning-checkin-card';
+            card.className = 'message agent agent-ashanti insight-message';
+
+            const header = document.createElement('div');
+            header.className = 'insights-header';
+            header.textContent = 'Ashanti checking in...';
+
+            const n = todoMorningCheckinData.todos.length;
+            const text = document.createElement('div');
+            text.className = 'insight-card-text';
+            text.textContent = n === 1
+                ? `This to-do didn't get finished by the end of its scheduled day - is it done, or should I find it a new time?`
+                : `These ${n} to-dos didn't get finished by the end of their scheduled day - are they done, or should I find them new times?`;
+
+            const list = document.createElement('div');
+            list.className = 'todo-checkin-list';
+            todoMorningCheckinData.todos.forEach(todo => {
+                const row = document.createElement('div');
+                row.className = 'todo-checkin-row';
+
+                const title = document.createElement('span');
+                title.className = 'todo-checkin-row-title';
+                title.textContent = todo.title;
+                title.title = todo.title;
+
+                const actions = document.createElement('div');
+                actions.className = 'todo-checkin-row-actions';
+
+                const doneBtn = document.createElement('button');
+                doneBtn.className = 'todo-checkin-row-btn done';
+                doneBtn.textContent = 'Done';
+                doneBtn.addEventListener('click', () => markTodoDoneFromCheckin(todo.id));
+
+                const rescheduleBtn = document.createElement('button');
+                rescheduleBtn.className = 'todo-checkin-row-btn';
+                rescheduleBtn.textContent = 'Reschedule';
+                rescheduleBtn.addEventListener('click', () => openBulkScheduleModalForTodoIds([todo.id]));
+
+                actions.appendChild(doneBtn);
+                actions.appendChild(rescheduleBtn);
+                row.appendChild(title);
+                row.appendChild(actions);
+                list.appendChild(row);
+            });
+
+            card.appendChild(header);
+            card.appendChild(text);
+            card.appendChild(list);
+            return card;
+        }
+
+        async function markTodoDoneFromCheckin(todoId) {
+            try {
+                const data = await updateTodoItem(todoId, { completed: true });
+                if (!data.success) {
+                    alert(data.error || 'Could not mark that to-do as done.');
+                    return;
+                }
+                removeTodoFromMorningCheckin(todoId);
+            } catch (e) {
+                alert('Could not mark that to-do as done.');
+            }
+        }
+
+        // Called once a to-do has been resolved (marked done, or scheduled -
+        // see runBulkScheduleTodos) so it drops off the card immediately
+        // instead of waiting for the next poll.
+        function removeTodoFromMorningCheckin(todoId) {
+            if (!todoMorningCheckinData) return;
+            todoMorningCheckinData.todos = todoMorningCheckinData.todos.filter(t => t.id !== todoId);
+            if (todoMorningCheckinData.todos.length === 0) todoMorningCheckinData = null;
+            renderChatInsightCards();
+            updateAllBadges();
+            if (currentAgent) updateChatPendingBadge(currentAgent);
+        }
+
+        function countPendingTodoMorningCheckin(agent) {
+            return (agent === 'ashanti' && todoMorningCheckinData) ? todoMorningCheckinData.todos.length : 0;
+        }
+
         // Fallback chat-bubble text for when Ashanti's manage_calendar tool
         // call isn't accompanied by any reply text of its own.
         function describeCalendarUpdate(update) {
@@ -14238,6 +14417,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
         }
 
+        // Opens the same period-picker used by the To-Do page's bulk toolbar,
+        // but pre-selected with a specific set of to-dos rather than whatever
+        // Francis had checked - used by the morning check-in card's per-item
+        // Reschedule button (see buildTodoMorningCheckinCard).
+        function openBulkScheduleModalForTodoIds(ids) {
+            selectedTodoIds = new Set(ids);
+            openBulkScheduleModal();
+        }
+
         function openBulkScheduleModal() {
             if (selectedTodoIds.size === 0) return;
             document.getElementById('bulk-schedule-count').textContent =
@@ -14287,6 +14475,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 } else {
                     await loadTodosData();
                     await loadCalendarData();
+                    // A to-do that was actually scheduled just had its
+                    // notFinished flag cleared server-side (see
+                    // todos_bulk_schedule) - drop it from the morning
+                    // check-in card right away instead of waiting for the
+                    // next poll. One that stayed unscheduled is still
+                    // notFinished, so it correctly stays on the card.
+                    data.scheduled.forEach(s => removeTodoFromMorningCheckin(s.todoId));
                     selectedTodoIds.clear();
                     renderTodosPage();
                     if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
@@ -15239,6 +15434,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             loadPersonalSection();
             loadPersonalThoughtsSection();
             startCalendarCheckinPolling();
+            startTodoCheckinPolling();
             // Eager, one-time load (not the Calendar page's own 15s poll) so
             // calendarEvents is populated app-wide - the To-Do page's "Scheduled"
             // status badge needs it even if Calendar itself is never opened.
