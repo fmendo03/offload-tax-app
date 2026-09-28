@@ -4367,19 +4367,35 @@
 }
 
 .workspace-project-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     color: rgba(0, 0, 0, 0.5);
     margin: 14px 0 6px;
+    cursor: pointer;
+    user-select: none;
 }
 
 .workspace-project-name:first-child {
     margin-top: 0;
 }
 
-.workspace-project-name.linked {
+/* Collapses/expands just this project's own tasks within the "Project
+   Tasks" group - independent of that group's own collapse and of each
+   task's own file-list chevron (see buildTaskRowWithFiles). */
+.workspace-project-chevron {
+    font-size: 10px;
+    color: #999;
+    width: 10px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.workspace-project-name-label.linked {
     cursor: pointer;
     color: #667eea;
     text-decoration: underline;
@@ -4387,7 +4403,7 @@
     transition: text-decoration-color 0.15s;
 }
 
-.workspace-project-name.linked:hover {
+.workspace-project-name-label.linked:hover {
     text-decoration-color: #667eea;
 }
 
@@ -7839,11 +7855,8 @@ function renderWorkspaceTasks(agent) {
     }
 
     if (standaloneFiles.length > 0) {
-        const filesHeader = document.createElement('div');
-        filesHeader.className = 'workspace-project-name';
-        filesHeader.textContent = `${FILE_ICON} Files`;
-        container.appendChild(filesHeader);
-        standaloneFiles.forEach(file => container.appendChild(buildWorkspaceFileRow(agent, file)));
+        const body = appendWorkspaceGroup(container, agent, 'files', `${FILE_ICON} Files`, standaloneFiles.length);
+        standaloneFiles.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
     }
 
     // Solo tasks (no project - see createSoloTaskEntry) get their own
@@ -7869,20 +7882,39 @@ function renderWorkspaceTasks(agent) {
         const body = appendWorkspaceGroup(container, agent, 'projects', `${PROJECT_ICON} Project Tasks`, projectTaskCount);
 
         Object.entries(byProject).forEach(([projectId, group]) => {
+            const projectGroupKey = `project:${projectId}`;
+            const projectCollapsed = !!workspaceGroupsCollapsed[`${agent}:${projectGroupKey}`];
+
             const projectHeader = document.createElement('div');
             projectHeader.className = 'workspace-project-name';
-            projectHeader.textContent = `${PROJECT_ICON} ${group.projectName}`;
+
+            const chevron = document.createElement('span');
+            chevron.className = 'workspace-project-chevron';
+            chevron.textContent = projectCollapsed ? '▸' : '▾';
+            chevron.title = projectCollapsed ? 'Show tasks' : 'Hide tasks';
+            projectHeader.appendChild(chevron);
+
+            const label = document.createElement('span');
+            label.className = 'workspace-project-name-label';
+            label.textContent = `${PROJECT_ICON} ${group.projectName}`;
             // File-only entries (uploads, one-off agent files) aren't real
             // projects (see addUploadedFileWorkspaceTask/addFileWorkspaceTask) -
             // only link to the Projects page when there's an actual project there.
             if (projects[projectId]) {
-                projectHeader.classList.add('linked');
-                projectHeader.title = `View "${group.projectName}" on the Projects page`;
-                projectHeader.addEventListener('click', () => goToProject(projectId));
+                label.classList.add('linked');
+                label.title = `View "${group.projectName}" on the Projects page`;
+                label.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    goToProject(projectId);
+                });
             }
+            projectHeader.appendChild(label);
+            projectHeader.addEventListener('click', () => toggleWorkspaceGroup(agent, projectGroupKey));
             body.appendChild(projectHeader);
 
-            group.items.forEach(task => buildTaskRowWithFiles(agent, task, body));
+            if (!projectCollapsed) {
+                group.items.forEach(task => buildTaskRowWithFiles(agent, task, body));
+            }
         });
     }
 }
