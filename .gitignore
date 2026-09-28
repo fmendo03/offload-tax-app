@@ -226,6 +226,7 @@ todos.json
 suggestions.json
 calendar_events.json
 calendar_settings.json
+availability_settings.json
 calendar_checkin_status.json
 todo_checkin_status.json
 discussion_topics.json

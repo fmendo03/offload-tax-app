@@ -1452,6 +1452,8 @@ def kb_browse():
 CALENDAR_EVENTS_FILE = _data_path('calendar_events.json')
 CALENDAR_SETTINGS_FILE = _data_path('calendar_settings.json')
 CALENDAR_CHECKIN_STATUS_FILE = _data_path('calendar_checkin_status.json')
+AVAILABILITY_SETTINGS_FILE = _data_path('availability_settings.json')
+availability_lock = threading.Lock()
 
 # Guards every calendar_events.json/calendar_settings.json read-modify-write -
 # the frontend's poll, Ashanti's manage_calendar tool, and the checkin poll
@@ -1762,6 +1764,79 @@ CALENDAR_BUSINESS_START_HOUR = 9
 CALENDAR_BUSINESS_END_HOUR = 17
 
 
+# The weekly Availability template (Settings page) - replaces the two fixed
+# hour constants above as the actual source of truth for what counts as
+# "business" vs "personal" time (and adds a third option, "blackout", that
+# was never possible before: time nothing ever gets scheduled into). Each
+# day of the week (0=Sunday..6=Saturday, matching JS Date.getDay() so the
+# frontend needs no translation) holds an ordered, gapless, non-overlapping
+# partition of the full 24 hours - there's no "unset" state, only these
+# three types, so the free-slot math below never has to guess what an
+# unpainted stretch of time means.
+def _default_availability_day():
+    return [
+        {'start': '00:00', 'end': f'{CALENDAR_BUSINESS_START_HOUR:02d}:00', 'type': 'personal'},
+        {'start': f'{CALENDAR_BUSINESS_START_HOUR:02d}:00', 'end': f'{CALENDAR_BUSINESS_END_HOUR:02d}:00', 'type': 'business'},
+        {'start': f'{CALENDAR_BUSINESS_END_HOUR:02d}:00', 'end': '24:00', 'type': 'personal'},
+    ]
+
+
+def load_availability_settings():
+    if os.path.exists(AVAILABILITY_SETTINGS_FILE):
+        try:
+            with open(AVAILABILITY_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get('days'), list) and len(data['days']) == 7:
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    defaults = {'days': [_default_availability_day() for _ in range(7)]}
+    save_availability_settings(defaults)
+    return defaults
+
+
+def save_availability_settings(data):
+    with open(AVAILABILITY_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+# Python's date.weekday() is Monday=0..Sunday=6 - converted once, here,
+# to the Sunday=0..Saturday=6 convention this file's availability array and
+# the frontend both use, rather than risking a mismatch anywhere else that
+# touches day-of-week.
+def _day_of_week_sunday0(day):
+    return (day.weekday() + 1) % 7
+
+
+def _minutes_from_hhmm(hhmm):
+    h, m = hhmm.split(':')
+    return int(h) * 60 + int(m)
+
+
+# Structural validation only - a day's blocks must exactly tile 00:00-24:00
+# with no gaps or overlaps, each with a real type. This is what keeps
+# compute_free_slots_for_type honest: it trusts the stored template is a
+# clean partition rather than re-checking that on every scheduling call.
+def _validate_availability_blocks(blocks):
+    if not isinstance(blocks, list) or not blocks:
+        return False
+    cursor = 0
+    for block in blocks:
+        if not isinstance(block, dict):
+            return False
+        if block.get('type') not in ('blackout', 'business', 'personal'):
+            return False
+        try:
+            start = _minutes_from_hhmm(str(block.get('start')))
+            end = _minutes_from_hhmm(str(block.get('end')))
+        except (ValueError, AttributeError):
+            return False
+        if start != cursor or end <= start or end > 24 * 60:
+            return False
+        cursor = end
+    return cursor == 24 * 60
+
+
 def _round_up_to_quarter_hour(dt):
     discard = timedelta(minutes=dt.minute % 15, seconds=dt.second, microseconds=dt.microsecond)
     dt = dt - discard
@@ -1780,20 +1855,23 @@ def _format_day_label(day):
     return f"{day.strftime('%a %b')} {day.day}"
 
 
-# The actual open windows within [window_start_hour, window_end_hour) on
-# `day`, after blocking out every non-cancelled, non-all-day event already on
-# the calendar that day - handed to Ashanti so she picks an actual free slot
-# instead of doing this interval math herself (which is exactly where
+# The actual open windows within [window_start_minutes, window_end_minutes)
+# on `day`, after blocking out every non-cancelled, non-all-day event already
+# on the calendar that day - handed to Ashanti so she picks an actual free
+# slot instead of doing this interval math herself (which is exactly where
 # double-booking and past-the-end-of-day overflow bugs come from). For today
 # specifically, the window also can't start before right now. Gaps under 15
 # minutes are dropped as not practically bookable. An event an hour or longer
 # gets a 15-minute buffer padded onto its end before it blocks out busy time -
 # baked in here rather than left as a prompt instruction, so it's guaranteed
 # by the math Ashanti already treats as the source of truth, not something
-# she has to remember to apply herself.
-def compute_free_slots_in_window(day_events, day, now, window_start_hour, window_end_hour):
-    business_start = datetime.combine(day, datetime.min.time()) + timedelta(hours=window_start_hour)
-    business_end = datetime.combine(day, datetime.min.time()) + timedelta(hours=window_end_hour)
+# she has to remember to apply herself. Minute-precision bounds (rather than
+# whole hours) so this can be handed one Availability template block at a
+# time (see compute_free_slots_for_type) - those can start/end on any
+# 15-minute mark, not just the hour.
+def compute_free_slots_in_window(day_events, day, now, window_start_minutes, window_end_minutes):
+    business_start = datetime.combine(day, datetime.min.time()) + timedelta(minutes=window_start_minutes)
+    business_end = datetime.combine(day, datetime.min.time()) + timedelta(minutes=window_end_minutes)
     window_start = business_start
     if day == now.date():
         window_start = max(business_start, _round_up_to_quarter_hour(now))
@@ -1836,16 +1914,36 @@ def compute_free_slots_in_window(day_events, day, now, window_start_hour, window
     return [(s, en) for s, en in free if (en - s) >= timedelta(minutes=15)]
 
 
+# Every block of `block_type` ("business" or "personal") on this day's
+# Availability template (see load_availability_settings), each run through
+# compute_free_slots_in_window and concatenated - a day can have several
+# separate business (or personal) blocks (e.g. business 9-12 and 1-5 around
+# a blacked-out lunch hour), not just one contiguous window like before.
+# Blackout blocks are never matched by either type, so they're correctly
+# never free for anything without needing their own special case here.
+def compute_free_slots_for_type(day_events, day, now, block_type):
+    dow = _day_of_week_sunday0(day)
+    day_blocks = load_availability_settings()['days'][dow]
+    free = []
+    for block in day_blocks:
+        if block['type'] != block_type:
+            continue
+        free.extend(compute_free_slots_in_window(
+            day_events, day, now,
+            _minutes_from_hhmm(block['start']), _minutes_from_hhmm(block['end'])
+        ))
+    free.sort()
+    return free
+
+
 def compute_free_slots(day_events, day, now):
-    return compute_free_slots_in_window(day_events, day, now, CALENDAR_BUSINESS_START_HOUR, CALENDAR_BUSINESS_END_HOUR)
+    return compute_free_slots_for_type(day_events, day, now, 'business')
 
 
-# For a personal to-do (see /todos/bulk-schedule) - only the parts of `day`
-# outside business hours: before business_start and after business_end.
+# For a personal to-do (see /todos/bulk-schedule) - only the day's blocks
+# marked Personal in the Availability template.
 def compute_personal_free_slots(day_events, day, now):
-    morning = compute_free_slots_in_window(day_events, day, now, 0, CALENDAR_BUSINESS_START_HOUR)
-    evening = compute_free_slots_in_window(day_events, day, now, CALENDAR_BUSINESS_END_HOUR, 24)
-    return morning + evening
+    return compute_free_slots_for_type(day_events, day, now, 'personal')
 
 
 # Short, chat-context-friendly rundown of what's on the calendar - given to
@@ -1903,7 +2001,8 @@ def get_calendar_context():
         else:
             free_lines.append(f"- {day_label}: fully booked, no room left in business hours")
     free_block = (
-        "\n\nFREE TIME (business hours 9am-5pm, already accounts for every event above and, "
+        "\n\nFREE TIME (within Francis's configured business hours for each day - see the "
+        "Availability settings - already accounts for every event above and, "
         "for today, the current time) - when scheduling something, only ever use a window from "
         "here that's at least as long as the event's duration; never pick a time this doesn't "
         "list as free:\n" + "\n".join(free_lines)
@@ -2038,6 +2137,38 @@ def calendar_settings_update():
         return jsonify({'success': True, 'settings': public_settings})
     except Exception as e:
         print(f"Calendar settings error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Settings page > Availability - the weekly blackout/business/personal
+# template that compute_free_slots/compute_personal_free_slots actually
+# schedule against (see those functions above). The frontend always paints
+# and sends back one whole day's complete block list at a time (see
+# spliceAvailabilityBlock in index.html), so this route's job is just to
+# validate that's a clean partition and persist it, not to compute the
+# splice itself.
+@app.route('/availability', methods=['GET'])
+def availability_get():
+    return jsonify({'success': True, 'availability': load_availability_settings()})
+
+
+@app.route('/availability', methods=['POST'])
+def availability_update():
+    try:
+        data = request.json or {}
+        day_of_week = data.get('day_of_week')
+        blocks = data.get('blocks')
+        if not isinstance(day_of_week, int) or not (0 <= day_of_week <= 6):
+            return jsonify({'success': False, 'error': 'Invalid day_of_week'}), 400
+        if not _validate_availability_blocks(blocks):
+            return jsonify({'success': False, 'error': 'Blocks must be a gapless, non-overlapping partition of the day'}), 400
+        with availability_lock:
+            settings = load_availability_settings()
+            settings['days'][day_of_week] = blocks
+            save_availability_settings(settings)
+        return jsonify({'success': True, 'availability': settings})
+    except Exception as e:
+        print(f"Availability update error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

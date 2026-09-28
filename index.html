@@ -1864,10 +1864,11 @@
             min-width: 0;
             position: relative;
             border-left: 1px solid #f0f0f0;
-            /* Two layered backgrounds: gridlines on top, business-hours
-               shading underneath - still fully clickable either way, this
-               is purely a visual cue (see --business-start/--business-end,
-               set per column in renderCalendarWeek). */
+            /* Gridlines only - the blackout/business/personal shading behind
+               them is real DOM blocks now (see buildAvailabilityBlockEls),
+               appended before the real event blocks so it stays purely
+               visual (pointer-events: none) without needing a CSS var per
+               column like the old fixed 9-5 band did. */
             background-image:
                 repeating-linear-gradient(
                     to bottom,
@@ -1875,13 +1876,6 @@
                     #f5f5f5 1px,
                     transparent 1px,
                     transparent var(--slot-height)
-                ),
-                linear-gradient(
-                    to bottom,
-                    #e9ebee var(--business-start),
-                    #ffffff var(--business-start),
-                    #ffffff var(--business-end),
-                    #e9ebee var(--business-end)
                 );
         }
 
@@ -1925,6 +1919,176 @@
             border-radius: 4px;
             pointer-events: none;
             z-index: 3;
+        }
+
+        /* Weekly Availability template (Settings page) - one color family at
+           three shades (darkest = most restrictive) rather than three
+           distinct hues, per how Francis wants Blackout/Business/Personal
+           told apart at a glance. Shared between the Settings page's own
+           interactive grid and the read-only shading behind events on the
+           Calendar page (see buildAvailabilityBlockEls in index.html). */
+        .availability-block {
+            position: absolute;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+        }
+
+        .availability-block-blackout {
+            background: #1F3A5F;
+        }
+
+        .availability-block-business {
+            background: #7b93c4;
+        }
+
+        .availability-block-personal {
+            background: #e3ebfb;
+        }
+
+        .settings-body {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 20px 28px;
+        }
+
+        .settings-section h2 {
+            margin: 0 0 6px;
+            font-size: 16px;
+        }
+
+        .settings-section-desc {
+            margin: 0 0 14px;
+            font-size: 13px;
+            color: #666;
+            max-width: 640px;
+            line-height: 1.5;
+        }
+
+        .availability-legend {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 12px;
+            font-size: 12px;
+            color: #444;
+        }
+
+        .availability-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .availability-legend-swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .availability-selection-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            margin-bottom: 10px;
+            background: #f5f6fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #444;
+        }
+
+        .availability-toolbar-btn {
+            border: none;
+            border-radius: 4px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .availability-toolbar-btn.blackout {
+            background: #1F3A5F;
+            color: white;
+        }
+
+        .availability-toolbar-btn.blackout:hover {
+            background: #17304d;
+        }
+
+        .availability-toolbar-btn.business {
+            background: #7b93c4;
+            color: white;
+        }
+
+        .availability-toolbar-btn.business:hover {
+            background: #6883b8;
+        }
+
+        .availability-toolbar-btn.personal {
+            background: #e3ebfb;
+            color: #1F3A5F;
+        }
+
+        .availability-toolbar-btn.personal:hover {
+            background: #d3dff6;
+        }
+
+        .availability-toolbar-cancel-btn {
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 4px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #555;
+            margin-left: auto;
+        }
+
+        .availability-toolbar-cancel-btn:hover {
+            background: #f0f0f0;
+        }
+
+        /* Same day-header/gutter/scroll scaffolding as the Calendar page's
+           week grid, just without dates or week navigation - this is a
+           repeating weekly template, not a specific week. */
+        .availability-week-days-header {
+            display: flex;
+            flex-shrink: 0;
+            border-bottom: 1px solid #eee;
+            max-width: 900px;
+        }
+
+        .availability-week-day-header {
+            flex: 1;
+            min-width: 0;
+            text-align: center;
+            padding: 6px 2px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .availability-week-scroll {
+            max-width: 900px;
+            max-height: 600px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            border: 1px solid #eee;
+            border-top: none;
+        }
+
+        .availability-week-grid {
+            display: flex;
+            position: relative;
+        }
+
+        .availability-week-day-col {
+            cursor: pointer;
         }
 
         .calendar-week-event {
@@ -5019,6 +5183,7 @@
             <button id="archive-nav-btn" class="home-nav-btn">&#128451;&#65039; Archived</button>
             <button id="knowledgebase-nav-btn" class="home-nav-btn">&#128218; Knowledge Base</button>
             <button id="suggestions-nav-btn" class="home-nav-btn">&#128161; Suggestions</button>
+            <button id="settings-nav-btn" class="home-nav-btn">&#9881;&#65039; Settings</button>
             <button id="sidebar-logout-btn" class="sidebar-logout-btn" type="button">&#8618; Log Out</button>
         </div>
 
@@ -5551,6 +5716,42 @@
                 </div>
             </div>
         </div>
+
+        <!-- Settings Page -->
+        <div class="page-view" id="settings-view" style="display: none;">
+            <div class="page-view-header"><h1>Settings</h1></div>
+            <div class="settings-body">
+                <div class="settings-section">
+                    <h2>Availability</h2>
+                    <p class="settings-section-desc">
+                        Drag across a day to mark a range of time, then choose what it's for.
+                        Ashanti's scheduling (the To-Do bulk-schedule picker, and her own sense of
+                        what's free) only ever books into these hours - Blackout is never
+                        scheduled into, Business only takes business to-dos, Personal only takes
+                        personal to-dos.
+                    </p>
+                    <div class="availability-legend">
+                        <span class="availability-legend-item"><span class="availability-legend-swatch availability-block-blackout"></span>Blackout</span>
+                        <span class="availability-legend-item"><span class="availability-legend-swatch availability-block-business"></span>Business</span>
+                        <span class="availability-legend-item"><span class="availability-legend-swatch availability-block-personal"></span>Personal</span>
+                    </div>
+                    <div class="availability-selection-toolbar" id="availability-selection-toolbar" style="display: none;">
+                        <span id="availability-selection-label"></span>
+                        <button type="button" class="availability-toolbar-btn blackout" data-type="blackout">Blackout</button>
+                        <button type="button" class="availability-toolbar-btn business" data-type="business">Business</button>
+                        <button type="button" class="availability-toolbar-btn personal" data-type="personal">Personal</button>
+                        <button type="button" class="availability-toolbar-cancel-btn" id="availability-selection-cancel-btn">Cancel</button>
+                    </div>
+                    <div class="availability-week-days-header" id="availability-week-days-header"></div>
+                    <div class="availability-week-scroll" id="availability-week-scroll">
+                        <div class="availability-week-grid">
+                            <div class="calendar-week-gutter" id="availability-week-gutter"></div>
+                            <div class="calendar-week-columns" id="availability-week-columns"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Discussion Topics: Add/Edit Category Modal -->
@@ -5853,6 +6054,7 @@
                 else if (descriptor.kind === 'topics') showTopicsPage();
                 else if (descriptor.kind === 'todos') showTodosPage();
                 else if (descriptor.kind === 'suggestions') showSuggestionsPage();
+                else if (descriptor.kind === 'settings') showSettingsPage();
             } finally {
                 suppressNavHistory = false;
             }
@@ -11706,6 +11908,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('topics-view').style.display = 'none';
             document.getElementById('todos-view').style.display = 'none';
             document.getElementById('suggestions-view').style.display = 'none';
+            document.getElementById('settings-view').style.display = 'none';
             document.getElementById('landing-nav-btn').classList.remove('active');
             document.getElementById('home-nav-btn').classList.remove('active');
             document.getElementById('projects-nav-btn').classList.remove('active');
@@ -11716,6 +11919,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('topics-nav-btn').classList.remove('active');
             document.getElementById('todos-nav-btn').classList.remove('active');
             document.getElementById('suggestions-nav-btn').classList.remove('active');
+            document.getElementById('settings-nav-btn').classList.remove('active');
         }
 
         function clearSidebarActiveState() {
@@ -12167,12 +12371,69 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // scrollCalendarWeekToDefault), not a hard time restriction.
         const CALENDAR_PX_PER_HOUR = 60;
         const CALENDAR_SLOT_MINUTES = 15;
-        // Purely visual - shades outside these hours gray so business hours
-        // stand out. Every slot stays fully clickable/editable either way.
-        const CALENDAR_BUSINESS_START_HOUR = 9;
-        const CALENDAR_BUSINESS_END_HOUR = 17;
         let calendarWeekStart = null; // Date, midnight Sunday of the viewed week
         let calendarWeekScrolledOnce = false;
+
+        // --- Availability (Settings page) -----------------------------------
+        // The weekly blackout/business/personal template - see /availability
+        // in app.py, which this mirrors exactly. Initialized with the same
+        // default seed the backend uses (business 9am-5pm, personal outside
+        // it, every day) so the grid has something sane to show before the
+        // first fetch resolves, rather than a flash of empty columns.
+        function defaultAvailabilityDay() {
+            return [
+                { start: '00:00', end: '09:00', type: 'personal' },
+                { start: '09:00', end: '17:00', type: 'business' },
+                { start: '17:00', end: '24:00', type: 'personal' }
+            ];
+        }
+
+        let availabilitySettings = { days: Array.from({ length: 7 }, defaultAvailabilityDay) };
+
+        function minutesFromHHMM(hhmm) {
+            const [h, m] = hhmm.split(':').map(Number);
+            return h * 60 + m;
+        }
+
+        function hhmmFromMinutes(minutes) {
+            const h = Math.floor(minutes / 60), m = minutes % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
+        async function loadAvailabilityData() {
+            try {
+                const response = await fetch('/availability');
+                const data = await response.json();
+                if (!data.success) return;
+                availabilitySettings = data.availability;
+                renderAvailabilityWeek();
+                // The Calendar page's own day columns shade themselves from
+                // this same data (see renderCalendarWeek) - re-render it too
+                // so a change here shows up there without needing its own
+                // poll to catch up, same "just re-render, cheap enough"
+                // pattern loadCalendarData already uses.
+                renderCalendarWeek();
+            } catch (error) {
+                console.error('Failed to load availability settings:', error);
+            }
+        }
+
+        // Absolutely-positioned, pointer-events:none blocks for one
+        // day-of-week's Availability blocks - shared by the Settings page's
+        // own interactive grid and the read-only shading behind events on
+        // the Calendar page (see renderCalendarWeek).
+        function buildAvailabilityBlockEls(dow) {
+            const blocks = (availabilitySettings.days && availabilitySettings.days[dow]) || [];
+            return blocks.map(block => {
+                const el = document.createElement('div');
+                el.className = `availability-block availability-block-${block.type}`;
+                const startMin = minutesFromHHMM(block.start);
+                const endMin = minutesFromHHMM(block.end);
+                el.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+                el.style.height = `${(endMin - startMin) / 60 * CALENDAR_PX_PER_HOUR}px`;
+                return el;
+            });
+        }
 
         function getCalendarWeekStart(d) {
             const start = new Date(d);
@@ -12361,9 +12622,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 col.className = 'calendar-week-day-col' + ([0, 6].includes(d.getDay()) ? ' weekend' : '');
                 col.style.height = `${gridHeight}px`;
                 col.style.setProperty('--slot-height', `${slotHeight}px`);
-                col.style.setProperty('--business-start', `${CALENDAR_BUSINESS_START_HOUR * CALENDAR_PX_PER_HOUR}px`);
-                col.style.setProperty('--business-end', `${CALENDAR_BUSINESS_END_HOUR * CALENDAR_PX_PER_HOUR}px`);
                 col.dataset.date = key;
+
+                // Blackout/business/personal shading, sourced from the same
+                // Availability template the Settings page edits (see
+                // buildAvailabilityBlockEls) - appended before the real
+                // event blocks below so events still render on top, and it
+                // stays purely visual (pointer-events: none) so none of the
+                // click/drag/dblclick-to-create-event handlers further down
+                // are affected.
+                buildAvailabilityBlockEls(d.getDay()).forEach(el => col.appendChild(el));
 
                 for (let h = 1; h < 24; h++) {
                     const line = document.createElement('div');
@@ -12495,6 +12763,213 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (!state.moved) {
                 paintCalendarSlotHighlight(state.col, state.startMinutes, state.startMinutes + CALENDAR_SLOT_MINUTES);
             }
+        }
+
+        // --- Availability grid drag-select (Settings page) -----------------
+        // Same drag mechanics as the Calendar page's own slot-select just
+        // above (startCalendarSlotSelect etc.), kept as its own separate set
+        // of functions rather than generalized - this drags a day-of-week
+        // template range, not a specific date, and ends in a
+        // Blackout/Business/Personal choice (see the selection toolbar)
+        // instead of opening the Add Event modal.
+        const AVAILABILITY_DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+        let availabilityHighlightedSlotEl = null;
+        let availabilityHighlightedSlotRange = null; // {dow, startMinutes, endMinutes}
+        let availabilitySlotDragState = null;
+
+        function clearAvailabilitySlotHighlight() {
+            if (availabilityHighlightedSlotEl) availabilityHighlightedSlotEl.remove();
+            availabilityHighlightedSlotEl = null;
+            availabilityHighlightedSlotRange = null;
+            document.getElementById('availability-selection-toolbar').style.display = 'none';
+        }
+
+        // "9:00 AM - 11:00 AM" - same plain, no-leading-zero style used
+        // elsewhere in the app (see formatShortDate).
+        function formatAvailabilityTime(minutes) {
+            const h24 = Math.floor(minutes / 60), m = minutes % 60;
+            const period = h24 < 12 ? 'AM' : 'PM';
+            let h12 = h24 % 12;
+            if (h12 === 0) h12 = 12;
+            return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+        }
+
+        function paintAvailabilitySlotHighlight(col, startMinutes, endMinutes) {
+            if (availabilityHighlightedSlotEl) availabilityHighlightedSlotEl.remove();
+            const highlight = document.createElement('div');
+            highlight.className = 'calendar-week-slot-highlight';
+            highlight.style.top = `${startMinutes / 60 * CALENDAR_PX_PER_HOUR}px`;
+            highlight.style.height = `${(endMinutes - startMinutes) / 60 * CALENDAR_PX_PER_HOUR}px`;
+            col.appendChild(highlight);
+            availabilityHighlightedSlotEl = highlight;
+            availabilityHighlightedSlotRange = { dow: Number(col.dataset.dow), startMinutes, endMinutes };
+
+            document.getElementById('availability-selection-label').textContent =
+                `${AVAILABILITY_DAY_LABELS[availabilityHighlightedSlotRange.dow]}, ${formatAvailabilityTime(startMinutes)} - ${formatAvailabilityTime(endMinutes)}:`;
+            document.getElementById('availability-selection-toolbar').style.display = 'flex';
+        }
+
+        function availabilitySlotMinutesFromY(col, clientY) {
+            const rect = col.getBoundingClientRect();
+            const totalMinutes = Math.round((clientY - rect.top) / CALENDAR_PX_PER_HOUR * 60 / CALENDAR_SLOT_MINUTES) * CALENDAR_SLOT_MINUTES;
+            return Math.max(0, Math.min(24 * 60 - CALENDAR_SLOT_MINUTES, totalMinutes));
+        }
+
+        function startAvailabilitySlotSelect(evt, col) {
+            evt.preventDefault();
+            availabilitySlotDragState = {
+                col,
+                startMinutes: availabilitySlotMinutesFromY(col, evt.clientY),
+                moved: false
+            };
+            document.addEventListener('mousemove', onAvailabilitySlotSelectMove);
+            document.addEventListener('mouseup', onAvailabilitySlotSelectEnd);
+        }
+
+        function onAvailabilitySlotSelectMove(evt) {
+            const state = availabilitySlotDragState;
+            if (!state) return;
+            const minutes = availabilitySlotMinutesFromY(state.col, evt.clientY);
+            if (minutes !== state.startMinutes) state.moved = true;
+            const lo = Math.min(state.startMinutes, minutes);
+            const hi = Math.max(state.startMinutes, minutes) + CALENDAR_SLOT_MINUTES;
+            paintAvailabilitySlotHighlight(state.col, lo, hi);
+        }
+
+        function onAvailabilitySlotSelectEnd() {
+            document.removeEventListener('mousemove', onAvailabilitySlotSelectMove);
+            document.removeEventListener('mouseup', onAvailabilitySlotSelectEnd);
+            const state = availabilitySlotDragState;
+            availabilitySlotDragState = null;
+            if (!state) return;
+            if (!state.moved) {
+                paintAvailabilitySlotHighlight(state.col, state.startMinutes, state.startMinutes + CALENDAR_SLOT_MINUTES);
+            }
+        }
+
+        // Computes one day's new complete block list after painting
+        // [startMin, endMin) with `type` - trims/splits whatever existing
+        // blocks the new range overlaps, inserts the new block, then merges
+        // adjacent same-type blocks back together so repeated edits don't
+        // accumulate slivers. The result is always still a clean, gapless
+        // partition of the day, which is what /availability validates on
+        // save (see _validate_availability_blocks in app.py).
+        function spliceAvailabilityBlock(dayBlocks, startMin, endMin, type) {
+            const pieces = [];
+            dayBlocks.forEach(block => {
+                const bs = minutesFromHHMM(block.start), be = minutesFromHHMM(block.end);
+                if (be <= startMin || bs >= endMin) {
+                    pieces.push({ start: bs, end: be, type: block.type });
+                    return;
+                }
+                if (bs < startMin) pieces.push({ start: bs, end: startMin, type: block.type });
+                if (be > endMin) pieces.push({ start: endMin, end: be, type: block.type });
+            });
+            pieces.push({ start: startMin, end: endMin, type });
+            pieces.sort((a, b) => a.start - b.start);
+
+            const merged = [];
+            pieces.forEach(p => {
+                const last = merged[merged.length - 1];
+                if (last && last.type === p.type && last.end === p.start) {
+                    last.end = p.end;
+                } else {
+                    merged.push({ ...p });
+                }
+            });
+
+            return merged.map(p => ({ start: hhmmFromMinutes(p.start), end: hhmmFromMinutes(p.end), type: p.type }));
+        }
+
+        async function applyAvailabilitySelection(type) {
+            const range = availabilityHighlightedSlotRange;
+            if (!range) return;
+            const newBlocks = spliceAvailabilityBlock(availabilitySettings.days[range.dow], range.startMinutes, range.endMinutes, type);
+            try {
+                const response = await fetch('/availability', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ day_of_week: range.dow, blocks: newBlocks })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    alert(data.error || 'Could not save that change - try again.');
+                    return;
+                }
+                availabilitySettings = data.availability;
+                clearAvailabilitySlotHighlight();
+                renderAvailabilityWeek();
+                renderCalendarWeek();
+            } catch (e) {
+                console.error('Failed to update availability:', e);
+                alert('Could not save that change - check the app is running and try again.');
+            }
+        }
+
+        function renderAvailabilityWeek() {
+            const headerRow = document.getElementById('availability-week-days-header');
+            headerRow.innerHTML = '';
+            headerRow.appendChild(Object.assign(document.createElement('div'), { className: 'calendar-week-gutter-spacer' }));
+            AVAILABILITY_DAY_LABELS.forEach(label => {
+                const cell = document.createElement('div');
+                cell.className = 'availability-week-day-header';
+                cell.textContent = label.slice(0, 3);
+                headerRow.appendChild(cell);
+            });
+
+            const gridHeight = 24 * CALENDAR_PX_PER_HOUR;
+            const gutter = document.getElementById('availability-week-gutter');
+            gutter.innerHTML = '';
+            gutter.style.height = `${gridHeight}px`;
+            for (let h = 0; h < 24; h++) {
+                const label = document.createElement('div');
+                label.className = 'calendar-week-hour-label';
+                label.style.top = `${h * CALENDAR_PX_PER_HOUR}px`;
+                const hourDate = new Date(2000, 0, 1, h, 0);
+                label.textContent = h === 0 ? '' : hourDate.toLocaleTimeString(undefined, { hour: 'numeric' });
+                gutter.appendChild(label);
+            }
+
+            const columns = document.getElementById('availability-week-columns');
+            columns.innerHTML = '';
+            const slotHeight = CALENDAR_PX_PER_HOUR * CALENDAR_SLOT_MINUTES / 60;
+            for (let dow = 0; dow < 7; dow++) {
+                const col = document.createElement('div');
+                col.className = 'calendar-week-day-col availability-week-day-col';
+                col.style.height = `${gridHeight}px`;
+                col.style.setProperty('--slot-height', `${slotHeight}px`);
+                col.dataset.dow = dow;
+
+                buildAvailabilityBlockEls(dow).forEach(el => col.appendChild(el));
+
+                for (let h = 1; h < 24; h++) {
+                    const line = document.createElement('div');
+                    line.className = 'calendar-week-hour-line';
+                    line.style.top = `${h * CALENDAR_PX_PER_HOUR}px`;
+                    col.appendChild(line);
+                }
+
+                col.addEventListener('mousedown', (evt) => {
+                    if (evt.target !== col) return;
+                    if (evt.button !== 0) return;
+                    startAvailabilitySlotSelect(evt, col);
+                });
+
+                columns.appendChild(col);
+            }
+        }
+
+        function showSettingsPage() {
+            currentAgent = null;
+            document.getElementById('content-wrapper').style.display = 'none';
+            hideAllSpecialViews();
+            clearSidebarActiveState();
+            document.getElementById('settings-view').style.display = 'flex';
+            document.getElementById('settings-nav-btn').classList.add('active');
+            clearAvailabilitySlotHighlight();
+            loadAvailabilityData();
+            recordNavHistory({ kind: 'settings' });
         }
 
         // Single click on an existing event just selects it (a highlighted
@@ -15652,6 +16127,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
 
         document.getElementById('suggestions-nav-btn').addEventListener('click', showSuggestionsPage);
+        document.getElementById('settings-nav-btn').addEventListener('click', showSettingsPage);
+        document.querySelectorAll('.availability-toolbar-btn').forEach(btn => {
+            btn.addEventListener('click', () => applyAvailabilitySelection(btn.dataset.type));
+        });
+        document.getElementById('availability-selection-cancel-btn').addEventListener('click', clearAvailabilitySlotHighlight);
         document.getElementById('suggestions-new-btn').addEventListener('click', submitNewSuggestion);
         document.getElementById('suggestions-new-title').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitNewSuggestion();
@@ -15805,6 +16285,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             loadPersonalThoughtsSection();
             startCalendarCheckinPolling();
             startTodoCheckinPolling();
+            // Eager, one-time load so the Calendar page's day-column shading
+            // (see renderCalendarWeek/buildAvailabilityBlockEls) is correct
+            // even if Settings > Availability is never opened this session.
+            loadAvailabilityData();
             // Eager, one-time load (not the Calendar page's own 15s poll) so
             // calendarEvents is populated app-wide - the To-Do page's "Scheduled"
             // status badge needs it even if Calendar itself is never opened.
