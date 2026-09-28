@@ -19,6 +19,7 @@ import urllib.request
 import urllib.error
 import threading
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import docx as docx_lib
 from docx.shared import RGBColor as DocxRGBColor, Pt as DocxPt
@@ -57,6 +58,28 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 def _data_path(filename):
     return os.path.join(DATA_DIR, filename)
+
+
+# Every "now"/"today" in this app - business hours, the daily rollover, free-
+# slot math, what Ashanti is told the current time is - has to be anchored to
+# Francis's own timezone, not the server's. In production (Railway) that
+# server clock is UTC, so calling the raw stdlib datetime.now()/date.today()
+# used to read as several hours ahead of his actual wall clock: by
+# mid-afternoon Eastern the server already thought business hours (9am-5pm)
+# were over for the day, so nothing could be scheduled "today" even with
+# hours of the real day left. Every such call in this file goes through
+# these two instead. Single-user app, so one fixed zone for everything is
+# correct - not derived per-request from the browser, which would have to be
+# trusted and handled per to-do/event instead of being one global assumption.
+APP_TIMEZONE = ZoneInfo('America/New_York')
+
+
+def now_local():
+    return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
+
+
+def today_local():
+    return now_local().date()
 
 
 # Signs the session cookie - generated once and persisted to .env so
@@ -153,7 +176,7 @@ def auth_setup():
                 'name': name,
                 'email': email,
                 'passwordHash': generate_password_hash(password),
-                'createdAt': datetime.now().isoformat()
+                'createdAt': now_local().isoformat()
             }
             save_users([user])
         session.clear()
@@ -246,7 +269,7 @@ def auth_forgot_password():
                 token = secrets.token_urlsafe(32)
                 user['resetTokenHash'] = hashlib.sha256(token.encode('utf-8')).hexdigest()
                 user['resetTokenExpiresAt'] = (
-                    datetime.now() + timedelta(minutes=PASSWORD_RESET_TOKEN_TTL_MINUTES)
+                    now_local() + timedelta(minutes=PASSWORD_RESET_TOKEN_TTL_MINUTES)
                 ).isoformat()
                 save_users(users)
 
@@ -296,7 +319,7 @@ def auth_reset_password():
             if not user:
                 return jsonify({'success': False, 'error': 'This reset link is invalid or has already been used.'}), 400
             expires_at = user.get('resetTokenExpiresAt')
-            if not expires_at or datetime.fromisoformat(expires_at) < datetime.now():
+            if not expires_at or datetime.fromisoformat(expires_at) < now_local():
                 return jsonify({'success': False, 'error': 'This reset link has expired - request a new one.'}), 400
             user['passwordHash'] = generate_password_hash(password)
             user.pop('resetTokenHash', None)
@@ -659,7 +682,7 @@ def save_knowledge_base(data):
 
 
 def today_str():
-    return date.today().isoformat()
+    return today_local().isoformat()
 
 
 DAILY_ITEMS_PER_AGENT = 2
@@ -669,7 +692,7 @@ def get_today_questions(agent):
     bank = QUESTION_BANKS.get(agent, [])
     if not bank:
         return []
-    base = date.today().toordinal()
+    base = today_local().toordinal()
     count = min(DAILY_ITEMS_PER_AGENT, len(bank))
     return [bank[(base + i) % len(bank)] for i in range(count)]
 
@@ -678,7 +701,7 @@ def get_today_ideas(agent):
     bank = IDEA_BANKS.get(agent, [])
     if not bank:
         return []
-    base = date.today().toordinal()
+    base = today_local().toordinal()
     count = min(DAILY_ITEMS_PER_AGENT, len(bank))
     return [bank[(base + i) % len(bank)] for i in range(count)]
 
@@ -717,7 +740,7 @@ def get_today_personal_questions(agent):
     bank = PERSONAL_QUESTION_BANKS.get(agent, [])
     if not bank:
         return []
-    base = date.today().toordinal()
+    base = today_local().toordinal()
     count = min(DAILY_ITEMS_PER_AGENT, len(bank))
     return [bank[(base + i) % len(bank)] for i in range(count)]
 
@@ -726,7 +749,7 @@ def get_today_personal_ideas(agent):
     bank = PERSONAL_IDEA_BANKS.get(agent, [])
     if not bank:
         return []
-    base = date.today().toordinal()
+    base = today_local().toordinal()
     count = min(DAILY_ITEMS_PER_AGENT, len(bank))
     return [bank[(base + i) % len(bank)] for i in range(count)]
 
@@ -1223,7 +1246,7 @@ def sync_kb_connection(side, conn):
         return False
 
     conn['signature'] = new_signature
-    conn['lastSyncedAt'] = datetime.now().isoformat()
+    conn['lastSyncedAt'] = now_local().isoformat()
     if not attachments:
         conn['summary'] = ''
         conn['raw_text'] = ''
@@ -1305,7 +1328,7 @@ def kb_connections_add():
             'userId': current_user_id(),
             'path': path,
             'type': 'folder' if os.path.isdir(path) else 'file',
-            'addedAt': datetime.now().isoformat(),
+            'addedAt': now_local().isoformat(),
             'signature': {},
             'missing': False
         }
@@ -1685,7 +1708,7 @@ def _merge_imported_events(parsed, signature):
         dismissed = set(settings.get('dismissedExternalUids', []))
         by_uid = {e.get('externalUid'): e for e in events if e.get('source') == 'external' and e.get('externalUid')}
         seen_uids = set()
-        now_iso = datetime.now().isoformat()
+        now_iso = now_local().isoformat()
 
         for pe in parsed:
             uid = pe.get('externalUid')
@@ -1832,7 +1855,7 @@ def compute_personal_free_slots(day_events, day, now):
 def get_calendar_context():
     sync_calendar_import()
     events = [e for e in load_calendar_events() if e.get('status') != 'cancelled']
-    now = datetime.now()
+    now = now_local()
     today_iso = now.date().isoformat()
     # The actual clock time, not just the date - without this, "today at
     # 10am" reads as perfectly valid even well after 10am has already
@@ -1910,7 +1933,7 @@ def calendar_events_create():
         start = str(data.get('start', '')).strip()
         if not title or not start:
             return jsonify({'success': False, 'error': 'Missing title or start'}), 400
-        now_iso = datetime.now().isoformat()
+        now_iso = now_local().isoformat()
         event = {
             'id': uuid.uuid4().hex,
             'userId': current_user_id(),
@@ -1956,7 +1979,7 @@ def calendar_events_update(event_id):
                 event['status'] = data['status']
             if 'attachments' in data:
                 event['attachments'] = data['attachments'] or []
-            event['updatedAt'] = datetime.now().isoformat()
+            event['updatedAt'] = now_local().isoformat()
             save_calendar_events(events)
         return jsonify({'success': True, 'event': event})
     except Exception as e:
@@ -2040,17 +2063,17 @@ def calendar_export(token):
 def calendar_checkins_today():
     try:
         sync_calendar_import()
-        today_iso = date.today().isoformat()
+        today_iso = today_local().isoformat()
         todays_events = [
             e for e in load_calendar_events()
             if not e.get('allDay') and e.get('status') == 'confirmed' and (e.get('start') or '').startswith(today_iso)
         ]
         todays_events.sort(key=lambda e: e['start'])
 
-        now = datetime.now()
+        now = now_local()
         status = load_calendar_checkin_status()
         # Trim old days so this file doesn't grow forever.
-        status = {k: v for k, v in status.items() if k >= (date.today() - timedelta(days=2)).isoformat()}
+        status = {k: v for k, v in status.items() if k >= (today_local() - timedelta(days=2)).isoformat()}
         shown_today = status.get(today_iso, [])
 
         item = None
@@ -2248,7 +2271,7 @@ def discussion_topics_auto_add():
                     'userId': current_user_id(),
                     'name': category_name or 'General',
                     'agent': agent if agent in ALL_AGENTS else ALL_AGENTS[0],
-                    'createdAt': datetime.now().isoformat(),
+                    'createdAt': now_local().isoformat(),
                     'topics': []
                 }
                 store['categories'].append(category)
@@ -2259,7 +2282,7 @@ def discussion_topics_auto_add():
                 'text': text,
                 'details': details,
                 'discussed': False,
-                'createdAt': datetime.now().isoformat(),
+                'createdAt': now_local().isoformat(),
                 'discussedAt': None,
                 'attachments': data.get('attachments') or []
             }
@@ -2299,7 +2322,7 @@ def discussion_topics_create_category():
                 'userId': current_user_id(),
                 'name': name,
                 'agent': agent,
-                'createdAt': datetime.now().isoformat(),
+                'createdAt': now_local().isoformat(),
                 'topics': []
             }
             store['categories'].append(category)
@@ -2367,7 +2390,7 @@ def discussion_topics_create_topic():
                 'text': text,
                 'details': details,
                 'discussed': False,
-                'createdAt': datetime.now().isoformat(),
+                'createdAt': now_local().isoformat(),
                 'discussedAt': None,
                 'attachments': data.get('attachments') or []
             }
@@ -2396,7 +2419,7 @@ def discussion_topics_update_topic(topic_id):
                 topic['details'] = str(data['details'] or '').strip()
             if 'discussed' in data:
                 topic['discussed'] = bool(data['discussed'])
-                topic['discussedAt'] = datetime.now().isoformat() if topic['discussed'] else None
+                topic['discussedAt'] = now_local().isoformat() if topic['discussed'] else None
             if 'attachments' in data:
                 topic['attachments'] = data['attachments'] or []
             if 'category_id' in data and data['category_id'] and data['category_id'] != current_category['id']:
@@ -2462,7 +2485,7 @@ def load_todos():
 # is completed or given a fresh calendar_event_id (see todos_update) - it
 # means "missed at least one window", not a permanent mark.
 def _apply_todo_rollovers(todos):
-    today = datetime.now().date()
+    today = now_local().date()
     events_by_id = None
     changed = False
     for todo in todos:
@@ -2520,7 +2543,7 @@ def todos_create():
                 'details': details,
                 'estimatedMinutes': estimated_minutes,
                 'completed': False,
-                'createdAt': datetime.now().isoformat(),
+                'createdAt': now_local().isoformat(),
                 'completedAt': None,
                 'calendarEventId': None,
                 'attachments': data.get('attachments') or [],
@@ -2569,7 +2592,7 @@ def todos_update(todo_id):
                     pass
             if 'completed' in data:
                 todo['completed'] = bool(data['completed'])
-                todo['completedAt'] = datetime.now().isoformat() if todo['completed'] else None
+                todo['completedAt'] = now_local().isoformat() if todo['completed'] else None
                 # Resolves the "Not Finished" flag the same as a fresh
                 # reschedule does - it means "missed at least one window",
                 # not a permanent mark once the to-do is actually done.
@@ -2654,7 +2677,7 @@ def todos_bulk_schedule():
                 return jsonify({'success': False, 'error': 'Invalid to-do or date range'}), 400
             items.append({'todo_id': todo_id, 'start_date': start_date, 'end_date': end_date})
 
-        now = datetime.now()
+        now = now_local()
 
         with todos_lock, calendar_lock:
             todos = load_todos()
@@ -2759,9 +2782,9 @@ def todos_bulk_schedule():
 @app.route('/todos/morning-checkin', methods=['GET'])
 def todos_morning_checkin():
     try:
-        today_iso = date.today().isoformat()
+        today_iso = today_local().isoformat()
         status = load_todo_checkin_status()
-        status = {k: v for k, v in status.items() if k >= (date.today() - timedelta(days=2)).isoformat()}
+        status = {k: v for k, v in status.items() if k >= (today_local() - timedelta(days=2)).isoformat()}
         shown_today = set(status.get(today_iso, []))
 
         pending = [
@@ -2830,7 +2853,7 @@ def suggestions_create():
                 'title': title,
                 'details': details,
                 'completed': False,
-                'createdAt': datetime.now().isoformat(),
+                'createdAt': now_local().isoformat(),
                 'completedAt': None
             }
             suggestions.append(suggestion)
@@ -2858,7 +2881,7 @@ def suggestions_update(suggestion_id):
                 suggestion['details'] = str(data['details'] or '').strip()
             if 'completed' in data:
                 suggestion['completed'] = bool(data['completed'])
-                suggestion['completedAt'] = datetime.now().isoformat() if suggestion['completed'] else None
+                suggestion['completedAt'] = now_local().isoformat() if suggestion['completed'] else None
             save_suggestions(suggestions)
         return jsonify({'success': True, 'suggestions': suggestions})
     except Exception as e:
@@ -4290,7 +4313,7 @@ def chat():
                             title = str(block_input.get('title', '')).strip()
                             start = str(block_input.get('start', '')).strip()
                             if title and start:
-                                now_iso = datetime.now().isoformat()
+                                now_iso = now_local().isoformat()
                                 origin = block_input.get('origin')
                                 new_event = {
                                     'id': uuid.uuid4().hex,
@@ -4321,7 +4344,7 @@ def chat():
                                         ev[field] = str(block_input[field]).strip()
                                 if 'all_day' in block_input:
                                     ev['allDay'] = bool(block_input['all_day'])
-                                ev['updatedAt'] = datetime.now().isoformat()
+                                ev['updatedAt'] = now_local().isoformat()
                                 save_calendar_events(events)
                                 calendar_update = {'action': 'update', 'event': ev}
                         elif action == 'delete':
