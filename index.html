@@ -2538,6 +2538,33 @@
             margin-right: 4px;
         }
 
+        /* Same office-scene treatment as the 1:1 chat's own office area (see
+           .office-background/.office-avatar-large), scaled down into a
+           banner strip across the top of the modal so Ashanti "pops in" the
+           same way she does everywhere else. */
+        .bulk-schedule-office-banner {
+            position: relative;
+            height: 120px;
+            background-image: url('backgrounds/ashanti_office.png');
+            background-size: cover;
+            background-position: center 15%;
+            background-repeat: no-repeat;
+            background-color: #eef0fa;
+            overflow: hidden;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .bulk-schedule-office-avatar {
+            position: absolute;
+            bottom: -22px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 210px;
+            height: 210px;
+            object-fit: cover;
+            object-position: top;
+        }
+
         /* One row per to-do in the bulk-schedule modal (see
            buildBulkScheduleTodoRow) - each carries its own period dropdown
            rather than one period applying to every selected to-do. */
@@ -2594,6 +2621,16 @@
             padding: 6px;
             border: 1px solid #ccc;
             border-radius: 4px;
+        }
+
+        /* Shown under a row after a Schedule attempt that couldn't find room
+           for it - see runBulkScheduleTodos, which leaves the modal open and
+           keeps only the still-unscheduled rows so this can sit right next
+           to the dropdown Francis needs to change. */
+        .bulk-schedule-todo-error {
+            flex: 1 1 100%;
+            font-size: 11px;
+            color: #b3261e;
         }
 
         .topics-new-bar button {
@@ -5667,15 +5704,23 @@
 
     <!-- Bulk-schedule period picker - "Schedule Selected with Ashanti" on the
          To-Do page opens this to pick the target period, then POSTs to
-         /todos/bulk-schedule (see runBulkScheduleTodos). -->
+         /todos/bulk-schedule (see runBulkScheduleTodos). Stays open (rather
+         than closing) whenever anything comes back unscheduled, so the
+         per-row reason and retry live right here instead of as a separate
+         chat message. -->
     <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 12px; padding: 26px; max-width: 420px; width: 90%;">
-            <h3 style="margin: 0 0 6px;">Schedule with Ashanti</h3>
-            <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 12px;"></div>
-            <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
-            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 22px;">
-                <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
-                <button id="bulk-schedule-confirm-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
+        <div style="background: white; border-radius: 12px; max-width: 420px; width: 90%; max-height: 85vh; overflow-y: auto;">
+            <div class="bulk-schedule-office-banner" id="bulk-schedule-office-banner">
+                <img class="bulk-schedule-office-avatar" id="bulk-schedule-office-avatar" src="avatars/ashanti.png" alt="Ashanti">
+            </div>
+            <div style="padding: 18px 26px 26px;">
+                <h3 style="margin: 0 0 6px;">Schedule with Ashanti</h3>
+                <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 12px;"></div>
+                <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
+                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 22px;">
+                    <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                    <button id="bulk-schedule-confirm-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
+                </div>
             </div>
         </div>
     </div>
@@ -14442,8 +14487,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // to-do go to a different period instead of one choice for the
         // whole batch. Used both by the To-Do page's bulk toolbar
         // (openBulkScheduleModal) and the morning check-in card's per-item
-        // Reschedule button (openBulkScheduleModalForTodoIds).
-        function buildBulkScheduleTodoRow(todo) {
+        // Reschedule button (openBulkScheduleModalForTodoIds). errorMessage
+        // is set when this row is being re-shown after a failed attempt -
+        // see rebuildBulkScheduleModalFromUnscheduled.
+        function buildBulkScheduleTodoRow(todo, errorMessage) {
             const row = document.createElement('div');
             row.className = 'bulk-schedule-todo-row';
             row.dataset.todoId = todo.id;
@@ -14490,7 +14537,30 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             row.appendChild(title);
             row.appendChild(select);
             row.appendChild(customRange);
+
+            if (errorMessage) {
+                const error = document.createElement('span');
+                error.className = 'bulk-schedule-todo-error';
+                error.textContent = errorMessage;
+                row.appendChild(error);
+            }
+
             return row;
+        }
+
+        // Rebuilds the modal's list down to just the to-dos that didn't get
+        // scheduled, each with its own reason - called after a partial (or
+        // total) failure so Francis can change periods and hit Schedule
+        // again without leaving the popup. See runBulkScheduleTodos.
+        function rebuildBulkScheduleModalFromUnscheduled(unscheduled) {
+            const list = document.getElementById('bulk-schedule-todo-list');
+            list.innerHTML = '';
+            unscheduled.forEach(u => {
+                const todo = todosList.find(t => t.id === u.todoId) || { id: u.todoId, title: u.title };
+                list.appendChild(buildBulkScheduleTodoRow(todo, u.reason));
+            });
+            document.getElementById('bulk-schedule-count').textContent =
+                `${unscheduled.length} to-do${unscheduled.length === 1 ? '' : 's'} still need${unscheduled.length === 1 ? 's' : ''} a period`;
         }
 
         // Opens the period-picker used by the To-Do page's bulk toolbar,
@@ -14550,7 +14620,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     body: JSON.stringify({ items })
                 });
                 const data = await response.json();
-                closeBulkScheduleModal();
                 if (!data.success) {
                     alert(data.error || 'Could not schedule those to-dos.');
                 } else {
@@ -14563,35 +14632,23 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     // next poll. One that stayed unscheduled is still
                     // notFinished, so it correctly stays on the card.
                     data.scheduled.forEach(s => removeTodoFromMorningCheckin(s.todoId));
-                    selectedTodoIds.clear();
+                    data.scheduled.forEach(s => selectedTodoIds.delete(s.todoId));
                     renderTodosPage();
                     if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
 
-                    const lines = [];
-                    if (data.scheduled.length) {
-                        lines.push(`Scheduled ${data.scheduled.length} item${data.scheduled.length === 1 ? '' : 's'}:`);
-                        data.scheduled.forEach(s => {
-                            const when = new Date(s.event.start).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-                            lines.push(`- ${s.title}: ${when}`);
-                        });
-                    }
-                    // A to-do never gets silently moved off the period Francis
-                    // picked for it (see todos_bulk_schedule) - if it didn't
-                    // fit there, it stays Not Scheduled and shows up here so
-                    // he can select it again and choose a different period.
+                    // A to-do never gets silently moved off the period
+                    // Francis picked for it (see todos_bulk_schedule) - if it
+                    // didn't fit there, this stays right here in the same
+                    // popup (title still "Schedule with Ashanti") with its
+                    // own reason, instead of turning into a chat message, so
+                    // he can pick a different period and hit Schedule again
+                    // without leaving the popup.
                     if (data.unscheduled.length) {
-                        lines.push(`${lines.length ? '\n' : ''}Couldn't find room for ${data.unscheduled.length} item${data.unscheduled.length === 1 ? '' : 's'} - select ${data.unscheduled.length === 1 ? 'it' : 'them'} again and pick a different period:`);
-                        data.unscheduled.forEach(u => lines.push(`- ${u.title}: ${u.reason}`));
+                        rebuildBulkScheduleModalFromUnscheduled(data.unscheduled);
+                    } else {
+                        selectedTodoIds.clear();
+                        closeBulkScheduleModal();
                     }
-                    if (!chatHistory['ashanti']) chatHistory['ashanti'] = [];
-                    chatHistory['ashanti'].push({ type: 'agent', text: lines.join('\n') || 'Nothing to schedule.', timestamp: new Date() });
-                    saveToLocalStorage('ashanti');
-                    if (currentAgent === 'ashanti') {
-                        displayMessages('ashanti');
-                        markAgentRead('ashanti');
-                        updateChatUnreadBadge('ashanti');
-                    }
-                    updateAgentBadge('ashanti');
                 }
             } catch (e) {
                 console.error('Bulk schedule failed:', e);
