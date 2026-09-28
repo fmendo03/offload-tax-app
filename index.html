@@ -2647,12 +2647,25 @@
 
         /* Shown under a row after a Schedule attempt that couldn't find room
            for it - see runBulkScheduleTodos, which leaves the modal open and
-           keeps only the still-unscheduled rows so this can sit right next
-           to the dropdown Francis needs to change. */
+           rebuilds every row (see rebuildBulkScheduleModalRows) so this can
+           sit right next to the dropdown Francis needs to change. */
         .bulk-schedule-todo-error {
             flex: 1 1 100%;
             font-size: 11px;
             color: #b3261e;
+        }
+
+        /* Shown in place of the period dropdown once a row's to-do has
+           actually been scheduled - see buildBulkScheduleScheduledRow. */
+        .bulk-schedule-todo-scheduled-badge {
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 10px;
+            background: #eafaf0;
+            color: #1c7a43;
+            white-space: nowrap;
         }
 
         .topics-new-bar button {
@@ -14556,7 +14569,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // (openBulkScheduleModal) and the morning check-in card's per-item
         // Reschedule button (openBulkScheduleModalForTodoIds). errorMessage
         // is set when this row is being re-shown after a failed attempt -
-        // see rebuildBulkScheduleModalFromUnscheduled.
+        // see rebuildBulkScheduleModalRows.
         function buildBulkScheduleTodoRow(todo, errorMessage) {
             const row = document.createElement('div');
             row.className = 'bulk-schedule-todo-row';
@@ -14603,20 +14616,70 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return row;
         }
 
-        // Rebuilds the modal's list down to just the to-dos that didn't get
-        // scheduled, each with its own reason - called after a partial (or
-        // total) failure so Francis can change periods and hit Schedule
-        // again without leaving the popup. See runBulkScheduleTodos.
-        function rebuildBulkScheduleModalFromUnscheduled(unscheduled) {
+        // A row for a to-do that DID get scheduled - shown in place of the
+        // period dropdown once it's done, rather than dropping off the list,
+        // so the popup always shows the outcome for everything that was
+        // selected, not just what's still pending.
+        function buildBulkScheduleScheduledRow(entry) {
+            const row = document.createElement('div');
+            row.className = 'bulk-schedule-todo-row';
+            row.dataset.todoId = entry.todoId;
+            row.dataset.scheduled = 'true';
+
+            const title = document.createElement('span');
+            title.className = 'bulk-schedule-todo-title';
+            title.textContent = entry.title;
+            title.title = entry.title;
+
+            const badge = document.createElement('span');
+            badge.className = 'bulk-schedule-todo-scheduled-badge';
+            const when = new Date(entry.event.start).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            badge.textContent = `✓ Scheduled — ${when}`;
+
+            row.appendChild(title);
+            row.appendChild(badge);
+            return row;
+        }
+
+        // Rebuilds the modal's full list - every to-do it was opened with,
+        // in the same order, each shown as either scheduled (see
+        // buildBulkScheduleScheduledRow, using bulkScheduleScheduledResults
+        // accumulated across every Schedule click this popup has seen) or
+        // still needing a period, with its latest reason. Called after every
+        // Schedule attempt, success or failure, so the popup always states
+        // the outcome instead of closing silently - see runBulkScheduleTodos.
+        function rebuildBulkScheduleModalRows(unscheduled) {
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
-            unscheduled.forEach(u => {
-                const todo = todosList.find(t => t.id === u.todoId) || { id: u.todoId, title: u.title };
-                list.appendChild(buildBulkScheduleTodoRow(todo, u.reason));
+            const unscheduledById = new Map(unscheduled.map(u => [u.todoId, u]));
+            bulkScheduleRowOrder.forEach(id => {
+                const scheduledEntry = bulkScheduleScheduledResults.find(s => s.todoId === id);
+                if (scheduledEntry) {
+                    list.appendChild(buildBulkScheduleScheduledRow(scheduledEntry));
+                    return;
+                }
+                const u = unscheduledById.get(id);
+                const todo = todosList.find(t => t.id === id) || { id, title: (u && u.title) || id };
+                list.appendChild(buildBulkScheduleTodoRow(todo, u ? u.reason : undefined));
             });
-            document.getElementById('bulk-schedule-count').textContent =
-                `${unscheduled.length} to-do${unscheduled.length === 1 ? '' : 's'} still need${unscheduled.length === 1 ? 's' : ''} a period`;
-            resetBulkScheduleApplyAll();
+
+            const total = bulkScheduleRowOrder.length;
+            const scheduledCount = bulkScheduleScheduledResults.length;
+            const unscheduledCount = unscheduled.length;
+            document.getElementById('bulk-schedule-count').textContent = unscheduledCount === 0
+                ? `All ${total} to-do${total === 1 ? '' : 's'} scheduled!`
+                : `${scheduledCount} scheduled, ${unscheduledCount} still need${unscheduledCount === 1 ? 's' : ''} a different period`;
+
+            // Nothing left to submit once every to-do has a spot - the
+            // Schedule button (and the now-pointless Apply to all) hide
+            // rather than sit there disabled.
+            document.getElementById('bulk-schedule-confirm-btn').style.display = unscheduledCount === 0 ? 'none' : '';
+            document.getElementById('bulk-schedule-apply-all').style.display = unscheduledCount === 0 ? 'none' : '';
+            if (unscheduledCount === 0) {
+                document.getElementById('bulk-schedule-apply-all-custom').classList.remove('visible');
+            } else {
+                resetBulkScheduleApplyAll();
+            }
         }
 
         // "Apply to all" sets every row's own dropdown (and, for Custom
@@ -14638,7 +14701,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function applyBulkSchedulePeriodToAllRows(periodType) {
             const applyAllStart = document.getElementById('bulk-schedule-apply-all-start').value;
             const applyAllEnd = document.getElementById('bulk-schedule-apply-all-end').value;
-            document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row').forEach(row => {
+            document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-scheduled="true"])').forEach(row => {
                 const select = row.querySelector('.bulk-schedule-todo-period');
                 select.value = periodType;
                 select.dispatchEvent(new Event('change'));
@@ -14658,14 +14721,27 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             openBulkScheduleModal();
         }
 
+        // The fixed set/order of to-dos this popup opened with, and every
+        // scheduled result accumulated across however many Schedule clicks
+        // happen before it's closed - together these are what
+        // rebuildBulkScheduleModalRows renders on every attempt, so a to-do
+        // scheduled on an earlier click stays visible (as Scheduled) even
+        // after a later click only resubmits what's still pending.
+        let bulkScheduleRowOrder = [];
+        let bulkScheduleScheduledResults = [];
+
         function openBulkScheduleModal() {
             if (selectedTodoIds.size === 0) return;
+            bulkScheduleRowOrder = Array.from(selectedTodoIds);
+            bulkScheduleScheduledResults = [];
             document.getElementById('bulk-schedule-count').textContent =
                 `${selectedTodoIds.size} to-do${selectedTodoIds.size === 1 ? '' : 's'} selected`;
+            document.getElementById('bulk-schedule-confirm-btn').style.display = '';
+            document.getElementById('bulk-schedule-apply-all').style.display = '';
             resetBulkScheduleApplyAll();
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
-            Array.from(selectedTodoIds).forEach(id => {
+            bulkScheduleRowOrder.forEach(id => {
                 const todo = todosList.find(t => t.id === id);
                 if (todo) list.appendChild(buildBulkScheduleTodoRow(todo));
             });
@@ -14677,7 +14753,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         async function runBulkScheduleTodos() {
-            const rows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row'));
+            const rows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-scheduled="true"])'));
             const items = [];
             for (const row of rows) {
                 const periodType = row.querySelector('.bulk-schedule-todo-period').value;
@@ -14720,22 +14796,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     // notFinished, so it correctly stays on the card.
                     data.scheduled.forEach(s => removeTodoFromMorningCheckin(s.todoId));
                     data.scheduled.forEach(s => selectedTodoIds.delete(s.todoId));
+                    bulkScheduleScheduledResults.push(...data.scheduled);
                     renderTodosPage();
                     if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
 
-                    // A to-do never gets silently moved off the period
-                    // Francis picked for it (see todos_bulk_schedule) - if it
-                    // didn't fit there, this stays right here in the same
-                    // popup (title still "Schedule with Ashanti") with its
-                    // own reason, instead of turning into a chat message, so
-                    // he can pick a different period and hit Schedule again
-                    // without leaving the popup.
-                    if (data.unscheduled.length) {
-                        rebuildBulkScheduleModalFromUnscheduled(data.unscheduled);
-                    } else {
-                        selectedTodoIds.clear();
-                        closeBulkScheduleModal();
-                    }
+                    // The popup never closes itself on a Schedule click - a
+                    // to-do never gets silently moved off the period Francis
+                    // picked for it (see todos_bulk_schedule), and this is
+                    // the one place, not Ashanti's chat, that states the
+                    // outcome for every to-do it opened with: scheduled ones
+                    // show as Scheduled, anything that didn't fit stays with
+                    // its own reason so he can pick a different period and
+                    // hit Schedule again. Even a clean sweep says so here
+                    // rather than just vanishing.
+                    rebuildBulkScheduleModalRows(data.unscheduled);
                 }
             } catch (e) {
                 console.error('Bulk schedule failed:', e);
