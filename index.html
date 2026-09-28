@@ -14572,11 +14572,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         lines.push(`Scheduled ${data.scheduled.length} item${data.scheduled.length === 1 ? '' : 's'}:`);
                         data.scheduled.forEach(s => {
                             const when = new Date(s.event.start).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-                            lines.push(`- ${s.title}: ${when}${s.pushedToNextPeriod ? ' (pushed to the next period - no room in the original one)' : ''}`);
+                            lines.push(`- ${s.title}: ${when}`);
                         });
                     }
+                    // A to-do never gets silently moved off the period Francis
+                    // picked for it (see todos_bulk_schedule) - if it didn't
+                    // fit there, it stays Not Scheduled and shows up here so
+                    // he can select it again and choose a different period.
                     if (data.unscheduled.length) {
-                        lines.push(`${lines.length ? '\n' : ''}Couldn't find room for ${data.unscheduled.length} item${data.unscheduled.length === 1 ? '' : 's'}:`);
+                        lines.push(`${lines.length ? '\n' : ''}Couldn't find room for ${data.unscheduled.length} item${data.unscheduled.length === 1 ? '' : 's'} - select ${data.unscheduled.length === 1 ? 'it' : 'them'} again and pick a different period:`);
                         data.unscheduled.forEach(u => lines.push(`- ${u.title}: ${u.reason}`));
                     }
                     if (!chatHistory['ashanti']) chatHistory['ashanti'] = [];

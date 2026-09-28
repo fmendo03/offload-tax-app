@@ -2619,16 +2619,6 @@ def todos_delete(todo_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# Same length of period, immediately following it - "today" -> tomorrow,
-# a Mon-Sun week -> the next Mon-Sun, "tomorrow" -> the day after. This one
-# rule covers every rollover case a medium-priority to-do needs, without
-# hardcoding "day"/"week" as special cases.
-def _next_period_days(start_date, end_date):
-    length = (end_date - start_date).days + 1
-    next_start = end_date + timedelta(days=1)
-    return [next_start + timedelta(days=i) for i in range(length)]
-
-
 # Deterministic bin-packing scheduler behind the To-Do bulk-schedule action -
 # see the priority rules in the create_project_task/create_file style comment
 # blocks elsewhere: this is exactly the kind of precise interval math that
@@ -2636,11 +2626,14 @@ def _next_period_days(start_date, end_date):
 # the 15-minute post-meeting buffer above) - Ashanti's own reply just narrates
 # what this function actually did.
 #
-# Each to-do carries its own period (chosen per-row in the modal - see
-# buildBulkScheduleTodoRow) rather than the whole batch sharing one, but the
-# priority rules still apply per to-do against its own period: High must fit
-# there or stays unscheduled, Medium falls back to the period immediately
-# following its own if it doesn't fit, Low is pure filler.
+# Each to-do carries its own period, chosen per-row in the modal (see
+# buildBulkScheduleTodoRow) - that's the one Francis picked, so nothing here
+# ever silently reschedules it to a different period. High gets first pick of
+# its own period's free time, then Medium, then Low (same contested day = same
+# priority order as before), but each to-do gets exactly one shot at exactly
+# the period it was given. Anything that doesn't fit comes back unscheduled
+# with a reason, for Francis to reschedule to a different period - see
+# runBulkScheduleTodos.
 @app.route('/todos/bulk-schedule', methods=['POST'])
 def todos_bulk_schedule():
     try:
@@ -2721,23 +2714,18 @@ def todos_bulk_schedule():
                 period_days = [it['start_date'] + timedelta(days=i) for i in range((it['end_date'] - it['start_date']).days + 1)]
 
                 slot = find_slot(todo, period_days)
-                pushed = False
-                if not slot and priority == 'medium':
-                    next_days = _next_period_days(it['start_date'], it['end_date'])
-                    slot = find_slot(todo, next_days)
-                    pushed = True
 
                 if slot:
-                    scheduled.append((todo, create_event_for(todo, *slot), pushed))
+                    scheduled.append((todo, create_event_for(todo, *slot)))
                 elif priority == 'high':
-                    unscheduled.append((todo, "No room in the period, even at highest priority - needs a manual look."))
+                    unscheduled.append((todo, "No availability in the selected period, even at highest priority - try a different period."))
                 elif priority == 'medium':
-                    unscheduled.append((todo, "Didn't fit in this period or the next one."))
+                    unscheduled.append((todo, "No availability in the selected period - try a different period."))
                 else:
-                    unscheduled.append((todo, "No free time left over - stays unscheduled as filler."))
+                    unscheduled.append((todo, "No free time left over in the selected period - try a different period."))
 
             save_calendar_events(working_events)
-            for todo, event, _pushed in scheduled:
+            for todo, event in scheduled:
                 todo['calendarEventId'] = event['id']
                 # Same clean-slate rule as a manual reschedule (see
                 # todos_update) - this writes calendarEventId directly rather
@@ -2749,8 +2737,8 @@ def todos_bulk_schedule():
         return jsonify({
             'success': True,
             'scheduled': [
-                {'todoId': todo['id'], 'title': todo['title'], 'event': event, 'pushedToNextPeriod': pushed}
-                for todo, event, pushed in scheduled
+                {'todoId': todo['id'], 'title': todo['title'], 'event': event}
+                for todo, event in scheduled
             ],
             'unscheduled': [
                 {'todoId': todo['id'], 'title': todo['title'], 'reason': reason}
