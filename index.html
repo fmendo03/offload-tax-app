@@ -2540,29 +2540,51 @@
 
         /* Same office-scene treatment as the 1:1 chat's own office area (see
            .office-background/.office-avatar-large), scaled down into a
-           banner strip across the top of the modal so Ashanti "pops in" the
-           same way she does everywhere else. */
+           left-hand column of the modal, sitting next to the message the
+           same way she does in her own office pane on the agent's page (see
+           .office-area/.office-background/.office-avatar-large). */
         .bulk-schedule-office-banner {
             position: relative;
-            height: 120px;
+            width: 210px;
+            flex-shrink: 0;
             background-image: url('backgrounds/ashanti_office.png');
             background-size: cover;
-            background-position: center 15%;
+            background-position: center;
             background-repeat: no-repeat;
             background-color: #eef0fa;
             overflow: hidden;
-            border-radius: 12px 12px 0 0;
         }
 
         .bulk-schedule-office-avatar {
             position: absolute;
-            bottom: -22px;
-            left: 50%;
+            bottom: -2%;
+            left: 40%;
             transform: translateX(-50%);
-            width: 210px;
-            height: 210px;
+            width: 330px;
+            height: 330px;
             object-fit: cover;
-            object-position: top;
+        }
+
+        .bulk-schedule-apply-all {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        .bulk-schedule-apply-all select {
+            font-size: 12px;
+            padding: 5px 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            color: #333;
+        }
+
+        #bulk-schedule-apply-all-custom {
+            margin-bottom: 10px;
         }
 
         /* One row per to-do in the bulk-schedule modal (see
@@ -5709,13 +5731,21 @@
          per-row reason and retry live right here instead of as a separate
          chat message. -->
     <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 12px; max-width: 420px; width: 90%; max-height: 85vh; overflow-y: auto;">
+        <div style="background: white; border-radius: 12px; max-width: 640px; width: 94%; max-height: 85vh; display: flex; overflow: hidden;">
             <div class="bulk-schedule-office-banner" id="bulk-schedule-office-banner">
                 <img class="bulk-schedule-office-avatar" id="bulk-schedule-office-avatar" src="avatars/ashanti.png" alt="Ashanti">
             </div>
-            <div style="padding: 18px 26px 26px;">
+            <div style="flex: 1; min-width: 0; padding: 22px 26px; overflow-y: auto;">
                 <h3 style="margin: 0 0 6px;">Schedule with Ashanti</h3>
-                <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 12px;"></div>
+                <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 14px;"></div>
+                <div class="bulk-schedule-apply-all" id="bulk-schedule-apply-all">
+                    <label for="bulk-schedule-apply-all-select">Apply to all:</label>
+                    <select id="bulk-schedule-apply-all-select"></select>
+                </div>
+                <div class="bulk-schedule-todo-custom-range" id="bulk-schedule-apply-all-custom">
+                    <input type="date" id="bulk-schedule-apply-all-start">
+                    <input type="date" id="bulk-schedule-apply-all-end">
+                </div>
                 <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
                 <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 22px;">
                     <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
@@ -14461,6 +14491,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 end.setDate(end.getDate() + 6);
                 return { start: toISO(start), end: toISO(end) };
             }
+            // Open-ended search for the soonest opening, regardless of which
+            // day - reuses the exact same day-by-day free-slot search as
+            // every other period (see find_slot in todos_bulk_schedule),
+            // just given a wide enough window that it effectively means "as
+            // soon as there's room" instead of "within this specific range".
+            if (periodType === 'next_available') {
+                const end = new Date(today);
+                end.setDate(end.getDate() + 89);
+                return { start: toISO(today), end: toISO(end) };
+            }
             return null;
         }
 
@@ -14479,8 +14519,35 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             ['today', 'Today'],
             ['tomorrow', 'Tomorrow'],
             ['this_week', 'This week'],
-            ['next_week', 'Next week']
+            ['next_week', 'Next week'],
+            ['next_available', 'Next available opening']
         ];
+
+        // Appends every period option, including Custom range, to a <select>
+        // - shared by each row's own dropdown and the "Apply to all"
+        // convenience dropdown so both always offer the exact same choices.
+        function populateBulkSchedulePeriodSelect(select) {
+            select.innerHTML = '';
+            BULK_SCHEDULE_PERIODS.forEach(([value, label]) => {
+                const opt = document.createElement('option');
+                opt.value = value;
+                if (value === 'next_available') {
+                    // Open-ended - a fixed date range next to the label
+                    // would misleadingly suggest it's bound to that window.
+                    opt.textContent = label;
+                } else {
+                    const range = computeBulkSchedulePeriod(value);
+                    opt.textContent = range.start === range.end
+                        ? `${label} (${formatShortDate(range.start)})`
+                        : `${label} (${formatShortDate(range.start)}-${formatShortDate(range.end)})`;
+                }
+                select.appendChild(opt);
+            });
+            const customOpt = document.createElement('option');
+            customOpt.value = 'custom';
+            customOpt.textContent = 'Custom range';
+            select.appendChild(customOpt);
+        }
 
         // One row per selected to-do (title + its own period dropdown +
         // a custom-range pair that only shows for that row) - lets each
@@ -14502,19 +14569,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const select = document.createElement('select');
             select.className = 'bulk-schedule-todo-period';
-            BULK_SCHEDULE_PERIODS.forEach(([value, label]) => {
-                const range = computeBulkSchedulePeriod(value);
-                const opt = document.createElement('option');
-                opt.value = value;
-                opt.textContent = range.start === range.end
-                    ? `${label} (${formatShortDate(range.start)})`
-                    : `${label} (${formatShortDate(range.start)}-${formatShortDate(range.end)})`;
-                select.appendChild(opt);
-            });
-            const customOpt = document.createElement('option');
-            customOpt.value = 'custom';
-            customOpt.textContent = 'Custom range';
-            select.appendChild(customOpt);
+            populateBulkSchedulePeriodSelect(select);
 
             const customRange = document.createElement('div');
             customRange.className = 'bulk-schedule-todo-custom-range';
@@ -14561,6 +14616,37 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
             document.getElementById('bulk-schedule-count').textContent =
                 `${unscheduled.length} to-do${unscheduled.length === 1 ? '' : 's'} still need${unscheduled.length === 1 ? 's' : ''} a period`;
+            resetBulkScheduleApplyAll();
+        }
+
+        // "Apply to all" sets every row's own dropdown (and, for Custom
+        // range, every row's own date inputs) to one chosen period in a
+        // single step instead of setting each row by hand - each row can
+        // still be changed individually afterward, this just picks the
+        // starting point.
+        function resetBulkScheduleApplyAll() {
+            const select = document.getElementById('bulk-schedule-apply-all-select');
+            populateBulkSchedulePeriodSelect(select);
+            select.insertBefore(new Option('Choose a period…', ''), select.firstChild);
+            select.value = '';
+            const todayIso = computeBulkSchedulePeriod('today').start;
+            document.getElementById('bulk-schedule-apply-all-start').value = todayIso;
+            document.getElementById('bulk-schedule-apply-all-end').value = todayIso;
+            document.getElementById('bulk-schedule-apply-all-custom').classList.remove('visible');
+        }
+
+        function applyBulkSchedulePeriodToAllRows(periodType) {
+            const applyAllStart = document.getElementById('bulk-schedule-apply-all-start').value;
+            const applyAllEnd = document.getElementById('bulk-schedule-apply-all-end').value;
+            document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row').forEach(row => {
+                const select = row.querySelector('.bulk-schedule-todo-period');
+                select.value = periodType;
+                select.dispatchEvent(new Event('change'));
+                if (periodType === 'custom') {
+                    if (applyAllStart) row.querySelector('.bulk-schedule-todo-start').value = applyAllStart;
+                    if (applyAllEnd) row.querySelector('.bulk-schedule-todo-end').value = applyAllEnd;
+                }
+            });
         }
 
         // Opens the period-picker used by the To-Do page's bulk toolbar,
@@ -14576,6 +14662,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (selectedTodoIds.size === 0) return;
             document.getElementById('bulk-schedule-count').textContent =
                 `${selectedTodoIds.size} to-do${selectedTodoIds.size === 1 ? '' : 's'} selected`;
+            resetBulkScheduleApplyAll();
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
             Array.from(selectedTodoIds).forEach(id => {
@@ -15531,6 +15618,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderTodosPage();
         });
         document.getElementById('todos-bulk-schedule-btn').addEventListener('click', openBulkScheduleModal);
+        document.getElementById('bulk-schedule-apply-all-select').addEventListener('change', (e) => {
+            const value = e.target.value;
+            const customDiv = document.getElementById('bulk-schedule-apply-all-custom');
+            customDiv.classList.toggle('visible', value === 'custom');
+            if (value && value !== 'custom') applyBulkSchedulePeriodToAllRows(value);
+        });
+        ['bulk-schedule-apply-all-start', 'bulk-schedule-apply-all-end'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => {
+                if (document.getElementById('bulk-schedule-apply-all-select').value === 'custom') {
+                    applyBulkSchedulePeriodToAllRows('custom');
+                }
+            });
+        });
         document.getElementById('bulk-schedule-cancel-btn').addEventListener('click', closeBulkScheduleModal);
         document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', runBulkScheduleTodos);
         document.getElementById('bulk-schedule-modal').addEventListener('click', (e) => {
