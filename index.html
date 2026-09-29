@@ -2702,31 +2702,161 @@
             margin-right: 4px;
         }
 
-        /* Same office-scene treatment as the 1:1 chat's own office area (see
-           .office-background/.office-avatar-large), scaled down into a
-           left-hand column of the modal, sitting next to the message the
-           same way she does in her own office pane on the agent's page (see
-           .office-area/.office-background/.office-avatar-large). */
-        .bulk-schedule-office-banner {
-            position: relative;
-            width: 210px;
+        /* Compact header - a small circular portrait rather than the full
+           office-scene column this modal used before the preview calendar
+           needed that space (see .bulk-schedule-body below). */
+        .bulk-schedule-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 18px 24px;
+            border-bottom: 1px solid #eee;
             flex-shrink: 0;
-            background-image: url('backgrounds/ashanti_office.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-color: #eef0fa;
-            overflow: hidden;
         }
 
-        .bulk-schedule-office-avatar {
-            position: absolute;
-            bottom: -2%;
-            left: 40%;
-            transform: translateX(-50%);
-            width: 330px;
-            height: 330px;
+        .bulk-schedule-header-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
             object-fit: cover;
+            object-position: top;
+            background: #eef0fa;
+            flex-shrink: 0;
+        }
+
+        .bulk-schedule-count {
+            font-size: 13px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        /* List (left) + live calendar preview (right) - the preview needs
+           real width to be useful, so this modal is much wider than a
+           typical popup (see its inline max-width/width). */
+        .bulk-schedule-body {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .bulk-schedule-list-pane {
+            width: 320px;
+            flex-shrink: 0;
+            padding: 16px 20px;
+            overflow-y: auto;
+            border-right: 1px solid #eee;
+        }
+
+        .bulk-schedule-preview-pane {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 16px 20px;
+        }
+
+        .bulk-schedule-preview-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .bulk-schedule-preview-days-header {
+            display: flex;
+            flex-shrink: 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .bulk-schedule-preview-day-header {
+            flex: 1;
+            min-width: 0;
+            text-align: center;
+            padding: 4px 2px;
+            font-size: 11px;
+            color: #666;
+        }
+
+        .bulk-schedule-preview-day-header .dow {
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .bulk-schedule-preview-day-header.today {
+            color: #1F3A5F;
+            font-weight: 700;
+        }
+
+        .bulk-schedule-preview-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        /* Read-only context - whatever's already on the calendar, shown
+           muted so it doesn't compete visually with what this popup is
+           actually offering to place. */
+        .bulk-schedule-preview-block-readonly {
+            position: absolute;
+            left: 2px;
+            right: 2px;
+            background: #f0f0f0;
+            border-left: 3px solid #bbb;
+            border-radius: 3px;
+            font-size: 10px;
+            color: #888;
+            padding: 2px 4px;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        /* A to-do this run of Schedule/drag-drop actually placed - accented
+           and draggable to nudge it to a different day/time right here (see
+           renderBulkSchedulePreviewCalendar/placeBulkScheduleDrop). */
+        .bulk-schedule-preview-block {
+            position: absolute;
+            left: 2px;
+            right: 2px;
+            background: #dce7f5;
+            border-left: 3px solid #1F3A5F;
+            border-radius: 3px;
+            font-size: 11px;
+            color: #1F3A5F;
+            padding: 2px 5px;
+            overflow: hidden;
+            cursor: grab;
+            z-index: 2;
+        }
+
+        .bulk-schedule-preview-block:active {
+            cursor: grabbing;
+        }
+
+        .bulk-schedule-preview-block.drag-hidden {
+            opacity: 0.35;
+        }
+
+        .bulk-schedule-preview-day-col.drop-target {
+            background-color: rgba(31, 58, 95, 0.06);
+        }
+
+        .bulk-schedule-todo-duration {
+            flex-shrink: 0;
+            font-size: 11px;
+            color: #777;
+        }
+
+        .bulk-schedule-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            padding: 16px 24px;
+            border-top: 1px solid #eee;
+            flex-shrink: 0;
         }
 
         .bulk-schedule-apply-all {
@@ -2755,25 +2885,27 @@
            buildBulkScheduleTodoRow) - each carries its own period dropdown
            rather than one period applying to every selected to-do. */
         .bulk-schedule-todo-list {
-            max-height: 320px;
-            overflow-y: auto;
             display: flex;
             flex-direction: column;
             gap: 10px;
             margin: 4px 0 16px;
-            padding-right: 4px;
         }
 
         .bulk-schedule-todo-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
+            cursor: grab;
+        }
+
+        .bulk-schedule-todo-row.dragging {
+            opacity: 0.5;
         }
 
         .bulk-schedule-todo-title {
-            flex: 1 1 140px;
+            flex: 1 1 100px;
             min-width: 0;
             font-size: 13px;
             color: #333;
@@ -5948,26 +6080,44 @@
          per-row reason and retry live right here instead of as a separate
          chat message. -->
     <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 12px; max-width: 640px; width: 94%; max-height: 85vh; display: flex; overflow: hidden;">
-            <div class="bulk-schedule-office-banner" id="bulk-schedule-office-banner">
-                <img class="bulk-schedule-office-avatar" id="bulk-schedule-office-avatar" src="avatars/ashanti.png" alt="Ashanti">
+        <div style="background: white; border-radius: 12px; max-width: 1100px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
+            <div class="bulk-schedule-header">
+                <img class="bulk-schedule-header-avatar" src="avatars/ashanti.png" alt="Ashanti">
+                <div>
+                    <h3 style="margin: 0;">Schedule with Ashanti</h3>
+                    <div id="bulk-schedule-count" class="bulk-schedule-count"></div>
+                </div>
             </div>
-            <div style="flex: 1; min-width: 0; padding: 22px 26px; overflow-y: auto;">
-                <h3 style="margin: 0 0 6px;">Schedule with Ashanti</h3>
-                <div id="bulk-schedule-count" style="font-size: 13px; color: #666; margin-bottom: 14px;"></div>
-                <div class="bulk-schedule-apply-all" id="bulk-schedule-apply-all">
-                    <label for="bulk-schedule-apply-all-select">Apply to all:</label>
-                    <select id="bulk-schedule-apply-all-select"></select>
+            <div class="bulk-schedule-body">
+                <div class="bulk-schedule-list-pane">
+                    <div class="bulk-schedule-apply-all" id="bulk-schedule-apply-all">
+                        <label for="bulk-schedule-apply-all-select">Apply to all:</label>
+                        <select id="bulk-schedule-apply-all-select"></select>
+                    </div>
+                    <div class="bulk-schedule-todo-custom-range" id="bulk-schedule-apply-all-custom">
+                        <input type="date" id="bulk-schedule-apply-all-start">
+                        <input type="date" id="bulk-schedule-apply-all-end">
+                    </div>
+                    <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
                 </div>
-                <div class="bulk-schedule-todo-custom-range" id="bulk-schedule-apply-all-custom">
-                    <input type="date" id="bulk-schedule-apply-all-start">
-                    <input type="date" id="bulk-schedule-apply-all-end">
+                <div class="bulk-schedule-preview-pane">
+                    <div class="bulk-schedule-preview-nav">
+                        <button type="button" class="calendar-week-arrow" id="bulk-schedule-preview-prev-btn">&#8249;</button>
+                        <button type="button" class="calendar-week-arrow" id="bulk-schedule-preview-next-btn">&#8250;</button>
+                        <span id="bulk-schedule-preview-label"></span>
+                    </div>
+                    <div class="bulk-schedule-preview-days-header" id="bulk-schedule-preview-days-header"></div>
+                    <div class="bulk-schedule-preview-scroll" id="bulk-schedule-preview-scroll">
+                        <div class="calendar-week-grid">
+                            <div class="calendar-week-gutter" id="bulk-schedule-preview-gutter"></div>
+                            <div class="calendar-week-columns" id="bulk-schedule-preview-columns"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
-                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 22px;">
-                    <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
-                    <button id="bulk-schedule-confirm-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
-                </div>
+            </div>
+            <div class="bulk-schedule-footer">
+                <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                <button id="bulk-schedule-confirm-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
             </div>
         </div>
     </div>
@@ -15023,6 +15173,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return `${m}/${d}/${String(y).slice(-2)}`;
         }
 
+        // "30 min" / "1h" / "1h 30m" - the duration badge shown next to each
+        // row's title in the bulk-schedule popup (see buildBulkScheduleTodoRow/
+        // buildBulkScheduleScheduledRow) and used to compute a drag-drop
+        // placement's end time (see placeBulkScheduleDrop).
+        function formatEstimatedMinutes(minutes) {
+            if (!minutes || minutes < 60) return `${minutes || 0} min`;
+            const h = Math.floor(minutes / 60), m = minutes % 60;
+            return m ? `${h}h ${m}m` : `${h}h`;
+        }
+
         // Each option's date(s), computed fresh per row so "Today"/"This
         // week"/etc. are always relative to now rather than baked in once.
         const BULK_SCHEDULE_PERIODS = [
@@ -15072,10 +15232,29 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             row.className = 'bulk-schedule-todo-row';
             row.dataset.todoId = todo.id;
 
+            // Draggable straight onto the preview calendar (see
+            // renderBulkSchedulePreviewCalendar/placeBulkScheduleDrop) - an
+            // alternative to picking a period and hitting Schedule, for when
+            // Francis can just see the open slot he wants right there.
+            row.draggable = true;
+            row.addEventListener('dragstart', (evt) => {
+                bulkScheduleDraggedPayload = { kind: 'unscheduled', todoId: todo.id };
+                row.classList.add('dragging');
+                evt.dataTransfer.effectAllowed = 'copy';
+            });
+            row.addEventListener('dragend', () => {
+                row.classList.remove('dragging');
+                bulkScheduleDraggedPayload = null;
+            });
+
             const title = document.createElement('span');
             title.className = 'bulk-schedule-todo-title';
             title.textContent = todo.title;
             title.title = todo.title;
+
+            const duration = document.createElement('span');
+            duration.className = 'bulk-schedule-todo-duration';
+            duration.textContent = formatEstimatedMinutes(todo.estimatedMinutes);
 
             const select = document.createElement('select');
             select.className = 'bulk-schedule-todo-period';
@@ -15100,6 +15279,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
 
             row.appendChild(title);
+            row.appendChild(duration);
             row.appendChild(select);
             row.appendChild(customRange);
 
@@ -15128,12 +15308,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             title.textContent = entry.title;
             title.title = entry.title;
 
+            const duration = document.createElement('span');
+            duration.className = 'bulk-schedule-todo-duration';
+            const linkedTodo = todosList.find(t => t.id === entry.todoId);
+            duration.textContent = formatEstimatedMinutes(linkedTodo ? linkedTodo.estimatedMinutes : null);
+
             const badge = document.createElement('span');
             badge.className = 'bulk-schedule-todo-scheduled-badge';
             const when = new Date(entry.event.start).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
             badge.textContent = `✓ Scheduled — ${when}`;
 
             row.appendChild(title);
+            row.appendChild(duration);
             row.appendChild(badge);
             return row;
         }
@@ -15141,14 +15327,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Rebuilds the modal's full list - every to-do it was opened with,
         // in the same order, each shown as either scheduled (see
         // buildBulkScheduleScheduledRow, using bulkScheduleScheduledResults
-        // accumulated across every Schedule click this popup has seen) or
-        // still needing a period, with its latest reason. Called after every
-        // Schedule attempt, success or failure, so the popup always states
-        // the outcome instead of closing silently - see runBulkScheduleTodos.
-        function rebuildBulkScheduleModalRows(unscheduled) {
+        // accumulated across every Schedule click *and* every drag-drop
+        // placement this popup has seen) or still needing a period, with its
+        // latest reason (bulkScheduleUnscheduledReasons, refreshed after
+        // every /todos/bulk-schedule POST and pruned by drag-drop - see
+        // placeBulkScheduleDrop). Called after any of those, so the popup
+        // always states the outcome instead of closing silently. Also
+        // re-renders the preview calendar, since what counts as "scheduled"
+        // just changed.
+        function rebuildBulkScheduleModalRows() {
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
-            const unscheduledById = new Map(unscheduled.map(u => [u.todoId, u]));
+            const unscheduledById = new Map(bulkScheduleUnscheduledReasons.map(u => [u.todoId, u]));
             bulkScheduleRowOrder.forEach(id => {
                 const scheduledEntry = bulkScheduleScheduledResults.find(s => s.todoId === id);
                 if (scheduledEntry) {
@@ -15162,10 +15352,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const total = bulkScheduleRowOrder.length;
             const scheduledCount = bulkScheduleScheduledResults.length;
-            const unscheduledCount = unscheduled.length;
+            // Not bulkScheduleUnscheduledReasons.length - a row that's still
+            // just sitting there pending (never submitted, e.g. the popup
+            // was opened and a couple of to-dos got dragged straight onto
+            // the preview before anyone hit Schedule) has no reason yet, but
+            // still isn't scheduled, so it has to count here too.
+            const unscheduledCount = total - scheduledCount;
             document.getElementById('bulk-schedule-count').textContent = unscheduledCount === 0
                 ? `All ${total} to-do${total === 1 ? '' : 's'} scheduled!`
-                : `${scheduledCount} scheduled, ${unscheduledCount} still need${unscheduledCount === 1 ? 's' : ''} a different period`;
+                : `${scheduledCount} scheduled, ${unscheduledCount} still need${unscheduledCount === 1 ? 's' : ''} a period`;
 
             // Nothing left to submit once every to-do has a spot - the
             // Schedule button (and the now-pointless Apply to all) hide
@@ -15179,6 +15374,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             } else {
                 resetBulkScheduleApplyAll();
             }
+
+            renderBulkSchedulePreviewCalendar();
         }
 
         // "Apply to all" sets every row's own dropdown (and, for Custom
@@ -15226,8 +15423,25 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // rebuildBulkScheduleModalRows renders on every attempt, so a to-do
         // scheduled on an earlier click stays visible (as Scheduled) even
         // after a later click only resubmits what's still pending.
+        // bulkScheduleUnscheduledReasons mirrors the latest "couldn't place
+        // this" reasons - refreshed after every /todos/bulk-schedule POST,
+        // pruned by todoId whenever a drag-drop resolves one manually (see
+        // placeBulkScheduleDrop) - so rebuildBulkScheduleModalRows never
+        // needs the caller to hand it a fresh list.
         let bulkScheduleRowOrder = [];
         let bulkScheduleScheduledResults = [];
+        let bulkScheduleUnscheduledReasons = [];
+        // The preview calendar's currently-viewed week (see
+        // renderBulkSchedulePreviewCalendar/bulkSchedulePreviewNav) - reset
+        // to the week containing today every time the popup opens.
+        let bulkSchedulePreviewWeekStart = null;
+        // Set on dragstart, read on drop - dataTransfer's own payload isn't
+        // readable during dragover for the drop-target highlight, same
+        // reasoning as draggedSuggestionId. {kind:'unscheduled', todoId} for
+        // a list row being placed for the first time, or
+        // {kind:'scheduled', todoId, eventId} for an already-placed preview
+        // block being nudged to a new day/time.
+        let bulkScheduleDraggedPayload = null;
 
         function openBulkScheduleModal() {
             if (selectedTodoIds.size === 0) return;
@@ -15242,6 +15456,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
             if (bulkScheduleRowOrder.length === 0) return;
             bulkScheduleScheduledResults = [];
+            bulkScheduleUnscheduledReasons = [];
+            bulkSchedulePreviewWeekStart = getCalendarWeekStart(new Date());
             document.getElementById('bulk-schedule-count').textContent =
                 `${bulkScheduleRowOrder.length} to-do${bulkScheduleRowOrder.length === 1 ? '' : 's'} selected`;
             document.getElementById('bulk-schedule-confirm-btn').style.display = '';
@@ -15254,11 +15470,232 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const todo = todosList.find(t => t.id === id);
                 if (todo) list.appendChild(buildBulkScheduleTodoRow(todo));
             });
+            renderBulkSchedulePreviewCalendar();
             document.getElementById('bulk-schedule-modal').style.display = 'flex';
         }
 
         function closeBulkScheduleModal() {
             document.getElementById('bulk-schedule-modal').style.display = 'none';
+        }
+
+        function bulkSchedulePreviewNav(deltaWeeks) {
+            bulkSchedulePreviewWeekStart.setDate(bulkSchedulePreviewWeekStart.getDate() + deltaWeeks * 7);
+            renderBulkSchedulePreviewCalendar();
+        }
+
+        // Context only - whatever's already on the calendar that this run
+        // didn't just place, shown muted (pointer-events: none) so it never
+        // competes with, or gets mistaken for, something draggable.
+        function buildBulkSchedulePreviewReadonlyBlock(e) {
+            const start = new Date(e.start);
+            const end = e.end ? new Date(e.end) : new Date(start.getTime() + 30 * 60000);
+            const startMin = start.getHours() * 60 + start.getMinutes();
+            let durationMin = Math.max(15, (end - start) / 60000);
+            if (startMin + durationMin > 24 * 60) durationMin = 24 * 60 - startMin;
+
+            const block = document.createElement('div');
+            block.className = 'bulk-schedule-preview-block-readonly';
+            block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+            block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+            block.textContent = e.title;
+            block.title = e.title;
+            return block;
+        }
+
+        // A to-do this run of Schedule (or a drag-drop) actually placed -
+        // draggable to a different day/time right here, via the same
+        // dragstart/drop mechanism as a still-pending list row (see
+        // buildBulkScheduleTodoRow/placeBulkScheduleDrop), just moving an
+        // existing event instead of creating a new one.
+        function buildBulkSchedulePreviewBlock(entry) {
+            const e = entry.event;
+            const start = new Date(e.start);
+            const end = e.end ? new Date(e.end) : new Date(start.getTime() + 30 * 60000);
+            const startMin = start.getHours() * 60 + start.getMinutes();
+            let durationMin = Math.max(15, (end - start) / 60000);
+            if (startMin + durationMin > 24 * 60) durationMin = 24 * 60 - startMin;
+
+            const block = document.createElement('div');
+            block.className = 'bulk-schedule-preview-block';
+            block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+            block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+            block.textContent = entry.title;
+            block.title = `${entry.title} - drag to move`;
+            block.draggable = true;
+            block.addEventListener('dragstart', (evt) => {
+                bulkScheduleDraggedPayload = { kind: 'scheduled', todoId: entry.todoId, eventId: e.id };
+                block.classList.add('drag-hidden');
+                evt.dataTransfer.effectAllowed = 'move';
+            });
+            block.addEventListener('dragend', () => {
+                block.classList.remove('drag-hidden');
+                bulkScheduleDraggedPayload = null;
+            });
+            return block;
+        }
+
+        // The week of the real Calendar page's own grid (day headers, hour
+        // gutter, blackout/business/personal shading via
+        // buildAvailabilityBlockEls) rebuilt inside the popup so Francis can
+        // see where everything landed relative to what's already on the
+        // calendar, and drag things around without leaving the popup. Real
+        // events show read-only for context; this run's own placements
+        // (bulkScheduleScheduledResults) are the draggable ones. Called
+        // after any change to what's scheduled (see rebuildBulkScheduleModalRows)
+        // and on week navigation (bulkSchedulePreviewNav).
+        function renderBulkSchedulePreviewCalendar() {
+            if (!bulkSchedulePreviewWeekStart) return;
+            const days = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(bulkSchedulePreviewWeekStart);
+                d.setDate(d.getDate() + i);
+                days.push(d);
+            }
+            const todayKey = calendarDateKey(new Date());
+            const weekEnd = days[6];
+            document.getElementById('bulk-schedule-preview-label').textContent =
+                bulkSchedulePreviewWeekStart.getMonth() === weekEnd.getMonth()
+                    ? `${bulkSchedulePreviewWeekStart.toLocaleDateString(undefined, { month: 'short' })} ${bulkSchedulePreviewWeekStart.getDate()}–${weekEnd.getDate()}`
+                    : `${bulkSchedulePreviewWeekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${weekEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+
+            const headerRow = document.getElementById('bulk-schedule-preview-days-header');
+            headerRow.innerHTML = '';
+            headerRow.appendChild(Object.assign(document.createElement('div'), { className: 'calendar-week-gutter-spacer' }));
+            days.forEach(d => {
+                const key = calendarDateKey(d);
+                const cell = document.createElement('div');
+                cell.className = 'bulk-schedule-preview-day-header' + (key === todayKey ? ' today' : '');
+                cell.innerHTML = `<div class="dow">${d.toLocaleDateString(undefined, { weekday: 'short' })}</div><div>${d.getDate()}</div>`;
+                headerRow.appendChild(cell);
+            });
+
+            const gridHeight = 24 * CALENDAR_PX_PER_HOUR;
+            const gutter = document.getElementById('bulk-schedule-preview-gutter');
+            gutter.innerHTML = '';
+            gutter.style.height = `${gridHeight}px`;
+            for (let h = 0; h < 24; h++) {
+                const lbl = document.createElement('div');
+                lbl.className = 'calendar-week-hour-label';
+                lbl.style.top = `${h * CALENDAR_PX_PER_HOUR}px`;
+                const hourDate = new Date(2000, 0, 1, h, 0);
+                lbl.textContent = h === 0 ? '' : hourDate.toLocaleTimeString(undefined, { hour: 'numeric' });
+                gutter.appendChild(lbl);
+            }
+
+            const columns = document.getElementById('bulk-schedule-preview-columns');
+            columns.innerHTML = '';
+            const slotHeight = CALENDAR_PX_PER_HOUR * CALENDAR_SLOT_MINUTES / 60;
+            const scheduledEventIds = new Set(bulkScheduleScheduledResults.map(s => s.event.id));
+            days.forEach(d => {
+                const key = calendarDateKey(d);
+                const col = document.createElement('div');
+                col.className = 'calendar-week-day-col bulk-schedule-preview-day-col';
+                col.style.height = `${gridHeight}px`;
+                col.style.setProperty('--slot-height', `${slotHeight}px`);
+                col.dataset.date = key;
+
+                buildAvailabilityBlockEls(d.getDay()).forEach(el => col.appendChild(el));
+
+                for (let h = 1; h < 24; h++) {
+                    const line = document.createElement('div');
+                    line.className = 'calendar-week-hour-line';
+                    line.style.top = `${h * CALENDAR_PX_PER_HOUR}px`;
+                    col.appendChild(line);
+                }
+
+                if (key === todayKey) {
+                    const now = new Date();
+                    const nowLine = document.createElement('div');
+                    nowLine.className = 'calendar-week-now-line';
+                    nowLine.style.top = `${(now.getHours() + now.getMinutes() / 60) * CALENDAR_PX_PER_HOUR}px`;
+                    col.appendChild(nowLine);
+                }
+
+                // Real events for this day, muted context - excludes
+                // anything this run itself placed (drawn separately below,
+                // draggable) so the same event doesn't render twice.
+                (calendarEvents || [])
+                    .filter(e => e.status !== 'cancelled' && !e.allDay && (e.start || '').startsWith(key) && !scheduledEventIds.has(e.id))
+                    .forEach(e => col.appendChild(buildBulkSchedulePreviewReadonlyBlock(e)));
+
+                bulkScheduleScheduledResults
+                    .filter(s => (s.event.start || '').startsWith(key))
+                    .forEach(s => col.appendChild(buildBulkSchedulePreviewBlock(s)));
+
+                col.addEventListener('dragover', (evt) => {
+                    if (!bulkScheduleDraggedPayload) return;
+                    evt.preventDefault();
+                    col.classList.add('drop-target');
+                });
+                col.addEventListener('dragleave', () => col.classList.remove('drop-target'));
+                col.addEventListener('drop', (evt) => {
+                    evt.preventDefault();
+                    col.classList.remove('drop-target');
+                    if (!bulkScheduleDraggedPayload) return;
+                    placeBulkScheduleDrop(key, calendarSlotMinutesFromY(col, evt.clientY));
+                });
+
+                columns.appendChild(col);
+            });
+        }
+
+        // Drop handler for both drag sources - a still-pending list row
+        // (creates+links a new event, exactly like saveEventModal's
+        // create-and-link path for a todo-linked event) or an already-placed
+        // preview block (just moves it, keeping its existing duration). No
+        // conflict/blackout check on drop, matching the real Calendar page's
+        // own drag-to-move today - Francis can see the calendar right there
+        // and is deliberately overriding, unlike Ashanti's automatic
+        // scheduling, which does respect the Availability template.
+        async function placeBulkScheduleDrop(dateKey, minutes) {
+            const payload = bulkScheduleDraggedPayload;
+            bulkScheduleDraggedPayload = null;
+            if (!payload) return;
+
+            const startDt = new Date(`${dateKey}T00:00:00`);
+            startDt.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+
+            if (payload.kind === 'unscheduled') {
+                const todo = todosList.find(t => t.id === payload.todoId);
+                if (!todo) return;
+                const endDt = new Date(startDt.getTime() + (todo.estimatedMinutes || 30) * 60000);
+                const data = await createCalendarEvent({
+                    title: todo.title,
+                    start: calendarToLocalISO(startDt),
+                    end: calendarToLocalISO(endDt),
+                    allDay: false,
+                    location: '',
+                    description: todo.details || '',
+                    attachments: []
+                });
+                if (!data.success) {
+                    alert(data.error || 'Could not schedule that to-do there - try again.');
+                    return;
+                }
+                await updateTodoItem(todo.id, { calendar_event_id: data.event.id });
+                await loadCalendarData();
+                removeTodoFromMorningCheckin(todo.id);
+                selectedTodoIds.delete(todo.id);
+                bulkScheduleScheduledResults.push({ todoId: todo.id, title: todo.title, event: data.event });
+                bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => u.todoId !== todo.id);
+                rebuildBulkScheduleModalRows();
+            } else if (payload.kind === 'scheduled') {
+                const entry = bulkScheduleScheduledResults.find(s => s.todoId === payload.todoId);
+                if (!entry) return;
+                const durationMin = Math.max(15, (new Date(entry.event.end) - new Date(entry.event.start)) / 60000);
+                const endDt = new Date(startDt.getTime() + durationMin * 60000);
+                const result = await updateCalendarEvent(payload.eventId, {
+                    start: calendarToLocalISO(startDt),
+                    end: calendarToLocalISO(endDt)
+                });
+                if (!result.success) {
+                    alert(result.error || 'Could not move that item - try again.');
+                    renderBulkSchedulePreviewCalendar();
+                    return;
+                }
+                entry.event = result.event;
+                rebuildBulkScheduleModalRows();
+            }
         }
 
         async function runBulkScheduleTodos() {
@@ -15318,7 +15755,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     // its own reason so he can pick a different period and
                     // hit Schedule again. Even a clean sweep says so here
                     // rather than just vanishing.
-                    rebuildBulkScheduleModalRows(data.unscheduled);
+                    bulkScheduleUnscheduledReasons = data.unscheduled;
+                    rebuildBulkScheduleModalRows();
                 }
             } catch (e) {
                 console.error('Bulk schedule failed:', e);
@@ -16247,6 +16685,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
         document.getElementById('bulk-schedule-cancel-btn').addEventListener('click', closeBulkScheduleModal);
         document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', runBulkScheduleTodos);
+        document.getElementById('bulk-schedule-preview-prev-btn').addEventListener('click', () => bulkSchedulePreviewNav(-1));
+        document.getElementById('bulk-schedule-preview-next-btn').addEventListener('click', () => bulkSchedulePreviewNav(1));
         document.getElementById('bulk-schedule-modal').addEventListener('click', (e) => {
             if (e.target.id === 'bulk-schedule-modal') closeBulkScheduleModal();
         });
