@@ -2672,6 +2672,57 @@
             color: #444 !important;
         }
 
+        .todos-recurrence-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #f7f8fc;
+            border: 1px solid #e2e5f0;
+            border-radius: 6px;
+            margin: -4px 0 4px;
+        }
+
+        .todos-recurrence-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: #444;
+        }
+
+        .todos-recurrence-row input[type="number"] {
+            width: 56px;
+        }
+
+        .todos-weekday-toggles {
+            display: flex;
+            gap: 4px;
+        }
+
+        .todos-weekday-toggle {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid #ccc;
+            background: white;
+            color: #555;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .todos-weekday-toggle.active {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+
+        .todo-recurring-badge {
+            flex-shrink: 0;
+        }
+
         .todos-bulk-toolbar {
             display: flex;
             align-items: center;
@@ -5870,6 +5921,56 @@
                             </label>
                         </div>
                         <div class="topics-new-field">
+                            <label for="todos-new-repeat">Repeat</label>
+                            <select id="todos-new-repeat">
+                                <option value="">Does not repeat</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                        </div>
+                        <!-- Auto-scheduled: each occurrence is created already
+                             on the calendar at this fixed time (see
+                             _ensure_all_series_generated in app.py), so Starts/At
+                             aren't optional the way a one-off to-do's date never
+                             even exists until it's manually scheduled. -->
+                        <div class="todos-recurrence-options" id="todos-new-recurrence-options" style="display:none;">
+                            <div class="todos-recurrence-row">
+                                <label>Every</label>
+                                <input type="number" id="todos-new-recurrence-interval" min="1" value="1">
+                                <span id="todos-new-recurrence-interval-unit">day(s)</span>
+                            </div>
+                            <div class="todos-recurrence-row" id="todos-new-recurrence-weekday-row" style="display:none;">
+                                <label>On</label>
+                                <div class="todos-weekday-toggles" id="todos-new-recurrence-weekdays"></div>
+                            </div>
+                            <div class="todos-recurrence-row" id="todos-new-recurrence-monthday-row" style="display:none;">
+                                <label>On day</label>
+                                <input type="number" id="todos-new-recurrence-monthday" min="1" max="31" value="1">
+                                <span>of the month</span>
+                            </div>
+                            <div class="todos-recurrence-row" id="todos-new-recurrence-yearly-row" style="display:none;">
+                                <label>On</label>
+                                <select id="todos-new-recurrence-month"></select>
+                                <input type="number" id="todos-new-recurrence-day" min="1" max="31" value="1">
+                            </div>
+                            <div class="todos-recurrence-row">
+                                <label>Starts</label>
+                                <input type="date" id="todos-new-recurrence-start">
+                                <label>At</label>
+                                <input type="time" id="todos-new-recurrence-time" value="09:00">
+                            </div>
+                            <div class="todos-recurrence-row">
+                                <label>Ends</label>
+                                <select id="todos-new-recurrence-end-type">
+                                    <option value="never">Never</option>
+                                    <option value="on">On date</option>
+                                </select>
+                                <input type="date" id="todos-new-recurrence-end-date" style="display:none;">
+                            </div>
+                        </div>
+                        <div class="topics-new-field">
                             <label>Attachments</label>
                             <div id="todos-new-attachments-zone"></div>
                             <div class="item-attachment-chip-list" id="todos-new-attachments-list"></div>
@@ -6168,6 +6269,22 @@
             <div style="display: flex; gap: 10px; justify-content: center;">
                 <button id="ashanti-confirm-cancel-btn" style="padding: 10px 18px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
                 <button id="ashanti-confirm-ok-btn" style="padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Continue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- "This one or the whole series" gate - shown whenever an edit or
+         delete touches a to-do/calendar card that's part of a recurring
+         series (see showSeriesScopeModal), so a change never silently
+         applies more broadly than intended. Plain (no Ashanti avatar) since
+         this is the app itself asking, not something she'd say in chat. -->
+    <div id="series-scope-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1160; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 12px; padding: 24px; max-width: 380px; width: 90%; text-align: center;">
+            <div id="series-scope-message" style="font-size: 14px; color: #333; margin-bottom: 18px; line-height: 1.4;"></div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button id="series-scope-this-btn" style="padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;"></button>
+                <button id="series-scope-all-btn" style="padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;"></button>
+                <button id="series-scope-cancel-btn" style="padding: 10px 18px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-top: 4px;">Cancel</button>
             </div>
         </div>
     </div>
@@ -7811,6 +7928,36 @@ function showAshantiConfirm(message, onConfirm, onCancel) {
     function handleOk() { cleanup(); onConfirm(); }
     function handleCancel() { cleanup(); if (onCancel) onCancel(); }
     okBtn.addEventListener('click', handleOk);
+    cancelBtn.addEventListener('click', handleCancel);
+}
+
+// A "this one / this and every future one" gate for editing or deleting a
+// to-do/calendar card that belongs to a recurring series (see seriesId on
+// the to-do) - used by renderTodosPreviewPane's Save/Delete, saveEventModal,
+// and onCalendarEventDragEnd. thisLabel/allLabel are the two action buttons'
+// text (deliberately not "Cancel" - closing without picking either, via the
+// separate Cancel button or the backdrop, does nothing).
+function showSeriesScopeModal(message, thisLabel, allLabel, onThis, onAll, onCancel) {
+    const modal = document.getElementById('series-scope-modal');
+    document.getElementById('series-scope-message').textContent = message;
+    const thisBtn = document.getElementById('series-scope-this-btn');
+    const allBtn = document.getElementById('series-scope-all-btn');
+    const cancelBtn = document.getElementById('series-scope-cancel-btn');
+    thisBtn.textContent = thisLabel;
+    allBtn.textContent = allLabel;
+    modal.style.display = 'flex';
+
+    function cleanup() {
+        modal.style.display = 'none';
+        thisBtn.removeEventListener('click', handleThis);
+        allBtn.removeEventListener('click', handleAll);
+        cancelBtn.removeEventListener('click', handleCancel);
+    }
+    function handleThis() { cleanup(); onThis(); }
+    function handleAll() { cleanup(); onAll(); }
+    function handleCancel() { cleanup(); if (onCancel) onCancel(); }
+    thisBtn.addEventListener('click', handleThis);
+    allBtn.addEventListener('click', handleAll);
     cancelBtn.addEventListener('click', handleCancel);
 }
 
@@ -13300,7 +13447,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (!todo) return '';
             const priorityIcon = TODO_PRIORITY_ICON[todo.priority] || TODO_PRIORITY_ICON.medium;
             const typeIcon = todo.personal ? '\u{1F3E0}' : '\u{1F4BC}';
-            return `${priorityIcon}${typeIcon}`;
+            const recurringIcon = todo.seriesId ? '\u{1F501}' : '';
+            return `${priorityIcon}${typeIcon}${recurringIcon}`;
         }
 
         // --- Calendar event drag/resize (no modal needed) ------------------
@@ -13430,6 +13578,31 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 startDt.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
                 newStart = calendarToLocalISO(startDt);
                 newEnd = calendarToLocalISO(state.origEnd);
+            }
+
+            const linkedTodo = findTodoForCalendarEvent(state.event.id);
+            if (linkedTodo && linkedTodo.seriesId) {
+                const newStartDt = new Date(newStart);
+                const newMinutes = newStartDt.getHours() * 60 + newStartDt.getMinutes();
+                const newDurationMin = (new Date(newEnd) - newStartDt) / 60000;
+                const scope = await new Promise(resolve => {
+                    showSeriesScopeModal(
+                        'This card is part of a recurring to-do. Apply this move to just this card, or to it and every future occurrence in the series?',
+                        'Just this card', 'This and future occurrences',
+                        () => resolve('this'), () => resolve('all'), () => resolve(null)
+                    );
+                });
+                if (!scope) { renderCalendarWeek(); return; }
+                const result = await updateCalendarEvent(state.event.id, { start: newStart, end: newEnd });
+                if (!result.success) {
+                    alert(result.error || 'Could not save that change - it has been reset.');
+                    renderCalendarWeek();
+                    return;
+                }
+                if (scope === 'all') {
+                    await applyEventChangeToSeriesFuture(linkedTodo.seriesId, { timeOfDayMinutes: newMinutes, durationMinutes: newDurationMin }, linkedTodo.id);
+                }
+                return;
             }
 
             const result = await updateCalendarEvent(state.event.id, { start: newStart, end: newEnd });
@@ -13741,6 +13914,64 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return todosList.find(t => t.calendarEventId === eventId) || null;
         }
 
+        function formatMinutesAsHHMM(minutes) {
+            return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+        }
+
+        // "This and all future occurrences" from a calendar-card edit (see
+        // saveEventModal) or a drag/resize (see onCalendarEventDragEnd) -
+        // updates the series template (see /todos/series/<id> POST in
+        // app.py) so occurrences generated from here on pick up the change,
+        // then applies it to every other future, not-yet-completed
+        // occurrence's own todo/event. `changes` may carry title/description/
+        // location (calendar-event text, also copied onto each occurrence's
+        // todo title/details so future-generated ones match) and/or
+        // timeOfDayMinutes + durationMinutes (shifts every other occurrence's
+        // event to that same time of day and length, keeping each on its own
+        // date). exceptTodoId is whichever occurrence the caller already
+        // saved directly.
+        async function applyEventChangeToSeriesFuture(seriesId, changes, exceptTodoId) {
+            const seriesPayload = {};
+            if (changes.title !== undefined) seriesPayload.title = changes.title;
+            if (changes.description !== undefined) seriesPayload.details = changes.description;
+            if (changes.timeOfDayMinutes != null) seriesPayload.time = formatMinutesAsHHMM(changes.timeOfDayMinutes);
+            if (changes.durationMinutes != null) seriesPayload.estimated_minutes = changes.durationMinutes;
+            if (Object.keys(seriesPayload).length) {
+                await fetch(`/todos/series/${seriesId}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(seriesPayload)
+                });
+            }
+
+            const todayKey = calendarDateKey(new Date());
+            const future = todosList.filter(t => t.seriesId === seriesId && !t.completed
+                && (t.occurrenceDate || '') >= todayKey && t.id !== exceptTodoId);
+
+            for (const t of future) {
+                const todoPayload = {};
+                if (changes.title !== undefined) todoPayload.title = changes.title;
+                if (changes.description !== undefined) todoPayload.details = changes.description;
+                if (changes.durationMinutes != null) todoPayload.estimated_minutes = changes.durationMinutes;
+                if (Object.keys(todoPayload).length) await updateTodoItem(t.id, todoPayload);
+
+                if (!t.calendarEventId) continue;
+                const event = calendarEvents.find(e => e.id === t.calendarEventId);
+                const eventPayload = {};
+                if (changes.title !== undefined) eventPayload.title = changes.title;
+                if (changes.description !== undefined) eventPayload.description = changes.description;
+                if (changes.location !== undefined) eventPayload.location = changes.location;
+                if (changes.timeOfDayMinutes != null && event) {
+                    const newStart = new Date(event.start);
+                    newStart.setHours(Math.floor(changes.timeOfDayMinutes / 60), changes.timeOfDayMinutes % 60, 0, 0);
+                    const duration = changes.durationMinutes != null ? changes.durationMinutes
+                        : (new Date(event.end) - new Date(event.start)) / 60000;
+                    eventPayload.start = calendarToLocalISO(newStart);
+                    eventPayload.end = calendarToLocalISO(new Date(newStart.getTime() + duration * 60000));
+                }
+                if (Object.keys(eventPayload).length) await updateCalendarEvent(t.calendarEventId, eventPayload);
+            }
+        }
+
         async function completeCalendarLinkedTodo() {
             if (!calendarEditingEventId) return;
             const todo = findTodoForCalendarEvent(calendarEditingEventId);
@@ -13777,17 +14008,51 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 end = `${endDate}T${endTime}:00`;
             }
 
-            const payload = {
-                title,
-                start,
-                end,
-                allDay,
-                location: document.getElementById('calendar-event-location').value.trim(),
-                description: document.getElementById('calendar-event-description').value.trim(),
-                attachments: calendarModalAttachments
-            };
+            const description = document.getElementById('calendar-event-description').value.trim();
+            const location = document.getElementById('calendar-event-location').value.trim();
+            const payload = { title, start, end, allDay, location, description, attachments: calendarModalAttachments };
 
             if (calendarEditingEventId) {
+                // A card linked to a recurring to-do gets a "just this one or
+                // the whole series" gate before anything saves, but only when
+                // something a series occurrence actually cares about changed
+                // (time of day, duration, or the text fields) - editing
+                // attachments alone, for instance, doesn't ask.
+                const originalEvent = calendarEvents.find(e => e.id === calendarEditingEventId);
+                const linkedTodo = findTodoForCalendarEvent(calendarEditingEventId);
+                if (linkedTodo && linkedTodo.seriesId && originalEvent && !allDay) {
+                    const origStart = new Date(originalEvent.start);
+                    const newStart = new Date(start);
+                    const origMinutes = origStart.getHours() * 60 + origStart.getMinutes();
+                    const newMinutes = newStart.getHours() * 60 + newStart.getMinutes();
+                    const origDuration = (new Date(originalEvent.end) - origStart) / 60000;
+                    const newDuration = (new Date(end) - newStart) / 60000;
+                    const timeChanged = origMinutes !== newMinutes || origDuration !== newDuration;
+                    const textChanged = title !== originalEvent.title
+                        || description !== (originalEvent.description || '')
+                        || location !== (originalEvent.location || '');
+
+                    if (timeChanged || textChanged) {
+                        const scope = await new Promise(resolve => {
+                            showSeriesScopeModal(
+                                'This card is part of a recurring to-do. Apply this change to just this card, or to it and every future occurrence in the series?',
+                                'Just this card', 'This and future occurrences',
+                                () => resolve('this'), () => resolve('all'), () => resolve(null)
+                            );
+                        });
+                        if (!scope) return;
+                        const data = await updateCalendarEvent(calendarEditingEventId, payload);
+                        if (!data.success) { alert(data.error || 'Could not save event.'); return; }
+                        if (scope === 'all') {
+                            const changes = {};
+                            if (textChanged) Object.assign(changes, { title, description, location });
+                            if (timeChanged) Object.assign(changes, { timeOfDayMinutes: newMinutes, durationMinutes: newDuration });
+                            await applyEventChangeToSeriesFuture(linkedTodo.seriesId, changes, linkedTodo.id);
+                        }
+                        closeEventModal();
+                        return;
+                    }
+                }
                 const data = await updateCalendarEvent(calendarEditingEventId, payload);
                 if (!data.success) { alert(data.error || 'Could not save event.'); return; }
             } else {
@@ -14776,6 +15041,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 row.appendChild(personalIcon);
             }
 
+            if (todo.seriesId) {
+                const recurringIcon = document.createElement('span');
+                recurringIcon.className = 'todo-recurring-badge';
+                recurringIcon.textContent = '\u{1F501}';
+                recurringIcon.title = 'Part of a recurring series';
+                row.appendChild(recurringIcon);
+            }
+
             const titleEl = document.createElement('span');
             titleEl.textContent = todo.title;
             titleEl.style.flex = '1';
@@ -14922,6 +15195,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 personalTag.textContent = '\u{1F3E0} Personal';
                 tags.appendChild(personalTag);
             }
+            if (todo.seriesId) {
+                const recurringTag = document.createElement('span');
+                recurringTag.className = 'topics-category-agent-badge';
+                recurringTag.textContent = '\u{1F501} Recurring';
+                tags.appendChild(recurringTag);
+            }
             if (!editingThis) {
                 const editBtn = document.createElement('button');
                 editBtn.type = 'button';
@@ -14983,9 +15262,23 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         alert('Please fill in both the title and details.');
                         return;
                     }
+                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked };
                     unbindClickOutsideToCancel(contentEl);
                     editingTodoId = null;
-                    await updateTodoItem(todo.id, { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked });
+                    if (todo.seriesId) {
+                        showSeriesScopeModal(
+                            'This to-do repeats. Apply this change to just this occurrence, or to it and every future occurrence in the series?',
+                            'Just this one', 'This and future occurrences',
+                            () => updateTodoItem(todo.id, payload),
+                            async () => {
+                                await updateTodoItem(todo.id, payload);
+                                await applyTodoFieldsToSeriesFuture(todo.seriesId, payload, todo.id);
+                            },
+                            () => renderTodosPage()
+                        );
+                        return;
+                    }
+                    await updateTodoItem(todo.id, payload);
                 });
                 editActions.appendChild(saveBtn);
 
@@ -15082,6 +15375,21 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             deleteBtn.style.cssText = 'padding: 8px 14px; background: #fbeaea; color: #c0392b; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;';
             deleteBtn.textContent = 'Delete';
             deleteBtn.addEventListener('click', () => {
+                if (todo.seriesId) {
+                    showSeriesScopeModal(
+                        `⚠️ Permanently delete "${todo.title}"? This cannot be undone.`,
+                        'Just this one', 'This and all future occurrences',
+                        async () => {
+                            await deleteTodoItem(todo.id);
+                            if (selectedTodoId === todo.id) { selectedTodoId = null; renderTodosPage(); }
+                        },
+                        async () => {
+                            if (selectedTodoId === todo.id) selectedTodoId = null;
+                            await deleteSeriesFuture(todo.seriesId);
+                        }
+                    );
+                    return;
+                }
                 confirmPermanentDelete(todo.title, async () => {
                     await deleteTodoItem(todo.id);
                     if (selectedTodoId === todo.id) { selectedTodoId = null; renderTodosPage(); }
@@ -15164,6 +15472,63 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
         }
 
+        // "This and all future occurrences" from either the To-Do page's
+        // Delete button or... (currently just there - see
+        // showSeriesScopeModal's call sites) - ends the series (no more
+        // occurrences ever get generated) and removes every occurrence
+        // that's today or later and not already completed, cascading their
+        // calendar events too. Completed and past occurrences are left
+        // alone as history - see the matching comment on the
+        // /todos/series/<id> DELETE route in app.py.
+        async function deleteSeriesFuture(seriesId) {
+            try {
+                const response = await fetch(`/todos/series/${seriesId}?scope=future`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    todosList = data.todos;
+                    await loadCalendarData();
+                    renderTodosPage();
+                    if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
+                } else {
+                    alert(data.error || 'Could not end that series - try again.');
+                }
+                return data;
+            } catch (e) {
+                console.error('Failed to end series:', e);
+                alert('Could not end that series - check the app is running and try again.');
+                return { success: false };
+            }
+        }
+
+        // "This and all future occurrences" from an edit (To-Do page Save,
+        // or a calendar card's title/description/location/time - see
+        // saveEventModal/onCalendarEventDragEnd) - updates the series
+        // template so occurrences generated from here on pick up the change
+        // (see /todos/series/<id> POST in app.py), then applies the same
+        // todo-level fields to every other future, not-yet-completed
+        // occurrence via the ordinary per-todo update route. exceptTodoId is
+        // whichever occurrence the caller already saved directly.
+        async function applyTodoFieldsToSeriesFuture(seriesId, fields, exceptTodoId) {
+            const seriesPayload = {};
+            if ('title' in fields) seriesPayload.title = fields.title;
+            if ('details' in fields) seriesPayload.details = fields.details;
+            if ('priority' in fields) seriesPayload.priority = fields.priority;
+            if ('personal' in fields) seriesPayload.personal = fields.personal;
+            if ('estimated_minutes' in fields) seriesPayload.estimated_minutes = fields.estimated_minutes;
+            if (Object.keys(seriesPayload).length) {
+                await fetch(`/todos/series/${seriesId}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(seriesPayload)
+                });
+            }
+            const todayKey = calendarDateKey(new Date());
+            const future = todosList.filter(t => t.seriesId === seriesId && !t.completed
+                && (t.occurrenceDate || '') >= todayKey && t.id !== exceptTodoId);
+            for (const t of future) {
+                await updateTodoItem(t.id, fields);
+            }
+        }
+
         // Duration label lookup for the preview pane / workspace item text -
         // kept in sync with the <option> list in the Estimated Time select.
         const TODO_DURATION_LABELS = {
@@ -15186,12 +15551,135 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderAttachmentChips(document.getElementById('todos-new-attachments-list'), newTodoAttachments, refreshNewTodoAttachments);
         }
 
+        // Sunday=0 - same convention as the Availability template's days and
+        // the backend's _day_of_week_sunday0, so a weekday index picked here
+        // means the same thing everywhere it's read.
+        const RECURRENCE_WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+        // Builds the weekday-toggle row and month <select> once at page
+        // init - the Repeat dropdown's change handler (below) just
+        // shows/hides which row is relevant, it never rebuilds these.
+        function initNewTodoRecurrenceUi() {
+            const weekdaysEl = document.getElementById('todos-new-recurrence-weekdays');
+            RECURRENCE_WEEKDAY_LETTERS.forEach((letter, i) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'todos-weekday-toggle';
+                btn.textContent = letter;
+                btn.dataset.day = i;
+                btn.addEventListener('click', () => btn.classList.toggle('active'));
+                weekdaysEl.appendChild(btn);
+            });
+
+            const monthSelect = document.getElementById('todos-new-recurrence-month');
+            ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+             'August', 'September', 'October', 'November', 'December'].forEach((name, i) => {
+                monthSelect.appendChild(new Option(name, i + 1));
+            });
+
+            document.getElementById('todos-new-repeat').addEventListener('change', updateNewTodoRecurrenceVisibility);
+            document.getElementById('todos-new-recurrence-end-type').addEventListener('change', () => {
+                document.getElementById('todos-new-recurrence-end-date').style.display =
+                    document.getElementById('todos-new-recurrence-end-type').value === 'on' ? '' : 'none';
+            });
+        }
+
+        // Shows only the sub-row that matches the chosen frequency (weekly
+        // needs which weekdays, monthly needs a day-of-month, yearly needs a
+        // month+day - daily needs neither, just the interval every row
+        // shares) and fills in a sensible default the first time each
+        // becomes relevant, without clobbering anything Francis already
+        // picked if he switches frequency and back.
+        function updateNewTodoRecurrenceVisibility() {
+            const freq = document.getElementById('todos-new-repeat').value;
+            const panel = document.getElementById('todos-new-recurrence-options');
+            panel.style.display = freq ? 'flex' : 'none';
+            if (!freq) return;
+
+            document.getElementById('todos-new-recurrence-weekday-row').style.display = freq === 'weekly' ? 'flex' : 'none';
+            document.getElementById('todos-new-recurrence-monthday-row').style.display = freq === 'monthly' ? 'flex' : 'none';
+            document.getElementById('todos-new-recurrence-yearly-row').style.display = freq === 'yearly' ? 'flex' : 'none';
+            document.getElementById('todos-new-recurrence-interval-unit').textContent =
+                { daily: 'day(s)', weekly: 'week(s)', monthly: 'month(s)', yearly: 'year(s)' }[freq];
+
+            const today = new Date();
+            const startInput = document.getElementById('todos-new-recurrence-start');
+            if (!startInput.value) startInput.value = toDateInputValue(today);
+
+            const weekdaysEl = document.getElementById('todos-new-recurrence-weekdays');
+            if (freq === 'weekly' && !weekdaysEl.querySelector('.active')) {
+                const btn = weekdaysEl.querySelector(`[data-day="${today.getDay()}"]`);
+                if (btn) btn.classList.add('active');
+            }
+            const monthdayInput = document.getElementById('todos-new-recurrence-monthday');
+            if (freq === 'monthly' && !monthdayInput.value) monthdayInput.value = today.getDate();
+            const monthSelect = document.getElementById('todos-new-recurrence-month');
+            const dayInput = document.getElementById('todos-new-recurrence-day');
+            if (freq === 'yearly' && !monthSelect.value) {
+                monthSelect.value = String(today.getMonth() + 1);
+                dayInput.value = today.getDate();
+            }
+        }
+
+        function resetNewTodoRecurrenceUi() {
+            document.getElementById('todos-new-repeat').value = '';
+            document.getElementById('todos-new-recurrence-interval').value = '1';
+            document.getElementById('todos-new-recurrence-weekdays').querySelectorAll('.active')
+                .forEach(b => b.classList.remove('active'));
+            document.getElementById('todos-new-recurrence-monthday').value = '';
+            document.getElementById('todos-new-recurrence-month').value = '';
+            document.getElementById('todos-new-recurrence-day').value = '';
+            document.getElementById('todos-new-recurrence-start').value = '';
+            document.getElementById('todos-new-recurrence-time').value = '09:00';
+            document.getElementById('todos-new-recurrence-end-type').value = 'never';
+            document.getElementById('todos-new-recurrence-end-date').value = '';
+            document.getElementById('todos-new-recurrence-end-date').style.display = 'none';
+            document.getElementById('todos-new-recurrence-options').style.display = 'none';
+        }
+
+        // Reads the recurrence panel into the shape /todos/series expects
+        // (see _validate_recurrence in app.py) - only called once the Repeat
+        // dropdown is set to something other than "Does not repeat".
+        // Returns null (after alerting) if the form is missing something
+        // required, same pattern as submitNewTodo's own title/details check.
+        function readNewTodoRecurrenceForm() {
+            const freq = document.getElementById('todos-new-repeat').value;
+            const startDate = document.getElementById('todos-new-recurrence-start').value;
+            const time = document.getElementById('todos-new-recurrence-time').value;
+            if (!startDate || !time) {
+                alert('Please choose a start date and time for the repeating to-do.');
+                return null;
+            }
+            const recurrence = {
+                freq, interval: parseInt(document.getElementById('todos-new-recurrence-interval').value, 10) || 1,
+                start_date: startDate, time,
+                end_date: document.getElementById('todos-new-recurrence-end-type').value === 'on'
+                    ? (document.getElementById('todos-new-recurrence-end-date').value || null) : null
+            };
+            if (freq === 'weekly') {
+                const byWeekday = Array.from(document.querySelectorAll('#todos-new-recurrence-weekdays .active'))
+                    .map(b => parseInt(b.dataset.day, 10));
+                if (!byWeekday.length) {
+                    alert('Please choose at least one day of the week.');
+                    return null;
+                }
+                recurrence.by_weekday = byWeekday;
+            } else if (freq === 'monthly') {
+                recurrence.by_monthday = parseInt(document.getElementById('todos-new-recurrence-monthday').value, 10) || 1;
+            } else if (freq === 'yearly') {
+                recurrence.month = parseInt(document.getElementById('todos-new-recurrence-month').value, 10) || 1;
+                recurrence.day = parseInt(document.getElementById('todos-new-recurrence-day').value, 10) || 1;
+            }
+            return recurrence;
+        }
+
         async function submitNewTodo() {
             const titleInput = document.getElementById('todos-new-title');
             const detailsInput = document.getElementById('todos-new-details');
             const durationInput = document.getElementById('todos-new-duration');
             const priorityInput = document.getElementById('todos-new-priority');
             const personalInput = document.getElementById('todos-new-personal');
+            const repeatInput = document.getElementById('todos-new-repeat');
             const title = titleInput.value.trim();
             const details = detailsInput.value.trim();
             const estimatedMinutes = parseInt(durationInput.value, 10);
@@ -15199,31 +15687,38 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 alert('Please fill in the title, details, and estimated time.');
                 return;
             }
+            let recurrence = null;
+            if (repeatInput.value) {
+                recurrence = readNewTodoRecurrenceForm();
+                if (!recurrence) return;
+            }
             const btn = document.getElementById('todos-new-btn');
             titleInput.disabled = true;
             detailsInput.disabled = true;
             durationInput.disabled = true;
             btn.disabled = true;
-            btn.textContent = 'Adding…';
+            btn.textContent = recurrence ? 'Creating series…' : 'Adding…';
             try {
-                const response = await fetch('/todos', {
+                const response = await fetch(recurrence ? '/todos/series' : '/todos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         title, details, estimated_minutes: estimatedMinutes, attachments: newTodoAttachments,
-                        priority: priorityInput.value, personal: personalInput.checked
+                        priority: priorityInput.value, personal: personalInput.checked,
+                        ...(recurrence ? { recurrence } : {})
                     })
                 });
                 const data = await response.json();
                 if (data.success) {
                     todosList = data.todos;
-                    selectedTodoId = data.todo_id;
+                    selectedTodoId = recurrence ? null : data.todo_id;
                     renderTodosPage();
                     titleInput.value = '';
                     detailsInput.value = '';
                     durationInput.value = '';
                     priorityInput.value = 'medium';
                     personalInput.checked = false;
+                    resetNewTodoRecurrenceUi();
                     newTodoAttachments.length = 0;
                     refreshNewTodoAttachments();
                 } else {
@@ -16818,6 +17313,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
 
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
+        initNewTodoRecurrenceUi();
 
         document.getElementById('todos-nav-btn').addEventListener('click', showTodosPage);
         document.getElementById('todos-new-btn').addEventListener('click', submitNewTodo);

@@ -223,6 +223,7 @@ __marimo__/
 # app.py), never in the repo.
 users.json
 todos.json
+todo_series.json
 suggestions.json
 calendar_events.json
 calendar_settings.json

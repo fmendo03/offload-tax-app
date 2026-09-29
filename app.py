@@ -2590,6 +2590,15 @@ def discussion_topics_delete_topic(topic_id):
 TODOS_FILE = _data_path('todos.json')
 todos_lock = threading.Lock()
 
+# A recurring to-do's template + rule (see the /todos/series routes below) -
+# each occurrence it spawns is a completely ordinary todo/calendar-event pair
+# (with a `seriesId`/`occurrenceDate` added) so every existing todo/event code
+# path - complete, reschedule, delete, drag, the Edit Event modal - already
+# works on it unchanged. This file only ever holds the series definitions
+# themselves, never the occurrences.
+TODO_SERIES_FILE = _data_path('todo_series.json')
+todo_series_lock = threading.Lock()
+
 
 def load_todos():
     if os.path.exists(TODOS_FILE):
@@ -2645,8 +2654,191 @@ def save_todos(data):
         json.dump(data, f, indent=2)
 
 
+def load_todo_series():
+    if os.path.exists(TODO_SERIES_FILE):
+        try:
+            with open(TODO_SERIES_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    return []
+
+
+def save_todo_series(data):
+    with open(TODO_SERIES_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+_RECURRENCE_FREQS = ('daily', 'weekly', 'monthly', 'yearly')
+
+
+# Normalizes and sanity-checks a recurrence rule from the client into the
+# shape _iterate_recurrence_dates expects. Only 'weekly' needs byWeekday,
+# only 'monthly' needs byMonthday, only 'yearly' needs month/day - daily is
+# just the interval. Returns (recurrence_dict, None) or (None, error_message).
+def _validate_recurrence(raw):
+    freq = str(raw.get('freq') or '').strip().lower()
+    if freq not in _RECURRENCE_FREQS:
+        return None, 'Please choose how often this should repeat.'
+    try:
+        interval = int(raw.get('interval') or 1)
+    except (TypeError, ValueError):
+        interval = 1
+    if interval < 1:
+        interval = 1
+    try:
+        start_date = date.fromisoformat(str(raw.get('start_date')))
+    except (ValueError, TypeError):
+        return None, 'Please choose a start date.'
+    time_str = str(raw.get('time') or '').strip()
+    try:
+        _minutes_from_hhmm(time_str)
+    except Exception:
+        return None, 'Please choose a time of day.'
+    end_date = None
+    if raw.get('end_date'):
+        try:
+            end_date = date.fromisoformat(str(raw.get('end_date')))
+        except (ValueError, TypeError):
+            return None, 'Invalid end date.'
+        if end_date < start_date:
+            return None, 'The end date has to be after the start date.'
+
+    recurrence = {
+        'freq': freq, 'interval': interval, 'startDate': start_date.isoformat(),
+        'time': time_str, 'endDate': end_date.isoformat() if end_date else None
+    }
+
+    if freq == 'weekly':
+        try:
+            by_weekday = sorted({int(d) for d in (raw.get('by_weekday') or []) if 0 <= int(d) <= 6})
+        except (TypeError, ValueError):
+            by_weekday = []
+        if not by_weekday:
+            by_weekday = [_day_of_week_sunday0(start_date)]
+        recurrence['byWeekday'] = by_weekday
+    elif freq == 'monthly':
+        try:
+            by_monthday = int(raw.get('by_monthday') or start_date.day)
+        except (TypeError, ValueError):
+            by_monthday = start_date.day
+        recurrence['byMonthday'] = by_monthday if 1 <= by_monthday <= 31 else start_date.day
+    elif freq == 'yearly':
+        try:
+            month = int(raw.get('month') or start_date.month)
+            day = int(raw.get('day') or start_date.day)
+        except (TypeError, ValueError):
+            month, day = start_date.month, start_date.day
+        recurrence['month'] = month
+        recurrence['day'] = day
+
+    return recurrence, None
+
+
+# Every occurrence date a recurrence rule produces, strictly after
+# `after_date` through `through_date` inclusive - this is exactly the kind of
+# precise interval math that should never be left to a model to reason about
+# (same reasoning as the bulk-schedule bin-packer above). Walks day by day
+# rather than jumping by month/year directly - the window callers pass is
+# always small (the 4-week rolling horizon), so the simpler, obviously-correct
+# form costs nothing and there's no month/leap-year arithmetic to get subtly
+# wrong.
+def _iterate_recurrence_dates(recurrence, after_date, through_date):
+    start_date = date.fromisoformat(recurrence['startDate'])
+    if recurrence.get('endDate'):
+        end_date = date.fromisoformat(recurrence['endDate'])
+        if end_date < through_date:
+            through_date = end_date
+    freq = recurrence['freq']
+    interval = recurrence['interval']
+    start_week = start_date - timedelta(days=_day_of_week_sunday0(start_date))
+
+    d = max(start_date, after_date + timedelta(days=1))
+    while d <= through_date:
+        matches = False
+        if freq == 'daily':
+            matches = (d - start_date).days % interval == 0
+        elif freq == 'weekly':
+            week_index = (d - start_week).days // 7
+            matches = week_index % interval == 0 and _day_of_week_sunday0(d) in recurrence['byWeekday']
+        elif freq == 'monthly':
+            month_index = (d.year - start_date.year) * 12 + (d.month - start_date.month)
+            matches = d.day == recurrence['byMonthday'] and month_index % interval == 0
+        elif freq == 'yearly':
+            matches = d.month == recurrence['month'] and d.day == recurrence['day'] and (d.year - start_date.year) % interval == 0
+        if matches:
+            yield d
+        d += timedelta(days=1)
+
+
+# Tops up every active series' occurrences to the rolling 4-week horizon (or
+# its end date, if sooner) - called at the top of every /todos GET (see
+# todos_list) so the window stays current on its own with no scheduler, same
+# pattern as _apply_todo_rollovers. Each occurrence is created already
+# scheduled (todo + linked calendar event, both real, both ordinary) at the
+# series' fixed time of day - unlike Ashanti's bulk-schedule, there's no free-
+# slot search here, since the whole point of a recurring to-do is the same
+# time every time.
+def _ensure_all_series_generated():
+    series_list = load_todo_series()
+    active = [s for s in series_list if s.get('active', True)]
+    if not active:
+        return
+    horizon = today_local() + timedelta(days=28)
+    if all(date.fromisoformat(s['lastGeneratedThrough']) >= horizon for s in active):
+        return
+
+    with todos_lock, calendar_lock, todo_series_lock:
+        # Re-load under lock - series_list above was only read to decide
+        # whether it's worth taking the locks at all.
+        series_list = load_todo_series()
+        todos = load_todos()
+        working_events = load_calendar_events()
+        now = now_local()
+        changed = False
+
+        for series in series_list:
+            if not series.get('active', True):
+                continue
+            after = date.fromisoformat(series['lastGeneratedThrough'])
+            if after >= horizon:
+                continue
+            for occ_date in _iterate_recurrence_dates(series['recurrence'], after, horizon):
+                start_dt = datetime.combine(occ_date, datetime.min.time()) + timedelta(
+                    minutes=_minutes_from_hhmm(series['recurrence']['time']))
+                end_dt = start_dt + timedelta(minutes=series['estimatedMinutes'])
+                now_iso = now.isoformat()
+                event = {
+                    'id': uuid.uuid4().hex, 'userId': series['userId'], 'title': series['title'],
+                    'description': series.get('details') or '', 'location': '',
+                    'start': start_dt.isoformat(), 'end': end_dt.isoformat(), 'allDay': False,
+                    'source': 'internal', 'origin': 'todo', 'externalUid': None,
+                    'status': 'confirmed', 'createdAt': now_iso, 'updatedAt': now_iso
+                }
+                working_events.append(event)
+                todos.append({
+                    'id': uuid.uuid4().hex, 'userId': series['userId'], 'title': series['title'],
+                    'details': series.get('details') or '', 'estimatedMinutes': series['estimatedMinutes'],
+                    'completed': False, 'createdAt': now_iso, 'completedAt': None,
+                    'calendarEventId': event['id'], 'attachments': [],
+                    'priority': series['priority'], 'personal': series.get('personal', False),
+                    'notFinished': False, 'seriesId': series['id'], 'occurrenceDate': occ_date.isoformat()
+                })
+                changed = True
+            series['lastGeneratedThrough'] = horizon.isoformat()
+            changed = True
+
+        if changed:
+            save_calendar_events(working_events)
+            save_todos(todos)
+            save_todo_series(series_list)
+
+
 @app.route('/todos', methods=['GET'])
 def todos_list():
+    _ensure_all_series_generated()
     return jsonify({'success': True, 'todos': load_todos()})
 
 
@@ -2770,6 +2962,146 @@ def todos_delete(todo_id):
         return jsonify({'success': True, 'todos': todos})
     except Exception as e:
         print(f"Todo delete error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# --- Recurring to-dos -------------------------------------------------------
+# A series is the template + rule a recurring to-do was set up with - see
+# _ensure_all_series_generated for how it actually spawns occurrences.
+@app.route('/todos/series', methods=['POST'])
+def todos_series_create():
+    try:
+        data = request.json or {}
+        title = str(data.get('title', '')).strip()
+        details = str(data.get('details', '') or '').strip()
+        try:
+            estimated_minutes = int(data.get('estimated_minutes'))
+        except (TypeError, ValueError):
+            estimated_minutes = 0
+        if not title or not details or estimated_minutes <= 0:
+            return jsonify({'success': False, 'error': 'Missing title, details, or estimated time'}), 400
+        priority = str(data.get('priority') or 'medium').strip().lower()
+        if priority not in ('high', 'medium', 'low'):
+            priority = 'medium'
+
+        recurrence, err = _validate_recurrence(data.get('recurrence') or {})
+        if err:
+            return jsonify({'success': False, 'error': err}), 400
+
+        series = {
+            'id': uuid.uuid4().hex, 'userId': current_user_id(), 'title': title,
+            'details': details, 'estimatedMinutes': estimated_minutes, 'priority': priority,
+            'personal': bool(data.get('personal')), 'recurrence': recurrence, 'active': True,
+            'createdAt': now_local().isoformat(),
+            # One day before its own first occurrence, so the very first
+            # generation pass (triggered right below) picks that date up too.
+            'lastGeneratedThrough': (date.fromisoformat(recurrence['startDate']) - timedelta(days=1)).isoformat()
+        }
+        with todo_series_lock:
+            series_list = load_todo_series()
+            series_list.append(series)
+            save_todo_series(series_list)
+
+        _ensure_all_series_generated()
+
+        return jsonify({'success': True, 'series': series, 'todos': load_todos()})
+    except Exception as e:
+        print(f"Todo series create error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Edits the series template - used when a "this and all future" edit is made
+# from either the To-Do page or a linked calendar card (see saveEventModal /
+# renderTodosPreviewPane on the frontend), so occurrences generated *after*
+# this point pick up the change too. The frontend applies the same fields to
+# each already-existing future occurrence itself via the ordinary
+# /todos/<id> and /calendar/events/<id> routes - this route only ever touches
+# the series definition, never an occurrence.
+@app.route('/todos/series/<series_id>', methods=['POST'])
+def todos_series_update(series_id):
+    try:
+        data = request.json or {}
+        with todo_series_lock:
+            series_list = load_todo_series()
+            series = next((s for s in series_list if s['id'] == series_id), None)
+            if not series:
+                return jsonify({'success': False, 'error': 'Series not found'}), 404
+            if 'title' in data:
+                new_title = str(data['title'] or '').strip()
+                if new_title:
+                    series['title'] = new_title
+            if 'details' in data:
+                series['details'] = str(data['details'] or '').strip()
+            if 'estimated_minutes' in data:
+                try:
+                    new_minutes = int(data['estimated_minutes'])
+                    if new_minutes > 0:
+                        series['estimatedMinutes'] = new_minutes
+                except (TypeError, ValueError):
+                    pass
+            if 'priority' in data:
+                new_priority = str(data['priority'] or '').strip().lower()
+                if new_priority in ('high', 'medium', 'low'):
+                    series['priority'] = new_priority
+            if 'personal' in data:
+                series['personal'] = bool(data['personal'])
+            # Only the time of day is ever edited after the series exists
+            # (dragging/resizing a linked event and choosing "all future") -
+            # the frequency/weekday/month-day rule itself isn't editable in
+            # place, only by ending this series and starting a new one.
+            if 'time' in data:
+                try:
+                    _minutes_from_hhmm(data['time'])
+                    series['recurrence']['time'] = data['time']
+                except Exception:
+                    pass
+            save_todo_series(series_list)
+        return jsonify({'success': True, 'series': series})
+    except Exception as e:
+        print(f"Todo series update error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Ends a series (no more occurrences ever get generated past this point) and,
+# unless told to keep them, removes every occurrence that's today or later
+# and not already completed - completed and past occurrences are left alone
+# as history, matching the same "future only" scope an "apply to all" edit
+# uses (see _ensure_all_series_generated's comment and saveEventModal).
+@app.route('/todos/series/<series_id>', methods=['DELETE'])
+def todos_series_delete(series_id):
+    try:
+        delete_future = str(request.args.get('scope', 'future')).lower() != 'keep'
+        with todo_series_lock:
+            series_list = load_todo_series()
+            series = next((s for s in series_list if s['id'] == series_id), None)
+            if not series:
+                return jsonify({'success': False, 'error': 'Series not found'}), 404
+            series['active'] = False
+            save_todo_series(series_list)
+
+        removed_todo_ids = []
+        if delete_future:
+            today_iso = today_local().isoformat()
+            with todos_lock, calendar_lock:
+                todos = load_todos()
+                to_remove = [
+                    t for t in todos
+                    if t.get('seriesId') == series_id and not t.get('completed')
+                    and (t.get('occurrenceDate') or '') >= today_iso
+                ]
+                if to_remove:
+                    removed_todo_ids = [t['id'] for t in to_remove]
+                    event_ids = {t['calendarEventId'] for t in to_remove if t.get('calendarEventId')}
+                    todos = [t for t in todos if t['id'] not in removed_todo_ids]
+                    working_events = [e for e in load_calendar_events() if e['id'] not in event_ids]
+                    save_calendar_events(working_events)
+                    save_todos(todos)
+                    for t in to_remove:
+                        _delete_item_attachments(t)
+
+        return jsonify({'success': True, 'todos': load_todos(), 'removedTodoIds': removed_todo_ids})
+    except Exception as e:
+        print(f"Todo series delete error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
