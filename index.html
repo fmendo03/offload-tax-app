@@ -2739,12 +2739,42 @@
             min-height: 0;
         }
 
+        /* Flex column so the Schedule button (moved in here - it only ever
+           acts on to-dos in this pane, see #bulk-schedule-list-pane-footer)
+           stays pinned at the bottom while just the to-do list itself
+           scrolls above it. Also the drop target for dragging an
+           already-placed preview card back off the calendar to unschedule
+           it (see the dragover/drop listeners added in
+           renderBulkSchedulePreviewCalendar's caller). */
         .bulk-schedule-list-pane {
-            width: 320px;
+            width: 340px;
             flex-shrink: 0;
-            padding: 16px 20px;
-            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
             border-right: 1px solid #eee;
+        }
+
+        .bulk-schedule-list-pane.drop-target {
+            background-color: rgba(179, 38, 30, 0.05);
+        }
+
+        .bulk-schedule-list-pane.drop-target .bulk-schedule-todo-list::after {
+            content: "Drop to unschedule";
+            display: block;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #b3261e;
+            border: 1px dashed #b3261e;
+            border-radius: 6px;
+            padding: 10px;
+        }
+
+        .bulk-schedule-list-pane-footer {
+            flex-shrink: 0;
+            padding: 12px 20px 16px;
+            border-top: 1px solid #eee;
         }
 
         .bulk-schedule-preview-pane {
@@ -2865,7 +2895,7 @@
             gap: 8px;
             font-size: 12px;
             color: #555;
-            margin-bottom: 10px;
+            margin: 16px 20px 10px;
         }
 
         .bulk-schedule-apply-all select {
@@ -2878,36 +2908,79 @@
         }
 
         #bulk-schedule-apply-all-custom {
-            margin-bottom: 10px;
+            margin: 0 20px 10px;
         }
 
-        /* One row per to-do in the bulk-schedule modal (see
-           buildBulkScheduleTodoRow) - each carries its own period dropdown
-           rather than one period applying to every selected to-do. */
+        /* One card per to-do in the bulk-schedule modal (see
+           buildBulkScheduleTodoRow/buildBulkScheduleScheduledRow) - styled
+           like a draggable card, the same visual language as an event block
+           on the real Calendar page, rather than a plain form row. Each
+           carries its own period dropdown rather than one period applying
+           to every selected to-do. This pane itself scrolls
+           (min-height: 0 lets it shrink inside the flex column - see
+           .bulk-schedule-list-pane); the Schedule button below it does not. */
         .bulk-schedule-todo-list {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            margin: 4px 0 16px;
+            gap: 8px;
+            padding: 4px 20px 16px;
         }
 
         .bulk-schedule-todo-row {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
+            flex-direction: column;
             gap: 6px;
-            flex-wrap: wrap;
+            background: white;
+            border: 1px solid #e6e6e6;
+            border-left: 3px solid #1F3A5F;
+            border-radius: 8px;
+            padding: 8px 10px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
             cursor: grab;
+        }
+
+        .bulk-schedule-todo-row[data-scheduled="true"] {
+            border-left-color: #2e7d32;
         }
 
         .bulk-schedule-todo-row.dragging {
             opacity: 0.5;
         }
 
+        .bulk-schedule-todo-row-top {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .bulk-schedule-todo-remove-btn {
+            flex-shrink: 0;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: #b3261e;
+            font-size: 13px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .bulk-schedule-todo-remove-btn:hover {
+            background: #fbeaea;
+        }
+
         .bulk-schedule-todo-title {
             flex: 1 1 100px;
             min-width: 0;
             font-size: 13px;
+            font-weight: 600;
             color: #333;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -2915,6 +2988,7 @@
         }
 
         .bulk-schedule-todo-period {
+            width: 100%;
             font-size: 12px;
             padding: 5px 6px;
             border: 1px solid #ccc;
@@ -6079,7 +6153,7 @@
          than closing) whenever anything comes back unscheduled, so the
          per-row reason and retry live right here instead of as a separate
          chat message. -->
-    <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+    <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1090; align-items: center; justify-content: center;">
         <div style="background: white; border-radius: 12px; max-width: 1100px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
             <div class="bulk-schedule-header">
                 <img class="bulk-schedule-header-avatar" src="avatars/ashanti.png" alt="Ashanti">
@@ -6089,7 +6163,7 @@
                 </div>
             </div>
             <div class="bulk-schedule-body">
-                <div class="bulk-schedule-list-pane">
+                <div class="bulk-schedule-list-pane" id="bulk-schedule-list-pane">
                     <div class="bulk-schedule-apply-all" id="bulk-schedule-apply-all">
                         <label for="bulk-schedule-apply-all-select">Apply to all:</label>
                         <select id="bulk-schedule-apply-all-select"></select>
@@ -6099,6 +6173,9 @@
                         <input type="date" id="bulk-schedule-apply-all-end">
                     </div>
                     <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
+                    <div class="bulk-schedule-list-pane-footer">
+                        <button id="bulk-schedule-confirm-btn" style="width: 100%; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
+                    </div>
                 </div>
                 <div class="bulk-schedule-preview-pane">
                     <div class="bulk-schedule-preview-nav">
@@ -6117,7 +6194,6 @@
             </div>
             <div class="bulk-schedule-footer">
                 <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
-                <button id="bulk-schedule-confirm-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
             </div>
         </div>
     </div>
@@ -13606,6 +13682,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function closeEventModal() {
             document.getElementById('calendar-event-modal').style.display = 'none';
             calendarEditingEventId = null;
+            // Every exit path (Save, Delete, Unschedule, Mark Completed,
+            // Cancel, backdrop click) routes through here - if this modal
+            // was opened from a double-clicked bulk-schedule preview card
+            // (see buildBulkSchedulePreviewBlock), that popup needs to
+            // re-sync in case what just happened made it stale.
+            syncBulkScheduleModalAfterEventEdit();
         }
 
         // The to-do (if any) this calendar event was scheduled for - see
@@ -15247,6 +15329,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDraggedPayload = null;
             });
 
+            const top = document.createElement('div');
+            top.className = 'bulk-schedule-todo-row-top';
+
             const title = document.createElement('span');
             title.className = 'bulk-schedule-todo-title';
             title.textContent = todo.title;
@@ -15255,6 +15340,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const duration = document.createElement('span');
             duration.className = 'bulk-schedule-todo-duration';
             duration.textContent = formatEstimatedMinutes(todo.estimatedMinutes);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'bulk-schedule-todo-remove-btn';
+            removeBtn.textContent = '✕';
+            removeBtn.title = 'Remove from this scheduling group (does not affect the to-do itself)';
+            removeBtn.addEventListener('click', (evt) => {
+                evt.stopPropagation();
+                removeBulkScheduleRow(todo.id);
+            });
+
+            top.appendChild(title);
+            top.appendChild(duration);
+            top.appendChild(removeBtn);
 
             const select = document.createElement('select');
             select.className = 'bulk-schedule-todo-period';
@@ -15278,8 +15377,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 customRange.classList.toggle('visible', select.value === 'custom');
             });
 
-            row.appendChild(title);
-            row.appendChild(duration);
+            row.appendChild(top);
             row.appendChild(select);
             row.appendChild(customRange);
 
@@ -15303,6 +15401,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             row.dataset.todoId = entry.todoId;
             row.dataset.scheduled = 'true';
 
+            const top = document.createElement('div');
+            top.className = 'bulk-schedule-todo-row-top';
+
             const title = document.createElement('span');
             title.className = 'bulk-schedule-todo-title';
             title.textContent = entry.title;
@@ -15313,13 +15414,26 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const linkedTodo = todosList.find(t => t.id === entry.todoId);
             duration.textContent = formatEstimatedMinutes(linkedTodo ? linkedTodo.estimatedMinutes : null);
 
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'bulk-schedule-todo-remove-btn';
+            removeBtn.textContent = '✕';
+            removeBtn.title = 'Remove from this scheduling group (leaves it scheduled on the calendar as-is)';
+            removeBtn.addEventListener('click', (evt) => {
+                evt.stopPropagation();
+                removeBulkScheduleRow(entry.todoId);
+            });
+
+            top.appendChild(title);
+            top.appendChild(duration);
+            top.appendChild(removeBtn);
+
             const badge = document.createElement('span');
             badge.className = 'bulk-schedule-todo-scheduled-badge';
             const when = new Date(entry.event.start).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
             badge.textContent = `✓ Scheduled — ${when}`;
 
-            row.appendChild(title);
-            row.appendChild(duration);
+            row.appendChild(top);
             row.appendChild(badge);
             return row;
         }
@@ -15378,6 +15492,28 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderBulkSchedulePreviewCalendar();
         }
 
+        // The red ✕ on a card - drops a to-do out of this popup's working
+        // set entirely (bulkScheduleRowOrder), not just its current
+        // scheduled/pending state. Purely a selection change for this
+        // scheduling session: if the to-do was already scheduled, its
+        // calendar placement is left exactly as-is (it just stops being
+        // tracked here, so it renders from then on as an ordinary read-only
+        // event in the preview like anything else already on the
+        // calendar) - to actually take it off the calendar, drag it back
+        // into this pane instead (see the list-pane drop handler).
+        function removeBulkScheduleRow(todoId) {
+            bulkScheduleRowOrder = bulkScheduleRowOrder.filter(id => id !== todoId);
+            bulkScheduleScheduledResults = bulkScheduleScheduledResults.filter(s => s.todoId !== todoId);
+            bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => u.todoId !== todoId);
+            selectedTodoIds.delete(todoId);
+            renderTodosPage();
+            if (bulkScheduleRowOrder.length === 0) {
+                closeBulkScheduleModal();
+                return;
+            }
+            rebuildBulkScheduleModalRows();
+        }
+
         // "Apply to all" sets every row's own dropdown (and, for Custom
         // range, every row's own date inputs) to one chosen period in a
         // single step instead of setting each row by hand - each row can
@@ -15406,6 +15542,37 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     if (applyAllEnd) row.querySelector('.bulk-schedule-todo-end').value = applyAllEnd;
                 }
             });
+        }
+
+        // Dragging an already-scheduled preview card back off the calendar
+        // and onto the list pane (see the dragover/drop listeners wired on
+        // #bulk-schedule-list-pane) takes it off the calendar entirely -
+        // same as the single-event Unschedule button - reverting it to a
+        // pending card here so it can be given a different period.
+        async function unscheduleBulkScheduleEntry(todoId, eventId) {
+            await unscheduleCalendarEvent(eventId);
+            bulkScheduleScheduledResults = bulkScheduleScheduledResults.filter(s => s.todoId !== todoId);
+            rebuildBulkScheduleModalRows();
+        }
+
+        // Called on every exit from the Edit Event modal (see closeEventModal)
+        // - a no-op unless this popup is actually open behind it. Whatever
+        // just happened there (edit/delete/unschedule/mark complete) can
+        // make bulkScheduleScheduledResults stale: drops any entry whose
+        // to-do is gone (deleted) or no longer linked to that event
+        // (unscheduled - it then correctly reappears as a pending card, since
+        // it's still in bulkScheduleRowOrder), and refreshes the rest with
+        // whatever the edit actually changed.
+        function syncBulkScheduleModalAfterEventEdit() {
+            if (document.getElementById('bulk-schedule-modal').style.display === 'none') return;
+            bulkScheduleScheduledResults = bulkScheduleScheduledResults.filter(s => {
+                const stillLinked = todosList.some(t => t.id === s.todoId && t.calendarEventId === s.event.id);
+                if (!stillLinked) return false;
+                const freshEvent = calendarEvents.find(e => e.id === s.event.id);
+                if (freshEvent) s.event = freshEvent;
+                return true;
+            });
+            rebuildBulkScheduleModalRows();
         }
 
         // Opens the period-picker used by the To-Do page's bulk toolbar,
@@ -15520,7 +15687,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
             block.textContent = entry.title;
-            block.title = `${entry.title} - drag to move`;
+            block.title = `${entry.title} - drag to move, double-click for details`;
             block.draggable = true;
             block.addEventListener('dragstart', (evt) => {
                 bulkScheduleDraggedPayload = { kind: 'scheduled', todoId: entry.todoId, eventId: e.id };
@@ -15530,6 +15697,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.addEventListener('dragend', () => {
                 block.classList.remove('drag-hidden');
                 bulkScheduleDraggedPayload = null;
+            });
+            // Opens the same Edit Event modal the real Calendar page uses -
+            // it renders above this popup (see #bulk-schedule-modal's z-index)
+            // and, on close, syncBulkScheduleModalAfterEventEdit (hooked into
+            // closeEventModal) picks up whatever changed here.
+            block.addEventListener('dblclick', (evt) => {
+                evt.stopPropagation();
+                openEventModal(e);
             });
             return block;
         }
@@ -15654,6 +15829,17 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const startDt = new Date(`${dateKey}T00:00:00`);
             startDt.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+
+            // Free manual placement is allowed into the past (unlike
+            // Ashanti's own automatic scheduling, which never would) - just
+            // confirmed first, since dropping a few pixels off is an easy
+            // way to land there by accident.
+            if (startDt < new Date()) {
+                if (!confirm('You\'re about to move this into a period that has already passed - continue?')) {
+                    renderBulkSchedulePreviewCalendar();
+                    return;
+                }
+            }
 
             if (payload.kind === 'unscheduled') {
                 const todo = todosList.find(t => t.id === payload.todoId);
@@ -16687,6 +16873,30 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', runBulkScheduleTodos);
         document.getElementById('bulk-schedule-preview-prev-btn').addEventListener('click', () => bulkSchedulePreviewNav(-1));
         document.getElementById('bulk-schedule-preview-next-btn').addEventListener('click', () => bulkSchedulePreviewNav(1));
+        // Drag an already-scheduled preview card back off the calendar and
+        // onto this pane to unschedule it (see unscheduleBulkScheduleEntry) -
+        // only accepts a 'scheduled' drag; a still-pending list row being
+        // dragged around within its own pane doesn't match this and is
+        // ignored, same as dropping it on itself would be a no-op anyway.
+        (() => {
+            const pane = document.getElementById('bulk-schedule-list-pane');
+            pane.addEventListener('dragover', (evt) => {
+                if (!bulkScheduleDraggedPayload || bulkScheduleDraggedPayload.kind !== 'scheduled') return;
+                evt.preventDefault();
+                pane.classList.add('drop-target');
+            });
+            pane.addEventListener('dragleave', (evt) => {
+                if (!pane.contains(evt.relatedTarget)) pane.classList.remove('drop-target');
+            });
+            pane.addEventListener('drop', (evt) => {
+                evt.preventDefault();
+                pane.classList.remove('drop-target');
+                const payload = bulkScheduleDraggedPayload;
+                if (!payload || payload.kind !== 'scheduled') return;
+                bulkScheduleDraggedPayload = null;
+                unscheduleBulkScheduleEntry(payload.todoId, payload.eventId);
+            });
+        })();
         document.getElementById('bulk-schedule-modal').addEventListener('click', (e) => {
             if (e.target.id === 'bulk-schedule-modal') closeBulkScheduleModal();
         });
