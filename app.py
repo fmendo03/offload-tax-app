@@ -2787,11 +2787,20 @@ def todos_delete(todo_id):
 # priority order as before), but each to-do gets exactly one shot at exactly
 # the period it was given. Anything that doesn't fit comes back unscheduled
 # with a reason, for Francis to reschedule to a different period - see
-# runBulkScheduleTodos.
+# previewBulkScheduleTodos.
+#
+# `preview` (bool, default False) runs the exact same slot-finding pass but
+# skips creating/saving anything - the bulk-schedule popup uses this so
+# clicking "Schedule" only places to-dos on its live preview calendar
+# (bulkScheduleStagedPlacements), nothing becomes real until Save actually
+# commits what's still on that calendar (see saveBulkScheduleTodos). A
+# preview response carries each placement's start/end instead of a saved
+# event, since there is no event yet.
 @app.route('/todos/bulk-schedule', methods=['POST'])
 def todos_bulk_schedule():
     try:
         data = request.json or {}
+        preview = bool(data.get('preview'))
         raw_items = data.get('items') or []
         if not raw_items:
             return jsonify({'success': False, 'error': 'No to-dos selected'}), 400
@@ -2870,7 +2879,8 @@ def todos_bulk_schedule():
                 slot = find_slot(todo, period_days)
 
                 if slot:
-                    scheduled.append((todo, create_event_for(todo, *slot)))
+                    event = None if preview else create_event_for(todo, *slot)
+                    scheduled.append((todo, slot[0], slot[1], event))
                 elif priority == 'high':
                     unscheduled.append((todo, "No availability in the selected period, even at highest priority - try a different period."))
                 elif priority == 'medium':
@@ -2878,21 +2888,26 @@ def todos_bulk_schedule():
                 else:
                     unscheduled.append((todo, "No free time left over in the selected period - try a different period."))
 
-            save_calendar_events(working_events)
-            for todo, event in scheduled:
-                todo['calendarEventId'] = event['id']
-                # Same clean-slate rule as a manual reschedule (see
-                # todos_update) - this writes calendarEventId directly rather
-                # than going through that route, so it has to clear
-                # notFinished itself too.
-                todo['notFinished'] = False
-            save_todos(todos)
+            if not preview:
+                save_calendar_events(working_events)
+                for todo, start_dt, end_dt, event in scheduled:
+                    todo['calendarEventId'] = event['id']
+                    # Same clean-slate rule as a manual reschedule (see
+                    # todos_update) - this writes calendarEventId directly rather
+                    # than going through that route, so it has to clear
+                    # notFinished itself too.
+                    todo['notFinished'] = False
+                save_todos(todos)
 
         return jsonify({
             'success': True,
             'scheduled': [
-                {'todoId': todo['id'], 'title': todo['title'], 'event': event}
-                for todo, event in scheduled
+                {
+                    'todoId': todo['id'], 'title': todo['title'],
+                    'start': start_dt.isoformat(), 'end': end_dt.isoformat(),
+                    **({'event': event} if event else {})
+                }
+                for todo, start_dt, end_dt, event in scheduled
             ],
             'unscheduled': [
                 {'todoId': todo['id'], 'title': todo['title'], 'reason': reason}

@@ -2895,6 +2895,11 @@
             flex-shrink: 0;
         }
 
+        .bulk-schedule-footer button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .bulk-schedule-apply-all {
             display: flex;
             align-items: center;
@@ -2918,7 +2923,7 @@
         }
 
         /* One card per to-do in the bulk-schedule modal (see
-           buildBulkScheduleTodoRow/buildBulkScheduleScheduledRow) - styled
+           buildBulkScheduleTodoRow/buildBulkScheduleStagedRow) - styled
            like a draggable card, the same visual language as an event block
            on the real Calendar page, rather than a plain form row. Each
            carries its own period dropdown rather than one period applying
@@ -2946,14 +2951,6 @@
             padding: 8px 10px;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
             cursor: grab;
-        }
-
-        /* Same blue as .bulk-schedule-preview-block once it's actually
-           placed - the list card should look like the calendar card it now
-           represents, not its own separate color scheme. */
-        .bulk-schedule-todo-row[data-scheduled="true"] {
-            background: #dce7f5;
-            border-left-color: #1F3A5F;
         }
 
         .bulk-schedule-todo-row.dragging {
@@ -3026,31 +3023,19 @@
         }
 
         /* Shown under a row after a Schedule attempt that couldn't find room
-           for it - see runBulkScheduleTodos, which leaves the modal open and
-           rebuilds every row (see rebuildBulkScheduleModalRows) so this can
-           sit right next to the dropdown Francis needs to change. */
+           for it - see previewBulkScheduleTodos, which leaves the modal open
+           and rebuilds every row (see rebuildBulkScheduleModalRows) so this
+           can sit right next to the dropdown Francis needs to change. */
         .bulk-schedule-todo-error {
             flex: 1 1 100%;
             font-size: 11px;
             color: #b3261e;
         }
 
-        /* Shown in place of the period dropdown once a row's to-do has
-           actually been scheduled - see buildBulkScheduleScheduledRow. */
-        .bulk-schedule-todo-scheduled-badge {
-            flex-shrink: 0;
-            font-size: 11px;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 10px;
-            background: #eafaf0;
-            color: #1c7a43;
-            white-space: nowrap;
-        }
-
-        /* A manual placement not saved yet (see buildBulkScheduleStagedRow) -
-           blue like the calendar card it previews rather than green, since
-           nothing's actually confirmed until Schedule is clicked. */
+        /* A to-do placed on the live preview calendar, not saved yet (see
+           buildBulkScheduleStagedRow) - blue like the calendar card it
+           previews, since nothing's actually confirmed until Save is
+           clicked. */
         .bulk-schedule-todo-staged-badge {
             font-size: 11px;
             font-weight: 600;
@@ -6188,11 +6173,12 @@
     </div>
 
     <!-- Bulk-schedule period picker - "Schedule Selected with Ashanti" on the
-         To-Do page opens this to pick the target period, then POSTs to
-         /todos/bulk-schedule (see runBulkScheduleTodos). Stays open (rather
-         than closing) whenever anything comes back unscheduled, so the
-         per-row reason and retry live right here instead of as a separate
-         chat message. -->
+         To-Do page opens this to pick the target period, then Schedule
+         previews placements on the live calendar here (see
+         previewBulkScheduleTodos) and Save actually commits them (see
+         saveBulkScheduleTodos). Stays open (rather than closing) whenever
+         anything comes back unscheduled, so the per-row reason and retry
+         live right here instead of as a separate chat message. -->
     <div id="bulk-schedule-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1090; align-items: center; justify-content: center;">
         <div style="background: white; border-radius: 12px; max-width: 1100px; width: 95vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;">
             <div class="bulk-schedule-header">
@@ -6234,6 +6220,7 @@
             </div>
             <div class="bulk-schedule-footer">
                 <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                <button id="bulk-schedule-save-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" disabled>Save</button>
             </div>
         </div>
     </div>
@@ -13744,12 +13731,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function closeEventModal() {
             document.getElementById('calendar-event-modal').style.display = 'none';
             calendarEditingEventId = null;
-            // Every exit path (Save, Delete, Unschedule, Mark Completed,
-            // Cancel, backdrop click) routes through here - if this modal
-            // was opened from a double-clicked bulk-schedule preview card
-            // (see buildBulkSchedulePreviewBlock), that popup needs to
-            // re-sync in case what just happened made it stale.
-            syncBulkScheduleModalAfterEventEdit();
         }
 
         // The to-do (if any) this calendar event was scheduled for - see
@@ -14026,7 +14007,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // Called once a to-do has been resolved (marked done, or scheduled -
-        // see runBulkScheduleTodos) so it drops off the card immediately
+        // see saveBulkScheduleTodos) so it drops off the card immediately
         // instead of waiting for the next poll.
         function removeTodoFromMorningCheckin(todoId) {
             if (!todoMorningCheckinData) return;
@@ -14675,7 +14656,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let selectedTodoId = null;
         let todosCompletedExpanded = false;
         // Multi-select for "Schedule Selected with Ashanti" (see
-        // openBulkScheduleModal/runBulkScheduleTodos) - pruned against
+        // openBulkScheduleModal/saveBulkScheduleTodos) - pruned against
         // currently-live active todos on every render, same pattern as the
         // Projects page's selectedProjectIds.
         let selectedTodoIds = new Set();
@@ -15261,12 +15242,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // "Schedule Selected with Ashanti" - opens the period picker
-        // (openBulkScheduleModal), then runBulkScheduleTodos posts to the
-        // deterministic /todos/bulk-schedule endpoint (app.py) and narrates
-        // the result in Ashanti's chat. The actual placement math (priority
-        // ordering, the medium-priority next-period rollover, personal vs
-        // business hours) is never something the model computes - same
-        // reasoning as the 15-minute post-meeting buffer.
+        // (openBulkScheduleModal), then previewBulkScheduleTodos posts to
+        // the deterministic /todos/bulk-schedule endpoint (app.py) in
+        // preview mode to place each to-do on the live calendar there. The
+        // actual placement math (priority ordering, personal vs business
+        // hours) is never something the model computes - same reasoning as
+        // the 15-minute post-meeting buffer.
         function computeBulkSchedulePeriod(periodType) {
             const toISO = (d) => {
                 const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
@@ -15319,8 +15300,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         // "30 min" / "1h" / "1h 30m" - the duration badge shown next to each
         // row's title in the bulk-schedule popup (see buildBulkScheduleTodoRow/
-        // buildBulkScheduleScheduledRow) and used to compute a drag-drop
-        // placement's end time (see placeBulkScheduleDrop).
+        // buildBulkScheduleStagedRow) and used to compute a staged
+        // placement's end time (see saveBulkScheduleTodos).
         function formatEstimatedMinutes(minutes) {
             if (!minutes || minutes < 60) return `${minutes || 0} min`;
             const h = Math.floor(minutes / 60), m = minutes % 60;
@@ -15479,57 +15460,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return row;
         }
 
-        // A row for a to-do that DID get scheduled - shown in place of the
-        // period dropdown once it's done, rather than dropping off the list,
-        // so the popup always shows the outcome for everything that was
-        // selected, not just what's still pending.
-        function buildBulkScheduleScheduledRow(entry) {
-            const row = document.createElement('div');
-            row.className = 'bulk-schedule-todo-row';
-            row.dataset.todoId = entry.todoId;
-            row.dataset.scheduled = 'true';
-
-            const top = document.createElement('div');
-            top.className = 'bulk-schedule-todo-row-top';
-
-            const title = document.createElement('span');
-            title.className = 'bulk-schedule-todo-title';
-            title.textContent = entry.title;
-            title.title = entry.title;
-
-            const duration = document.createElement('span');
-            duration.className = 'bulk-schedule-todo-duration';
-            const linkedTodo = todosList.find(t => t.id === entry.todoId);
-            duration.textContent = formatEstimatedMinutes(linkedTodo ? linkedTodo.estimatedMinutes : null);
-
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'bulk-schedule-todo-remove-btn';
-            removeBtn.textContent = '✕';
-            removeBtn.title = 'Remove from this scheduling group (leaves it scheduled on the calendar as-is)';
-            removeBtn.addEventListener('click', (evt) => {
-                evt.stopPropagation();
-                removeBulkScheduleRow(entry.todoId);
-            });
-
-            top.appendChild(title);
-            top.appendChild(duration);
-            top.appendChild(removeBtn);
-
-            const badge = document.createElement('span');
-            badge.className = 'bulk-schedule-todo-scheduled-badge';
-            const when = new Date(entry.event.start).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-            badge.textContent = `✓ Scheduled — ${when}`;
-
-            row.appendChild(top);
-            row.appendChild(badge);
-            return row;
-        }
-
-        // A row for a to-do manually dragged onto the preview calendar but
-        // not yet saved (see bulkScheduleStagedPlacements) - shows where
-        // it's currently placed, but makes clear nothing's actually been
-        // written until Schedule is clicked.
+        // A row for a to-do placed on the live preview calendar - either
+        // Ashanti's own algorithm found it a slot (Schedule click - see
+        // previewBulkScheduleTodos) or it was dragged straight onto the
+        // calendar (see bulkScheduleStagedPlacements) - shows where it's
+        // currently sitting, but makes clear nothing's actually been saved
+        // until Save is clicked.
         function buildBulkScheduleStagedRow(todo, placement) {
             const row = document.createElement('div');
             row.className = 'bulk-schedule-todo-row';
@@ -15567,7 +15503,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const startDt = new Date(`${placement.dateKey}T00:00:00`);
             startDt.setHours(Math.floor(placement.minutes / 60), placement.minutes % 60, 0, 0);
             const when = startDt.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-            badge.textContent = `Placed — ${when} · click Schedule to confirm`;
+            badge.textContent = `Placed — ${when} · click Save to confirm`;
 
             row.appendChild(top);
             row.appendChild(badge);
@@ -15575,23 +15511,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // Rebuilds the modal's full list - every to-do it was opened with,
-        // in the same order, each shown as scheduled (a real, saved event -
-        // see buildBulkScheduleScheduledRow), staged (a manual placement not
-        // saved yet - see buildBulkScheduleStagedRow), or still needing a
-        // period, with its latest reason (bulkScheduleUnscheduledReasons,
-        // refreshed after every /todos/bulk-schedule POST). Called after any
-        // change to any of those, so the popup always states the outcome
-        // instead of closing silently. Also re-renders the preview calendar.
+        // in the same order, each shown as staged (placed on the live
+        // preview calendar - see buildBulkScheduleStagedRow) or still
+        // needing a period, with its latest reason
+        // (bulkScheduleUnscheduledReasons, refreshed after every
+        // /todos/bulk-schedule preview POST). Called after any change to
+        // either of those, so the popup always states the outcome instead
+        // of closing silently. Also re-renders the preview calendar.
         function rebuildBulkScheduleModalRows() {
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
             const unscheduledById = new Map(bulkScheduleUnscheduledReasons.map(u => [u.todoId, u]));
             bulkScheduleRowOrder.forEach(id => {
-                const scheduledEntry = bulkScheduleScheduledResults.find(s => s.todoId === id);
-                if (scheduledEntry) {
-                    list.appendChild(buildBulkScheduleScheduledRow(scheduledEntry));
-                    return;
-                }
                 const placement = bulkScheduleStagedPlacements[id];
                 const stagedTodo = placement && todosList.find(t => t.id === id);
                 if (stagedTodo) {
@@ -15604,62 +15535,47 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
 
             const total = bulkScheduleRowOrder.length;
-            const scheduledCount = bulkScheduleScheduledResults.length;
             const stagedCount = Object.keys(bulkScheduleStagedPlacements).length;
-            // Not bulkScheduleUnscheduledReasons.length - a row that's still
-            // just sitting there pending (never submitted, e.g. the popup
-            // was opened and a couple of to-dos got dragged straight onto
-            // the preview before anyone hit Schedule) has no reason yet, but
-            // still isn't scheduled, so it has to count here too.
-            const remainingCount = total - scheduledCount - stagedCount;
-            // What Schedule still has left to actually save - a staged
-            // placement isn't real yet either (see bulkScheduleStagedPlacements),
-            // so it counts as "not done" for the button/Cancel-vs-Close logic
-            // just like a plain pending row does.
-            const notYetSaved = remainingCount + stagedCount;
+            const remainingCount = total - stagedCount;
 
             let countText;
-            if (notYetSaved === 0) {
-                countText = `All ${total} to-do${total === 1 ? '' : 's'} scheduled!`;
+            if (remainingCount === 0) {
+                countText = `All ${total} to-do${total === 1 ? '' : 's'} on the calendar - click Save to confirm`;
             } else {
                 const parts = [];
-                if (scheduledCount) parts.push(`${scheduledCount} scheduled`);
                 if (stagedCount) parts.push(`${stagedCount} placed`);
-                if (remainingCount) parts.push(`${remainingCount} still need${remainingCount === 1 ? 's' : ''} a period`);
+                parts.push(`${remainingCount} still need${remainingCount === 1 ? 's' : ''} a period`);
                 countText = parts.join(', ');
             }
             document.getElementById('bulk-schedule-count').textContent = countText;
 
-            // Nothing left to submit once every to-do is actually saved - the
-            // Schedule button (and the now-pointless Apply to all) hide
-            // rather than sit there disabled, and Cancel becomes Close since
-            // there's nothing left to cancel.
-            document.getElementById('bulk-schedule-confirm-btn').style.display = notYetSaved === 0 ? 'none' : '';
-            document.getElementById('bulk-schedule-apply-all').style.display = notYetSaved === 0 ? 'none' : '';
-            document.getElementById('bulk-schedule-cancel-btn').textContent = notYetSaved === 0 ? 'Close' : 'Cancel';
-            if (notYetSaved === 0) {
+            // Nothing left to pick a period for once every to-do is on the
+            // calendar - the Schedule button (and the now-pointless Apply to
+            // all) hide rather than sit there disabled. Save is the one
+            // place any of this becomes real (see saveBulkScheduleTodos) -
+            // it stays disabled until there's at least something on the
+            // calendar to commit.
+            document.getElementById('bulk-schedule-confirm-btn').style.display = remainingCount === 0 ? 'none' : '';
+            document.getElementById('bulk-schedule-apply-all').style.display = remainingCount === 0 ? 'none' : '';
+            if (remainingCount === 0) {
                 document.getElementById('bulk-schedule-apply-all-custom').classList.remove('visible');
             } else {
                 resetBulkScheduleApplyAll();
             }
+            document.getElementById('bulk-schedule-save-btn').disabled = stagedCount === 0;
 
             renderBulkSchedulePreviewCalendar();
         }
 
         // The red ✕ on a card - drops a to-do out of this popup's working
         // set entirely (bulkScheduleRowOrder), not just its current
-        // scheduled/staged/pending state. If it was only staged (a manual
-        // drag placement, never actually saved - see
-        // bulkScheduleStagedPlacements), that placement is simply discarded,
-        // nothing to unschedule. If it was already truly scheduled (a real,
-        // saved event from an earlier Schedule click), that calendar
-        // placement is left exactly as-is - it just stops being tracked
-        // here, so it renders from then on as an ordinary read-only event in
-        // the preview like anything else already on the calendar - drag it
-        // back into this pane instead to actually take it off the calendar.
+        // staged/pending state. If it was staged (a manual
+        // bulkScheduleStagedPlacements), that placement is simply
+        // discarded - nothing was ever written to the calendar, so there's
+        // nothing to unschedule (see saveBulkScheduleTodos, the only place
+        // any of this becomes real).
         function removeBulkScheduleRow(todoId) {
             bulkScheduleRowOrder = bulkScheduleRowOrder.filter(id => id !== todoId);
-            bulkScheduleScheduledResults = bulkScheduleScheduledResults.filter(s => s.todoId !== todoId);
             bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => u.todoId !== todoId);
             delete bulkScheduleStagedPlacements[todoId];
             selectedTodoIds.delete(todoId);
@@ -15690,7 +15606,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function applyBulkSchedulePeriodToAllRows(periodType) {
             const applyAllStart = document.getElementById('bulk-schedule-apply-all-start').value;
             const applyAllEnd = document.getElementById('bulk-schedule-apply-all-end').value;
-            document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-scheduled="true"]):not([data-staged="true"])').forEach(row => {
+            document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-staged="true"])').forEach(row => {
                 const select = row.querySelector('.bulk-schedule-todo-period');
                 select.value = periodType;
                 select.dispatchEvent(new Event('change'));
@@ -15706,42 +15622,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // #bulk-schedule-list-pane) takes it off the calendar entirely -
         // same as the single-event Unschedule button - reverting it to a
         // pending card here so it can be given a different period.
-        async function unscheduleBulkScheduleEntry(todoId, eventId) {
-            await unscheduleCalendarEvent(eventId);
-            // unscheduleCalendarEvent's own loadCalendarData() call is
-            // fire-and-forget (not awaited internally), so calendarEvents
-            // can still hold the just-deleted event for a moment after this
-            // resolves - if rebuildBulkScheduleModalRows ran before that
-            // settled, the event would briefly re-render as an ordinary
-            // read-only block (it's no longer in bulkScheduleScheduledResults,
-            // so it stops being excluded from that muted-context list) - a
-            // stray leftover card exactly where it used to be. Removing it
-            // from calendarEvents here too closes that race outright.
-            calendarEvents = calendarEvents.filter(e => e.id !== eventId);
-            bulkScheduleScheduledResults = bulkScheduleScheduledResults.filter(s => s.todoId !== todoId);
-            rebuildBulkScheduleModalRows();
-        }
-
-        // Called on every exit from the Edit Event modal (see closeEventModal)
-        // - a no-op unless this popup is actually open behind it. Whatever
-        // just happened there (edit/delete/unschedule/mark complete) can
-        // make bulkScheduleScheduledResults stale: drops any entry whose
-        // to-do is gone (deleted) or no longer linked to that event
-        // (unscheduled - it then correctly reappears as a pending card, since
-        // it's still in bulkScheduleRowOrder), and refreshes the rest with
-        // whatever the edit actually changed.
-        function syncBulkScheduleModalAfterEventEdit() {
-            if (document.getElementById('bulk-schedule-modal').style.display === 'none') return;
-            bulkScheduleScheduledResults = bulkScheduleScheduledResults.filter(s => {
-                const stillLinked = todosList.some(t => t.id === s.todoId && t.calendarEventId === s.event.id);
-                if (!stillLinked) return false;
-                const freshEvent = calendarEvents.find(e => e.id === s.event.id);
-                if (freshEvent) s.event = freshEvent;
-                return true;
-            });
-            rebuildBulkScheduleModalRows();
-        }
-
         // Opens the period-picker used by the To-Do page's bulk toolbar,
         // but pre-selected with a specific set of to-dos rather than whatever
         // Francis had checked - used by the morning check-in card's per-item
@@ -15751,30 +15631,30 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             openBulkScheduleModal();
         }
 
-        // The fixed set/order of to-dos this popup opened with, and every
-        // scheduled result accumulated across however many Schedule clicks
-        // happen before it's closed - together these are what
-        // rebuildBulkScheduleModalRows renders on every attempt, so a to-do
-        // scheduled on an earlier click stays visible (as Scheduled) even
-        // after a later click only resubmits what's still pending.
-        // bulkScheduleUnscheduledReasons mirrors the latest "couldn't place
-        // this" reasons - refreshed after every /todos/bulk-schedule POST,
-        // pruned by todoId whenever a drag-drop resolves one manually (see
-        // placeBulkScheduleDrop) - so rebuildBulkScheduleModalRows never
-        // needs the caller to hand it a fresh list.
+        // The fixed set/order of to-dos this popup opened with -
+        // rebuildBulkScheduleModalRows renders every one of these on every
+        // change, each shown as pending (still needs a period) or staged
+        // (placed on the live preview calendar - see
+        // bulkScheduleStagedPlacements). bulkScheduleUnscheduledReasons
+        // mirrors the latest "couldn't place this" reasons - refreshed after
+        // every /todos/bulk-schedule preview POST, pruned by todoId whenever
+        // a drag-drop places one manually (see placeBulkScheduleDrop) - so
+        // rebuildBulkScheduleModalRows never needs the caller to hand it a
+        // fresh list.
         let bulkScheduleRowOrder = [];
-        let bulkScheduleScheduledResults = [];
         let bulkScheduleUnscheduledReasons = [];
-        // Manual drag placements onto the preview calendar that haven't
-        // been saved yet - todoId -> {dateKey, minutes}. Purely local: a
-        // to-do dragged onto the calendar just previews there (see
-        // placeBulkScheduleDrop/buildBulkScheduleStagedBlock) until Schedule
-        // is actually clicked (see runBulkScheduleTodos), which is the only
-        // place these turn into real calendar events. Dragging a staged
-        // placement to a new day/time just updates the entry here; dragging
-        // it back off the calendar, or hitting its card's red x, deletes
-        // the entry outright - nothing to unschedule since nothing was ever
-        // saved.
+        // Every to-do currently placed on the live preview calendar -
+        // todoId -> {dateKey, minutes}. Nothing here is saved to the
+        // backend: clicking Schedule (see previewBulkScheduleTodos) only
+        // adds to this map via the bulk-schedule endpoint's preview mode,
+        // and dragging a to-do straight onto the calendar
+        // (placeBulkScheduleDrop) does the same thing locally. Save (see
+        // saveBulkScheduleTodos) is the only place any of this becomes a
+        // real calendar event - it commits exactly what's in this map at
+        // that moment, nothing more. Dragging a placement to a new day/time
+        // just updates its entry here; dragging it back off the calendar,
+        // or hitting its card's red x, deletes the entry outright - it was
+        // never saved, so there's nothing to unschedule.
         let bulkScheduleStagedPlacements = {};
         // The preview calendar's currently-viewed week (see
         // renderBulkSchedulePreviewCalendar/bulkSchedulePreviewNav) - reset
@@ -15784,10 +15664,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // readable during dragover for the drop-target highlight, same
         // reasoning as draggedSuggestionId. {kind:'unscheduled', todoId} for
         // a list row being placed for the first time, {kind:'staged', todoId}
-        // for an unsaved placement being repositioned, or
-        // {kind:'scheduled', todoId, eventId} for an already-SAVED preview
-        // block being nudged to a new day/time (this one alone is a real,
-        // immediate calendar change - see placeBulkScheduleDrop).
+        // for an already-placed (but still unsaved) card being repositioned.
         let bulkScheduleDraggedPayload = null;
 
         function openBulkScheduleModal() {
@@ -15802,23 +15679,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 return todo && !isTodoScheduled(todo);
             });
             if (bulkScheduleRowOrder.length === 0) return;
-            bulkScheduleScheduledResults = [];
             bulkScheduleUnscheduledReasons = [];
             bulkScheduleStagedPlacements = {};
             bulkSchedulePreviewWeekStart = getCalendarWeekStart(new Date());
-            document.getElementById('bulk-schedule-count').textContent =
-                `${bulkScheduleRowOrder.length} to-do${bulkScheduleRowOrder.length === 1 ? '' : 's'} selected`;
-            document.getElementById('bulk-schedule-confirm-btn').style.display = '';
-            document.getElementById('bulk-schedule-apply-all').style.display = '';
-            document.getElementById('bulk-schedule-cancel-btn').textContent = 'Cancel';
             resetBulkScheduleApplyAll();
-            const list = document.getElementById('bulk-schedule-todo-list');
-            list.innerHTML = '';
-            bulkScheduleRowOrder.forEach(id => {
-                const todo = todosList.find(t => t.id === id);
-                if (todo) list.appendChild(buildBulkScheduleTodoRow(todo));
-            });
-            renderBulkSchedulePreviewCalendar();
+            rebuildBulkScheduleModalRows();
             document.getElementById('bulk-schedule-modal').style.display = 'flex';
         }
 
@@ -15850,53 +15715,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return block;
         }
 
-        // A to-do this run of Schedule (or a drag-drop) actually placed -
-        // draggable to a different day/time right here, via the same
-        // dragstart/drop mechanism as a still-pending list row (see
-        // buildBulkScheduleTodoRow/placeBulkScheduleDrop), just moving an
-        // existing event instead of creating a new one.
-        function buildBulkSchedulePreviewBlock(entry) {
-            const e = entry.event;
-            const start = new Date(e.start);
-            const end = e.end ? new Date(e.end) : new Date(start.getTime() + 30 * 60000);
-            const startMin = start.getHours() * 60 + start.getMinutes();
-            let durationMin = Math.max(15, (end - start) / 60000);
-            if (startMin + durationMin > 24 * 60) durationMin = 24 * 60 - startMin;
-
-            const block = document.createElement('div');
-            block.className = 'bulk-schedule-preview-block';
-            block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
-            block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            block.textContent = entry.title;
-            block.title = `${entry.title} - drag to move, double-click for details`;
-            block.draggable = true;
-            block.addEventListener('dragstart', (evt) => {
-                bulkScheduleDraggedPayload = { kind: 'scheduled', todoId: entry.todoId, eventId: e.id };
-                block.classList.add('drag-hidden');
-                evt.dataTransfer.effectAllowed = 'move';
-            });
-            block.addEventListener('dragend', () => {
-                block.classList.remove('drag-hidden');
-                bulkScheduleDraggedPayload = null;
-            });
-            // Opens the same Edit Event modal the real Calendar page uses -
-            // it renders above this popup (see #bulk-schedule-modal's z-index)
-            // and, on close, syncBulkScheduleModalAfterEventEdit (hooked into
-            // closeEventModal) picks up whatever changed here.
-            block.addEventListener('dblclick', (evt) => {
-                evt.stopPropagation();
-                openEventModal(e);
-            });
-            return block;
-        }
-
-        // A manual placement that hasn't been saved yet (see
-        // bulkScheduleStagedPlacements) - looks like buildBulkSchedulePreviewBlock
-        // (same blue, same duration-based size) but dashed to read as a
-        // preview rather than a done deal, draggable to reposition
+        // A to-do currently placed on the live preview calendar - either
+        // Ashanti's own algorithm found it a slot (Schedule click) or it
+        // was dragged straight onto the calendar (see
+        // bulkScheduleStagedPlacements) - draggable to reposition
         // (kind:'staged' - see placeBulkScheduleDrop) or drag off the
-        // calendar to drop the placement, and no dblclick since there's no
-        // real event yet to show details for.
+        // calendar to drop the placement. Nothing here is saved until Save
+        // is clicked (see saveBulkScheduleTodos), so there's no dblclick to
+        // open an Edit Event modal - there's no real event yet to show
+        // details for.
         function buildBulkScheduleStagedBlock(todoId, placement) {
             const todo = todosList.find(t => t.id === todoId);
             if (!todo) return null;
@@ -15915,6 +15742,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDraggedPayload = { kind: 'staged', todoId };
                 block.classList.add('drag-hidden');
                 evt.dataTransfer.effectAllowed = 'move';
+                // Same top-anchored ghost as the scheduled block above - see
+                // that dragstart's comment.
+                setBulkScheduleDragImage(evt, todo.title, durationMin);
             });
             block.addEventListener('dragend', () => {
                 block.classList.remove('drag-hidden');
@@ -15929,9 +15759,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // see where everything landed relative to what's already on the
         // calendar, and drag things around without leaving the popup. Real
         // events show read-only for context; this run's own placements
-        // (bulkScheduleScheduledResults) are the draggable ones. Called
-        // after any change to what's scheduled (see rebuildBulkScheduleModalRows)
-        // and on week navigation (bulkSchedulePreviewNav).
+        // (bulkScheduleStagedPlacements) are the draggable ones - none of
+        // them are real events yet, so there's nothing to exclude from the
+        // read-only pass. Called after any change to what's placed (see
+        // rebuildBulkScheduleModalRows) and on week navigation
+        // (bulkSchedulePreviewNav).
         function renderBulkSchedulePreviewCalendar() {
             if (!bulkSchedulePreviewWeekStart) return;
             const days = [];
@@ -15974,7 +15806,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const columns = document.getElementById('bulk-schedule-preview-columns');
             columns.innerHTML = '';
             const slotHeight = CALENDAR_PX_PER_HOUR * CALENDAR_SLOT_MINUTES / 60;
-            const scheduledEventIds = new Set(bulkScheduleScheduledResults.map(s => s.event.id));
             days.forEach(d => {
                 const key = calendarDateKey(d);
                 const col = document.createElement('div');
@@ -16000,18 +15831,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     col.appendChild(nowLine);
                 }
 
-                // Real events for this day, muted context - excludes
-                // anything this run itself placed (drawn separately below,
-                // draggable) so the same event doesn't render twice.
+                // Real events for this day, muted context.
                 (calendarEvents || [])
-                    .filter(e => e.status !== 'cancelled' && !e.allDay && (e.start || '').startsWith(key) && !scheduledEventIds.has(e.id))
+                    .filter(e => e.status !== 'cancelled' && !e.allDay && (e.start || '').startsWith(key))
                     .forEach(e => col.appendChild(buildBulkSchedulePreviewReadonlyBlock(e)));
 
-                bulkScheduleScheduledResults
-                    .filter(s => (s.event.start || '').startsWith(key))
-                    .forEach(s => col.appendChild(buildBulkSchedulePreviewBlock(s)));
-
-                // Manual placements not saved yet (see
+                // This run's own placements, not saved yet (see
                 // bulkScheduleStagedPlacements) - dashed so they read as a
                 // preview, not a done deal.
                 Object.entries(bulkScheduleStagedPlacements)
@@ -16038,76 +15863,32 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
         }
 
-        // Drop handler for all three drag sources. A still-pending list row
-        // or an existing staged placement just updates
-        // bulkScheduleStagedPlacements - nothing is saved until Schedule is
-        // actually clicked (see runBulkScheduleTodos), so there's no
-        // past-time gate here; it isn't a real change yet. An already-SAVED
-        // preview block (kind:'scheduled') is different - moving it is a
-        // real, immediate calendar change, so that path alone gets the
-        // past-time confirmation (Ashanti's own branded popup rather than a
-        // native confirm()) before committing via commitBulkScheduleMove. No
-        // conflict/blackout check either way, matching the real Calendar
-        // page's own drag-to-move today - Francis can see the calendar right
-        // there and is deliberately overriding, unlike Ashanti's automatic
-        // scheduling, which does respect the Availability template.
+        // Drop handler for both drag sources (a still-pending list row or an
+        // already-placed staged card being repositioned) - just updates
+        // bulkScheduleStagedPlacements. Nothing here is ever a real,
+        // immediate calendar change - only Save is (see
+        // saveBulkScheduleTodos), so there's no past-time gate or
+        // conflict/blackout check at drop time; that all happens once, for
+        // the whole batch, when Save is actually clicked.
         function placeBulkScheduleDrop(dateKey, minutes) {
             const payload = bulkScheduleDraggedPayload;
             bulkScheduleDraggedPayload = null;
             if (!payload) return;
-
-            if (payload.kind === 'unscheduled' || payload.kind === 'staged') {
-                bulkScheduleStagedPlacements[payload.todoId] = { dateKey, minutes };
-                rebuildBulkScheduleModalRows();
-                return;
-            }
-
-            // 'scheduled' - already a real, saved event.
-            const startDt = new Date(`${dateKey}T00:00:00`);
-            startDt.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-
-            if (startDt < new Date()) {
-                showAshantiConfirm(
-                    "You're about to move this into a period that has already passed - want me to go ahead anyway?",
-                    () => commitBulkScheduleMove(payload, startDt),
-                    () => renderBulkSchedulePreviewCalendar()
-                );
-            } else {
-                commitBulkScheduleMove(payload, startDt);
-            }
-        }
-
-        // Moves an already-saved preview block (kind:'scheduled' only - a
-        // staged, not-yet-saved placement never reaches here, see
-        // placeBulkScheduleDrop) to a new day/time, keeping its existing
-        // duration.
-        async function commitBulkScheduleMove(payload, startDt) {
-            const entry = bulkScheduleScheduledResults.find(s => s.todoId === payload.todoId);
-            if (!entry) return;
-            const durationMin = Math.max(15, (new Date(entry.event.end) - new Date(entry.event.start)) / 60000);
-            const endDt = new Date(startDt.getTime() + durationMin * 60000);
-            const result = await updateCalendarEvent(payload.eventId, {
-                start: calendarToLocalISO(startDt),
-                end: calendarToLocalISO(endDt)
-            });
-            if (!result.success) {
-                alert(result.error || 'Could not move that item - try again.');
-                renderBulkSchedulePreviewCalendar();
-                return;
-            }
-            entry.event = result.event;
+            bulkScheduleStagedPlacements[payload.todoId] = { dateKey, minutes };
             rebuildBulkScheduleModalRows();
         }
 
-        // The one place anything from this popup actually gets saved -
-        // pending rows (period dropdown) go through the auto-slot-finding
-        // algorithm as before; staged rows (dragged onto the preview - see
-        // bulkScheduleStagedPlacements) get created at exactly the placement
-        // Francis chose, no algorithm involved. Both happen in the same
-        // click so "Schedule" always means the same thing: everything this
-        // popup is currently showing becomes real.
-        async function runBulkScheduleTodos() {
-            const pendingRows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-scheduled="true"]):not([data-staged="true"])'));
+        // The "Schedule" button - finds each still-pending to-do a slot
+        // within its chosen period and places it on the live preview
+        // calendar (bulkScheduleStagedPlacements), exactly like dragging it
+        // there by hand would. Preview mode only (see todos_bulk_schedule in
+        // app.py) - nothing is created or saved here. Francis can keep
+        // clicking Schedule for whatever's still pending, drag things
+        // around, or remove them, until Save (see saveBulkScheduleTodos)
+        // commits whatever's actually sitting on the calendar at that
+        // moment.
+        async function previewBulkScheduleTodos() {
+            const pendingRows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-staged="true"])'));
             const items = [];
             for (const row of pendingRows) {
                 const periodType = row.querySelector('.bulk-schedule-todo-period').value;
@@ -16125,15 +15906,56 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 }
                 items.push({ todo_id: row.dataset.todoId, start_date: range.start, end_date: range.end });
             }
+            if (!items.length) return;
 
+            const confirmBtn = document.getElementById('bulk-schedule-confirm-btn');
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Scheduling…';
+            try {
+                const response = await fetch('/todos/bulk-schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items, preview: true })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    alert(data.error || 'Could not schedule those to-dos.');
+                } else {
+                    data.scheduled.forEach(s => {
+                        const start = new Date(s.start);
+                        bulkScheduleStagedPlacements[s.todoId] = {
+                            dateKey: calendarDateKey(start),
+                            minutes: start.getHours() * 60 + start.getMinutes()
+                        };
+                    });
+                    bulkScheduleUnscheduledReasons = data.unscheduled;
+                }
+                rebuildBulkScheduleModalRows();
+            } catch (e) {
+                console.error('Bulk schedule preview failed:', e);
+                alert('Could not schedule those to-dos - check the app is running and try again.');
+            }
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Schedule';
+        }
+
+        // The "Save" button - the one place anything from this popup
+        // actually becomes a real calendar event. Commits exactly what's
+        // currently in bulkScheduleStagedPlacements - i.e. whatever is
+        // physically sitting on the live preview calendar right now, however
+        // it got there (Schedule's algorithm or a manual drag). Anything
+        // dragged off the calendar or removed via its card's red x is
+        // already gone from that map by the time this runs, so it's simply
+        // never saved.
+        async function saveBulkScheduleTodos() {
             const stagedTodoIds = Object.keys(bulkScheduleStagedPlacements);
-            if (!items.length && !stagedTodoIds.length) return;
+            if (!stagedTodoIds.length) return;
 
-            // Only a manual placement can land in the past - Ashanti's own
-            // algorithm-driven slots never do (compute_free_slots always
-            // clamps to "not before now" - see app.py) - so this only needs
-            // to check the staged ones, once, covering the whole batch
-            // that's about to be saved.
+            // Only a manual drag can land a placement in the past -
+            // Ashanti's own algorithm-driven slots never do
+            // (compute_free_slots always clamps to "not before now" - see
+            // app.py) - so this only needs to check what's currently staged,
+            // once, covering the whole batch that's about to be saved.
             const hasPastStaged = stagedTodoIds.some(todoId => {
                 const p = bulkScheduleStagedPlacements[todoId];
                 const dt = new Date(`${p.dateKey}T00:00:00`);
@@ -16143,7 +15965,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (hasPastStaged) {
                 const proceed = await new Promise(resolve => {
                     showAshantiConfirm(
-                        "One or more of these are placed in a period that's already passed - want me to go ahead and schedule them anyway?",
+                        "One or more of these are placed in a period that's already passed - want me to go ahead and save them anyway?",
                         () => resolve(true),
                         () => resolve(false)
                     );
@@ -16151,13 +15973,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 if (!proceed) return;
             }
 
-            const confirmBtn = document.getElementById('bulk-schedule-confirm-btn');
-            confirmBtn.disabled = true;
-            confirmBtn.textContent = 'Scheduling…';
+            const saveBtn = document.getElementById('bulk-schedule-save-btn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving…';
             try {
-                // Staged placements first - exact, no algorithm involved,
-                // always succeeds barring a network error. Same
-                // create-and-link pattern saveEventModal's create path
+                // Same create-and-link pattern saveEventModal's create path
                 // already uses for a todo-linked event.
                 for (const todoId of stagedTodoIds) {
                     const todo = todosList.find(t => t.id === todoId);
@@ -16176,61 +15996,34 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         attachments: []
                     });
                     if (!data.success) {
-                        alert(`Could not schedule "${todo.title}" - ${data.error || 'try again.'}`);
+                        alert(`Could not save "${todo.title}" - ${data.error || 'try again.'}`);
                         continue;
                     }
                     await updateTodoItem(todo.id, { calendar_event_id: data.event.id });
                     removeTodoFromMorningCheckin(todo.id);
                     selectedTodoIds.delete(todo.id);
-                    bulkScheduleScheduledResults.push({ todoId: todo.id, title: todo.title, event: data.event });
                     delete bulkScheduleStagedPlacements[todoId];
                 }
-                if (stagedTodoIds.length) await loadCalendarData();
-
-                if (items.length) {
-                    const response = await fetch('/todos/bulk-schedule', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ items })
-                    });
-                    const data = await response.json();
-                    if (!data.success) {
-                        alert(data.error || 'Could not schedule those to-dos.');
-                    } else {
-                        await loadTodosData();
-                        await loadCalendarData();
-                        // A to-do that was actually scheduled just had its
-                        // notFinished flag cleared server-side (see
-                        // todos_bulk_schedule) - drop it from the morning
-                        // check-in card right away instead of waiting for the
-                        // next poll. One that stayed unscheduled is still
-                        // notFinished, so it correctly stays on the card.
-                        data.scheduled.forEach(s => removeTodoFromMorningCheckin(s.todoId));
-                        data.scheduled.forEach(s => selectedTodoIds.delete(s.todoId));
-                        bulkScheduleScheduledResults.push(...data.scheduled);
-                        bulkScheduleUnscheduledReasons = data.unscheduled;
-                    }
-                }
-
+                await loadCalendarData();
                 renderTodosPage();
                 if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
 
-                // The popup never closes itself on a Schedule click - a
-                // to-do never gets silently moved off the period Francis
-                // picked for it (see todos_bulk_schedule), and this is
-                // the one place, not Ashanti's chat, that states the
-                // outcome for every to-do it opened with: scheduled ones
-                // show as Scheduled, anything that didn't fit stays with
-                // its own reason so he can pick a different period and
-                // hit Schedule again. Even a clean sweep says so here
-                // rather than just vanishing.
-                rebuildBulkScheduleModalRows();
+                // Everything that was on the calendar got saved - nothing
+                // left for this popup to do. Anything still pending (never
+                // given a period, or that Schedule couldn't place) was never
+                // on the calendar, so it just stays an ordinary unscheduled
+                // to-do - Francis can reopen this popup for it later.
+                if (Object.keys(bulkScheduleStagedPlacements).length === 0) {
+                    closeBulkScheduleModal();
+                } else {
+                    rebuildBulkScheduleModalRows();
+                }
             } catch (e) {
-                console.error('Bulk schedule failed:', e);
-                alert('Could not schedule those to-dos - check the app is running and try again.');
+                console.error('Bulk save failed:', e);
+                alert('Could not save those to-dos - check the app is running and try again.');
             }
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Schedule';
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
         }
 
         // The bulk counterpart to a single event's Unschedule button (see
@@ -17151,19 +16944,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
         });
         document.getElementById('bulk-schedule-cancel-btn').addEventListener('click', closeBulkScheduleModal);
-        document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', runBulkScheduleTodos);
+        document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', previewBulkScheduleTodos);
+        document.getElementById('bulk-schedule-save-btn').addEventListener('click', saveBulkScheduleTodos);
         document.getElementById('bulk-schedule-preview-prev-btn').addEventListener('click', () => bulkSchedulePreviewNav(-1));
         document.getElementById('bulk-schedule-preview-next-btn').addEventListener('click', () => bulkSchedulePreviewNav(1));
-        // Drag an already-scheduled preview card back off the calendar and
-        // onto this pane to unschedule it (see unscheduleBulkScheduleEntry) -
-        // only accepts a 'scheduled' drag; a still-pending list row being
-        // dragged around within its own pane doesn't match this and is
-        // ignored, same as dropping it on itself would be a no-op anyway.
+        // Drag an already-placed staged card back off the calendar and onto
+        // this pane to drop the placement - nothing was ever saved for it,
+        // so this is just a local removal, no backend call needed. A
+        // still-pending list row being dragged around within its own pane
+        // doesn't match this and is ignored, same as dropping it on itself
+        // would be a no-op anyway.
         (() => {
             const pane = document.getElementById('bulk-schedule-list-pane');
             pane.addEventListener('dragover', (evt) => {
-                if (!bulkScheduleDraggedPayload) return;
-                if (bulkScheduleDraggedPayload.kind !== 'scheduled' && bulkScheduleDraggedPayload.kind !== 'staged') return;
+                if (!bulkScheduleDraggedPayload || bulkScheduleDraggedPayload.kind !== 'staged') return;
                 evt.preventDefault();
                 pane.classList.add('drop-target');
             });
@@ -17176,11 +16970,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const payload = bulkScheduleDraggedPayload;
                 if (!payload) return;
                 bulkScheduleDraggedPayload = null;
-                if (payload.kind === 'scheduled') {
-                    unscheduleBulkScheduleEntry(payload.todoId, payload.eventId);
-                } else if (payload.kind === 'staged') {
-                    // Nothing was ever saved for a staged placement - just
-                    // drop it locally, no backend call needed.
+                if (payload.kind === 'staged') {
                     delete bulkScheduleStagedPlacements[payload.todoId];
                     rebuildBulkScheduleModalRows();
                 }
