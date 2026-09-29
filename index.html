@@ -15336,11 +15336,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Each option's date(s), computed fresh per row so "Today"/"This
         // week"/etc. are always relative to now rather than baked in once.
         const BULK_SCHEDULE_PERIODS = [
+            ['next_available', 'Next available opening'],
             ['today', 'Today'],
             ['tomorrow', 'Tomorrow'],
             ['this_week', 'This week'],
-            ['next_week', 'Next week'],
-            ['next_available', 'Next available opening']
+            ['next_week', 'Next week']
         ];
 
         // Appends every period option, including Custom range, to a <select>
@@ -15427,6 +15427,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const select = document.createElement('select');
             select.className = 'bulk-schedule-todo-period';
             populateBulkSchedulePeriodSelect(select);
+            // "Next available opening" leads the list (see
+            // BULK_SCHEDULE_PERIODS) but a row should still default to
+            // Today rather than silently picking whatever option happens
+            // to be listed first.
+            select.value = 'today';
 
             const customRange = document.createElement('div');
             customRange.className = 'bulk-schedule-todo-custom-range';

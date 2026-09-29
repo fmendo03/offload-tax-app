@@ -2879,7 +2879,14 @@ def todos_bulk_schedule():
                 slot = find_slot(todo, period_days)
 
                 if slot:
-                    event = None if preview else create_event_for(todo, *slot)
+                    # Always append to working_events, preview or not - a
+                    # later item in this same batch has to see this slot as
+                    # taken (day_events_for reads from working_events), or
+                    # everything sharing a period piles up on the same first
+                    # open slot instead of filling the period in order. Only
+                    # whether the batch is actually persisted (below) depends
+                    # on preview.
+                    event = create_event_for(todo, *slot)
                     scheduled.append((todo, slot[0], slot[1], event))
                 elif priority == 'high':
                     unscheduled.append((todo, "No availability in the selected period, even at highest priority - try a different period."))
@@ -2905,7 +2912,10 @@ def todos_bulk_schedule():
                 {
                     'todoId': todo['id'], 'title': todo['title'],
                     'start': start_dt.isoformat(), 'end': end_dt.isoformat(),
-                    **({'event': event} if event else {})
+                    # A preview event's id is never persisted (see above) -
+                    # leaving it out of the response keeps a discarded id
+                    # from ever reaching the client.
+                    **({'event': event} if not preview else {})
                 }
                 for todo, start_dt, end_dt, event in scheduled
             ],
