@@ -2942,8 +2942,12 @@
             cursor: grab;
         }
 
+        /* Same blue as .bulk-schedule-preview-block once it's actually
+           placed - the list card should look like the calendar card it now
+           represents, not its own separate color scheme. */
         .bulk-schedule-todo-row[data-scheduled="true"] {
-            border-left-color: #2e7d32;
+            background: #dce7f5;
+            border-left-color: #1F3A5F;
         }
 
         .bulk-schedule-todo-row.dragging {
@@ -6147,6 +6151,21 @@
         </div>
     </div>
 
+    <!-- Ashanti confirmation popup - a lightweight, branded yes/no gate
+         (currently just the bulk-schedule popup's past-time warning - see
+         placeBulkScheduleDrop/showAshantiConfirm) instead of a native
+         confirm(), centered in the window like every other modal here. -->
+    <div id="ashanti-confirm-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1150; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 12px; padding: 24px; max-width: 380px; width: 90%; text-align: center;">
+            <img src="avatars/ashanti.png" alt="Ashanti" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; object-position: top; margin-bottom: 12px;">
+            <div id="ashanti-confirm-message" style="font-size: 14px; color: #333; margin-bottom: 20px; line-height: 1.4;"></div>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="ashanti-confirm-cancel-btn" style="padding: 10px 18px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                <button id="ashanti-confirm-ok-btn" style="padding: 10px 18px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Continue</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Bulk-schedule period picker - "Schedule Selected with Ashanti" on the
          To-Do page opens this to pick the target period, then POSTs to
          /todos/bulk-schedule (see runBulkScheduleTodos). Stays open (rather
@@ -7761,6 +7780,28 @@ function showBulkConfirm(message, itemLabels, onConfirm) {
     }
     function handleOk() { cleanup(); onConfirm(); }
     function handleCancel() { cleanup(); }
+    okBtn.addEventListener('click', handleOk);
+    cancelBtn.addEventListener('click', handleCancel);
+}
+
+// A branded yes/no gate "from Ashanti" (her avatar, centered like every
+// other modal) for a single action - used instead of the native confirm()
+// wherever the message reads as something she'd actually say (currently
+// just the bulk-schedule popup's past-time warning - see placeBulkScheduleDrop).
+function showAshantiConfirm(message, onConfirm, onCancel) {
+    const modal = document.getElementById('ashanti-confirm-modal');
+    document.getElementById('ashanti-confirm-message').textContent = message;
+    modal.style.display = 'flex';
+
+    const okBtn = document.getElementById('ashanti-confirm-ok-btn');
+    const cancelBtn = document.getElementById('ashanti-confirm-cancel-btn');
+    function cleanup() {
+        modal.style.display = 'none';
+        okBtn.removeEventListener('click', handleOk);
+        cancelBtn.removeEventListener('click', handleCancel);
+    }
+    function handleOk() { cleanup(); onConfirm(); }
+    function handleCancel() { cleanup(); if (onCancel) onCancel(); }
     okBtn.addEventListener('click', handleOk);
     cancelBtn.addEventListener('click', handleCancel);
 }
@@ -15265,6 +15306,31 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return m ? `${h}h ${m}m` : `${h}h`;
         }
 
+        // Swaps the native drag ghost for one sized (height only - width
+        // stays a fixed, readable card width) to the to-do's actual
+        // duration, using the exact same px-per-hour scale as the preview
+        // grid - so what Francis sees under the cursor while dragging
+        // already looks like what it'll become once dropped, instead of a
+        // generic list-row-sized ghost that gives no sense of how much room
+        // a 3-hour to-do is about to take up. The offset anchors the
+        // cursor at the ghost's top edge, matching how the drop handler
+        // reads it (placeBulkScheduleDrop treats the cursor's Y position as
+        // the new event's start time, not its center).
+        function setBulkScheduleDragImage(evt, title, estimatedMinutes) {
+            const heightPx = Math.max(16, (estimatedMinutes || 30) / 60 * CALENDAR_PX_PER_HOUR - 1);
+            const ghost = document.createElement('div');
+            ghost.className = 'bulk-schedule-preview-block bulk-schedule-drag-ghost';
+            ghost.style.position = 'fixed';
+            ghost.style.top = '-9999px';
+            ghost.style.left = '-9999px';
+            ghost.style.width = '160px';
+            ghost.style.height = `${heightPx}px`;
+            ghost.textContent = title;
+            document.body.appendChild(ghost);
+            evt.dataTransfer.setDragImage(ghost, 12, 6);
+            setTimeout(() => ghost.remove(), 0);
+        }
+
         // Each option's date(s), computed fresh per row so "Today"/"This
         // week"/etc. are always relative to now rather than baked in once.
         const BULK_SCHEDULE_PERIODS = [
@@ -15323,6 +15389,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDraggedPayload = { kind: 'unscheduled', todoId: todo.id };
                 row.classList.add('dragging');
                 evt.dataTransfer.effectAllowed = 'copy';
+                setBulkScheduleDragImage(evt, todo.title, todo.estimatedMinutes);
             });
             row.addEventListener('dragend', () => {
                 row.classList.remove('dragging');
@@ -15551,6 +15618,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // pending card here so it can be given a different period.
         async function unscheduleBulkScheduleEntry(todoId, eventId) {
             await unscheduleCalendarEvent(eventId);
+            // unscheduleCalendarEvent's own loadCalendarData() call is
+            // fire-and-forget (not awaited internally), so calendarEvents
+            // can still hold the just-deleted event for a moment after this
+            // resolves - if rebuildBulkScheduleModalRows ran before that
+            // settled, the event would briefly re-render as an ordinary
+            // read-only block (it's no longer in bulkScheduleScheduledResults,
+            // so it stops being excluded from that muted-context list) - a
+            // stray leftover card exactly where it used to be. Removing it
+            // from calendarEvents here too closes that race outright.
+            calendarEvents = calendarEvents.filter(e => e.id !== eventId);
             bulkScheduleScheduledResults = bulkScheduleScheduledResults.filter(s => s.todoId !== todoId);
             rebuildBulkScheduleModalRows();
         }
@@ -15814,15 +15891,17 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
         }
 
-        // Drop handler for both drag sources - a still-pending list row
-        // (creates+links a new event, exactly like saveEventModal's
+        // Drop handler for both drag sources - gates on the past-time
+        // confirmation (see showAshantiConfirm below) before handing off to
+        // commitBulkScheduleDrop, which does the actual work: a still-pending
+        // list row (creates+links a new event, exactly like saveEventModal's
         // create-and-link path for a todo-linked event) or an already-placed
         // preview block (just moves it, keeping its existing duration). No
         // conflict/blackout check on drop, matching the real Calendar page's
         // own drag-to-move today - Francis can see the calendar right there
         // and is deliberately overriding, unlike Ashanti's automatic
         // scheduling, which does respect the Availability template.
-        async function placeBulkScheduleDrop(dateKey, minutes) {
+        function placeBulkScheduleDrop(dateKey, minutes) {
             const payload = bulkScheduleDraggedPayload;
             bulkScheduleDraggedPayload = null;
             if (!payload) return;
@@ -15832,15 +15911,21 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             // Free manual placement is allowed into the past (unlike
             // Ashanti's own automatic scheduling, which never would) - just
-            // confirmed first, since dropping a few pixels off is an easy
+            // confirmed first, via her own branded popup rather than a
+            // native confirm(), since dropping a few pixels off is an easy
             // way to land there by accident.
             if (startDt < new Date()) {
-                if (!confirm('You\'re about to move this into a period that has already passed - continue?')) {
-                    renderBulkSchedulePreviewCalendar();
-                    return;
-                }
+                showAshantiConfirm(
+                    "You're about to move this into a period that has already passed - want me to go ahead anyway?",
+                    () => commitBulkScheduleDrop(payload, startDt),
+                    () => renderBulkSchedulePreviewCalendar()
+                );
+            } else {
+                commitBulkScheduleDrop(payload, startDt);
             }
+        }
 
+        async function commitBulkScheduleDrop(payload, startDt) {
             if (payload.kind === 'unscheduled') {
                 const todo = todosList.find(t => t.id === payload.todoId);
                 if (!todo) return;
