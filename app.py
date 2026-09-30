@@ -3384,6 +3384,80 @@ def todos_bulk_schedule():
                 day_iso = day.isoformat()
                 return [e for e in working_events if e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)]
 
+            # If a plain search finds no room for `duration` on `day`, and
+            # that day has a real Lunch card on it, tries repositioning
+            # lunch to either extreme of its own flexibility window (the
+            # only two positions that can ever open up MORE contiguous room
+            # than it already has - anything between them just trades room
+            # from one side of the day to the other) to see whether that
+            # alone would make the to-do fit. Only actually commits the move
+            # if a candidate both fits the to-do AND doesn't land lunch on
+            # top of anything else real that day - lunch has to never be
+            # skipped and never overlap anything, so a shift that would
+            # violate the second guarantee to satisfy the first is rejected
+            # outright, same as a candidate that doesn't help at all.
+            moved_lunch_events = {}
+
+            def try_shift_lunch_for_slot(day, duration, slot_fn):
+                day_iso = day.isoformat()
+                lunch_event = next(
+                    (e for e in working_events if e.get('origin') == 'lunch'
+                     and e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)),
+                    None
+                )
+                if not lunch_event:
+                    return None
+                lunch_settings = load_lunch_settings()
+                if not lunch_settings['days']:
+                    return None
+                try:
+                    original_start = lunch_event['start']
+                    original_end = lunch_event['end']
+                    orig_start_dt = datetime.fromisoformat(original_start)
+                except (ValueError, KeyError, TypeError):
+                    return None
+
+                length_min = lunch_settings['lengthMinutes']
+                natural_start_min = _minutes_from_hhmm(lunch_settings['startTime'])
+                window_start = max(0, natural_start_min - lunch_settings['flexBeforeMinutes'])
+                window_end = min(24 * 60, natural_start_min + length_min + lunch_settings['flexAfterMinutes'])
+                day_start = datetime.combine(day, datetime.min.time())
+                orig_start_min = (orig_start_dt - day_start).total_seconds() / 60
+
+                other_events = [e for e in day_events_for(day) if e is not lunch_event]
+
+                def overlaps_others(start_dt, end_dt):
+                    for e in other_events:
+                        if e.get('allDay'):
+                            continue
+                        try:
+                            es = datetime.fromisoformat(e['start'])
+                            ee = datetime.fromisoformat(e.get('end') or e['start'])
+                        except (ValueError, KeyError, TypeError):
+                            continue
+                        if es < end_dt and start_dt < ee:
+                            return True
+                    return False
+
+                for candidate_min in (window_start, window_end - length_min):
+                    if candidate_min == orig_start_min:
+                        continue
+                    candidate_start = day_start + timedelta(minutes=candidate_min)
+                    candidate_end = candidate_start + timedelta(minutes=length_min)
+                    if overlaps_others(candidate_start, candidate_end):
+                        continue
+                    lunch_event['start'] = candidate_start.isoformat()
+                    lunch_event['end'] = candidate_end.isoformat()
+                    for s, en in slot_fn(day_events_for(day), day, now):
+                        if en - s >= duration:
+                            lunch_event['updatedAt'] = now.isoformat()
+                            moved_lunch_events[lunch_event['id']] = lunch_event
+                            return (s, s + duration)
+                    lunch_event['start'] = original_start
+                    lunch_event['end'] = original_end
+
+                return None
+
             def find_slot(todo, days):
                 duration = timedelta(minutes=todo.get('estimatedMinutes') or 30)
                 slot_fn = compute_personal_free_slots if todo.get('personal') else compute_free_slots
@@ -3391,6 +3465,9 @@ def todos_bulk_schedule():
                     for s, en in slot_fn(day_events_for(day), day, now):
                         if en - s >= duration:
                             return (s, s + duration)
+                    shifted = try_shift_lunch_for_slot(day, duration, slot_fn)
+                    if shifted:
+                        return shifted
                 return None
 
             def create_event_for(todo, start_dt, end_dt):
@@ -3474,6 +3551,14 @@ def todos_bulk_schedule():
             'unscheduled': [
                 {'todoId': todo['id'], 'title': todo['title'], 'reason': reason}
                 for todo, reason in unscheduled
+            ],
+            # Any Lunch card this call repositioned to make room for a to-do
+            # (see try_shift_lunch_for_slot) - sent even in preview mode so
+            # the popup's own preview calendar can show where lunch actually
+            # ends up, not just where it used to be.
+            'lunchMoved': [
+                {'id': e['id'], 'start': e['start'], 'end': e['end']}
+                for e in moved_lunch_events.values()
             ]
         })
     except Exception as e:

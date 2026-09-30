@@ -2960,6 +2960,16 @@
             border-left-style: dashed;
         }
 
+        .bulk-schedule-preview-block-flash {
+            animation: bulk-schedule-flash 1.2s ease-in-out;
+        }
+
+        @keyframes bulk-schedule-flash {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); background: #dce7f5; }
+            20%, 60% { box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.9); background: #b7c8f0; }
+            40%, 80% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); background: #dce7f5; }
+        }
+
         .bulk-schedule-preview-block-title {
             display: block;
             white-space: nowrap;
@@ -3034,6 +3044,18 @@
 
         #bulk-schedule-apply-all-custom {
             margin: 0 0 10px;
+        }
+
+        .bulk-schedule-set-btn {
+            flex-shrink: 0;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
         }
 
         .bulk-schedule-action-columns {
@@ -6448,6 +6470,7 @@
                         <div class="bulk-schedule-apply-all" id="bulk-schedule-apply-all">
                             <label for="bulk-schedule-apply-all-select">Choose period</label>
                             <select id="bulk-schedule-apply-all-select"></select>
+                            <button type="button" id="bulk-schedule-apply-all-set-btn" class="bulk-schedule-set-btn">Set</button>
                         </div>
                         <div class="bulk-schedule-todo-custom-range" id="bulk-schedule-apply-all-custom">
                             <input type="date" id="bulk-schedule-apply-all-start">
@@ -16209,10 +16232,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             select.className = 'bulk-schedule-todo-period';
             populateBulkSchedulePeriodSelect(select);
             // "Next available opening" leads the list (see
-            // BULK_SCHEDULE_PERIODS) but a row should still default to
-            // Today rather than silently picking whatever option happens
-            // to be listed first.
-            select.value = 'today';
+            // BULK_SCHEDULE_PERIODS) and is also the default every row
+            // starts with, so it's already selected without Francis having
+            // to touch anything for the common case.
+            select.value = 'next_available';
 
             const customRange = document.createElement('div');
             customRange.className = 'bulk-schedule-todo-custom-range';
@@ -16257,6 +16280,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             row.className = 'bulk-schedule-todo-row';
             row.dataset.todoId = todo.id;
             row.dataset.staged = 'true';
+            // Flashes the matching card on the preview calendar - jumps to
+            // its week first if it's not the one currently shown.
+            row.addEventListener('dblclick', () => flashBulkScheduleCalendarCard(todo.id, placement.dateKey));
 
             const top = document.createElement('div');
             top.className = 'bulk-schedule-todo-row-top';
@@ -16316,17 +16342,25 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
             const unscheduledById = new Map(bulkScheduleUnscheduledReasons.map(u => [u.todoId, u]));
+            // Placed cards sink to the bottom of the list, below every still-
+            // pending one - both groups keep their own original relative
+            // order (bulkScheduleRowOrder), this just separates the two
+            // groups instead of interleaving them.
+            const pendingEls = [];
+            const stagedEls = [];
             bulkScheduleRowOrder.forEach(id => {
                 const placement = bulkScheduleStagedPlacements[id];
                 const stagedTodo = placement && todosList.find(t => t.id === id);
                 if (stagedTodo) {
-                    list.appendChild(buildBulkScheduleStagedRow(stagedTodo, placement));
+                    stagedEls.push(buildBulkScheduleStagedRow(stagedTodo, placement));
                     return;
                 }
                 const u = unscheduledById.get(id);
                 const todo = todosList.find(t => t.id === id) || { id, title: (u && u.title) || id };
-                list.appendChild(buildBulkScheduleTodoRow(todo, u ? u.reason : undefined));
+                pendingEls.push(buildBulkScheduleTodoRow(todo, u ? u.reason : undefined));
             });
+            pendingEls.forEach(el => list.appendChild(el));
+            stagedEls.forEach(el => list.appendChild(el));
 
             const total = bulkScheduleRowOrder.length;
             const stagedCount = Object.keys(bulkScheduleStagedPlacements).length;
@@ -16448,16 +16482,31 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('bulk-schedule-apply-all-custom').classList.remove('visible');
         }
 
-        function applyBulkSchedulePeriodToAllRows(periodType) {
+        // Applies the "Choose period" dropdown's value to every checked,
+        // still-pending row - only ever on a Set click (see the listener
+        // below), never live as the dropdown changes, and never to a row
+        // that isn't currently selected.
+        function applyBulkSchedulePeriodToSelectedRows() {
+            const periodType = document.getElementById('bulk-schedule-apply-all-select').value;
             const applyAllStart = document.getElementById('bulk-schedule-apply-all-start').value;
             const applyAllEnd = document.getElementById('bulk-schedule-apply-all-end').value;
-            document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-staged="true"])').forEach(row => {
+            if (periodType === 'custom' && (!applyAllStart || !applyAllEnd || applyAllEnd < applyAllStart)) {
+                alert('Please choose a valid custom date range.');
+                return;
+            }
+            const rows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-staged="true"])'))
+                .filter(row => bulkScheduleSelectedIds.has(row.dataset.todoId));
+            if (!rows.length) {
+                alert('Please select at least one to-do to set a period for.');
+                return;
+            }
+            rows.forEach(row => {
                 const select = row.querySelector('.bulk-schedule-todo-period');
                 select.value = periodType;
                 select.dispatchEvent(new Event('change'));
                 if (periodType === 'custom') {
-                    if (applyAllStart) row.querySelector('.bulk-schedule-todo-start').value = applyAllStart;
-                    if (applyAllEnd) row.querySelector('.bulk-schedule-todo-end').value = applyAllEnd;
+                    row.querySelector('.bulk-schedule-todo-start').value = applyAllStart;
+                    row.querySelector('.bulk-schedule-todo-end').value = applyAllEnd;
                 }
             });
         }
@@ -16554,6 +16603,43 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderBulkSchedulePreviewCalendar();
         }
 
+        // A /todos/bulk-schedule response's `lunchMoved` (see
+        // try_shift_lunch_for_slot in app.py) - merged into the local
+        // calendarEvents cache so the preview grid shows lunch at its new
+        // spot right away, even in preview mode where nothing's actually
+        // been reloaded from the server yet.
+        function mergeLunchMovedIntoCalendarEvents(lunchMoved) {
+            (lunchMoved || []).forEach(moved => {
+                const idx = calendarEvents.findIndex(e => e.id === moved.id);
+                if (idx >= 0) Object.assign(calendarEvents[idx], moved);
+            });
+        }
+
+        // Double-clicking a placed card in the left pane (see
+        // buildBulkScheduleStagedRow) jumps the preview calendar to that
+        // card's week if it isn't already showing, then briefly flashes the
+        // matching block so it's easy to spot among everything else on the
+        // grid.
+        function flashBulkScheduleCalendarCard(todoId, dateKey) {
+            const targetWeekStart = getCalendarWeekStart(new Date(`${dateKey}T00:00:00`));
+            if (!bulkSchedulePreviewWeekStart || bulkSchedulePreviewWeekStart.getTime() !== targetWeekStart.getTime()) {
+                bulkSchedulePreviewWeekStart = targetWeekStart;
+                renderBulkSchedulePreviewCalendar();
+            }
+            const block = document.querySelector(`.bulk-schedule-preview-block[data-todo-id="${todoId}"]`);
+            if (!block) return;
+            block.scrollIntoView({ block: 'nearest' });
+            // Restarts the CSS animation even if it's already mid-flash from
+            // a previous double-click - forcing a reflow between removing
+            // and re-adding the class is the standard way to do that.
+            block.classList.remove('bulk-schedule-preview-block-flash');
+            void block.offsetWidth;
+            block.classList.add('bulk-schedule-preview-block-flash');
+            block.addEventListener('animationend', () => {
+                block.classList.remove('bulk-schedule-preview-block-flash');
+            }, { once: true });
+        }
+
         // Context only - whatever's already on the calendar that this run
         // didn't just place, shown muted (pointer-events: none) so it never
         // competes with, or gets mistaken for, something draggable.
@@ -16591,6 +16677,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const block = document.createElement('div');
             block.className = 'bulk-schedule-preview-block bulk-schedule-preview-block-staged';
+            block.dataset.todoId = todoId;
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
             block.title = `${todo.title} - not saved yet, drag to reposition, or click the x to unplace it`;
@@ -16852,6 +16939,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     const placedIdSet = new Set(items.map(it => it.todo_id));
                     bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => !placedIdSet.has(u.todoId));
                     bulkScheduleUnscheduledReasons.push(...data.unscheduled);
+                    mergeLunchMovedIntoCalendarEvents(data.lunchMoved);
                 }
                 rebuildBulkScheduleModalRows();
             } catch (e) {
@@ -16975,6 +17063,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => !algorithmIdSet.has(u.todoId));
                         data.unscheduled.forEach(u => { delete bulkScheduleStagedPlacements[u.todoId]; });
                         bulkScheduleUnscheduledReasons.push(...data.unscheduled);
+                        mergeLunchMovedIntoCalendarEvents(data.lunchMoved);
                     }
                 }
 
@@ -17906,19 +17995,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
         document.getElementById('todos-bulk-schedule-btn').addEventListener('click', openBulkScheduleModal);
         document.getElementById('todos-bulk-unschedule-btn').addEventListener('click', runBulkUnscheduleTodos);
+        // The dropdown itself never applies anything on its own - it just
+        // shows/hides the custom-range inputs as needed. Only the Set
+        // button (see applyBulkSchedulePeriodToSelectedRows) actually
+        // changes any row, and only the currently-checked ones.
         document.getElementById('bulk-schedule-apply-all-select').addEventListener('change', (e) => {
-            const value = e.target.value;
-            const customDiv = document.getElementById('bulk-schedule-apply-all-custom');
-            customDiv.classList.toggle('visible', value === 'custom');
-            if (value && value !== 'custom') applyBulkSchedulePeriodToAllRows(value);
+            document.getElementById('bulk-schedule-apply-all-custom').classList.toggle('visible', e.target.value === 'custom');
         });
-        ['bulk-schedule-apply-all-start', 'bulk-schedule-apply-all-end'].forEach(id => {
-            document.getElementById(id).addEventListener('change', () => {
-                if (document.getElementById('bulk-schedule-apply-all-select').value === 'custom') {
-                    applyBulkSchedulePeriodToAllRows('custom');
-                }
-            });
-        });
+        document.getElementById('bulk-schedule-apply-all-set-btn').addEventListener('click', applyBulkSchedulePeriodToSelectedRows);
         document.getElementById('bulk-schedule-cancel-btn').addEventListener('click', closeBulkScheduleModal);
         document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', previewBulkScheduleTodos);
         document.getElementById('bulk-schedule-unplace-btn').addEventListener('click', unplaceBulkScheduleSelected);
