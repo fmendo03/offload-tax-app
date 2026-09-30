@@ -2965,8 +2965,14 @@
             cursor: grabbing;
         }
 
+        /* Fully hidden, not just dimmed - the live drag preview
+           (bulkScheduleUpdateDragPreview) already shows a ghost snapped to
+           wherever the card would actually land, so leaving the original
+           visible at reduced opacity in its old spot just reads as a second,
+           motionless phantom copy sitting behind the one moving around the
+           grid. */
         .bulk-schedule-preview-block.drag-hidden {
-            opacity: 0.35;
+            visibility: hidden;
         }
 
         /* A manual placement not saved yet (see bulkScheduleStagedPlacements)
@@ -16503,6 +16509,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             row.draggable = true;
             row.addEventListener('dragstart', (evt) => {
                 bulkScheduleDraggedPayload = { kind: 'unscheduled', todoId: todo.id };
+                bulkScheduleDragGrabOffsetPx = 0;
                 row.classList.add('dragging');
                 evt.dataTransfer.effectAllowed = 'copy';
                 setBulkScheduleDragImage(evt);
@@ -16941,6 +16948,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // a list row being placed for the first time, {kind:'staged', todoId}
         // for an already-placed (but still unsaved) card being repositioned.
         let bulkScheduleDraggedPayload = null;
+        // How far below the card's own top edge it was grabbed (pixels) -
+        // a staged card can be picked up anywhere on it, not just at its
+        // top, but the slot it lands in is always the one under the card's
+        // TOP edge, not under the pointer itself (matching how the real
+        // Calendar page's own mousedown-based drag already works - see
+        // onCalendarEventDragMove, which tracks a delta from the original
+        // mouse-down point rather than snapping the pointer itself to a
+        // slot). Subtracted from the pointer's Y before converting to a
+        // slot in every dragover/drop handler below. Always 0 for a fresh
+        // drag from the pending list - there's no existing card shape yet
+        // to have grabbed a particular point on.
+        let bulkScheduleDragGrabOffsetPx = 0;
 
         function openBulkScheduleModal() {
             if (selectedTodoIds.size === 0) return;
@@ -17081,6 +17100,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.draggable = true;
             block.addEventListener('dragstart', (evt) => {
                 bulkScheduleDraggedPayload = { kind: 'staged', todoId };
+                bulkScheduleDragGrabOffsetPx = evt.clientY - block.getBoundingClientRect().top;
                 document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${todoId}"]`).forEach(b => b.classList.add('drag-hidden'));
                 evt.dataTransfer.effectAllowed = 'move';
                 setBulkScheduleDragImage(evt);
@@ -17474,7 +17494,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     if (!bulkScheduleDraggedPayload) return;
                     evt.preventDefault();
                     col.classList.add('drop-target');
-                    bulkScheduleUpdateDragPreview(col, key, calendarSlotMinutesFromY(col, evt.clientY));
+                    bulkScheduleUpdateDragPreview(col, key, calendarSlotMinutesFromY(col, evt.clientY - bulkScheduleDragGrabOffsetPx));
                 });
                 col.addEventListener('dragleave', () => {
                     col.classList.remove('drop-target');
@@ -17487,7 +17507,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     bulkScheduleClearDragGhosts();
                     bulkScheduleResetLunchGhost();
                     if (!bulkScheduleDraggedPayload) return;
-                    placeBulkScheduleDrop(key, calendarSlotMinutesFromY(col, evt.clientY));
+                    placeBulkScheduleDrop(key, calendarSlotMinutesFromY(col, evt.clientY - bulkScheduleDragGrabOffsetPx));
                 });
 
                 columns.appendChild(col);
