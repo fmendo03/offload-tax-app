@@ -2145,6 +2145,28 @@ def _reevaluate_lunch_for_day(day, working_events):
     return True
 
 
+# A broader safety net around _reevaluate_lunch_for_day's DELETE-route hook -
+# re-checks every upcoming lunch (not just the one on whatever day a delete
+# happened to touch) on every /calendar/events GET, so a shift reverts once
+# its cause is gone no matter how that happened - the bulk-schedule popup's
+# own removals (red x, blue x, Unplace, drag-off) never touch the backend
+# at all until Save, so there's no single delete for that route hook to
+# catch; this is what actually snaps lunch back for those, the next time
+# anything polls or reloads the calendar. Cheap enough for a single-user
+# calendar to just always run rather than trying to track precisely what
+# changed.
+def _reevaluate_upcoming_lunches(days_ahead=14):
+    today = today_local()
+    with calendar_lock:
+        working_events = load_calendar_events()
+        changed = False
+        for offset in range(days_ahead):
+            if _reevaluate_lunch_for_day(today + timedelta(days=offset), working_events):
+                changed = True
+        if changed:
+            save_calendar_events(working_events)
+
+
 # Short, chat-context-friendly rundown of what's on the calendar - given to
 # Ashanti on every turn so she can talk about it and reference an event's id
 # for manage_calendar. Bounded to the next 20 upcoming events so a heavily
@@ -2213,6 +2235,7 @@ def get_calendar_context():
 @app.route('/calendar/events', methods=['GET'])
 def calendar_events_list():
     _ensure_lunch_generated()
+    _reevaluate_upcoming_lunches()
     settings = sync_calendar_import()
     events = load_calendar_events()
     events.sort(key=lambda e: e.get('start') or '')
@@ -3077,6 +3100,7 @@ def _ensure_all_series_generated():
 @app.route('/todos', methods=['GET'])
 def todos_list():
     _ensure_lunch_generated()
+    _reevaluate_upcoming_lunches()
     _ensure_all_series_generated()
     return jsonify({'success': True, 'todos': load_todos()})
 
@@ -3373,7 +3397,12 @@ def todos_bulk_schedule():
         # Lunch has to already be sitting on the calendar as a real event
         # before this does its own free-slot search, or it would happily
         # bin-pack a to-do right into that window - see _ensure_lunch_generated.
+        # Reverting any now-unnecessary shift first (see
+        # _reevaluate_upcoming_lunches) means this search starts from
+        # lunch's true minimal footprint rather than one still reflecting a
+        # to-do that's since been removed.
         _ensure_lunch_generated()
+        _reevaluate_upcoming_lunches()
         data = request.json or {}
         preview = bool(data.get('preview'))
         raw_items = data.get('items') or []
