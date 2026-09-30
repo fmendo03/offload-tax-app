@@ -16816,6 +16816,23 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const selectAllPlaced = document.getElementById('bulk-schedule-select-all-placed');
             selectAllUnplaced.checked = pendingIds.length > 0 && pendingIds.every(id => bulkScheduleSelectedIds.has(id));
             selectAllPlaced.checked = stagedIds.length > 0 && stagedIds.every(id => bulkScheduleSelectedIds.has(id));
+            updateBulkScheduleActionButtonLabels();
+        }
+
+        // "Set to N of M" / "Place N of M" - N is how many currently-pending
+        // rows are checked, M how many are pending in total, so it's always
+        // obvious how much of the batch a click is about to act on rather
+        // than assuming it's everything. Recomputed alongside the "select
+        // all" checkboxes above, so it updates immediately on every
+        // checkbox toggle. The Place button's own "Placing…" loading state
+        // (see previewBulkScheduleTodos) temporarily overrides this text
+        // and restores it by calling this same function when done, rather
+        // than hardcoding a static label back.
+        function updateBulkScheduleActionButtonLabels() {
+            const pendingIds = bulkScheduleRowOrder.filter(id => !bulkScheduleStagedPlacements[id]);
+            const selectedPendingCount = pendingIds.filter(id => bulkScheduleSelectedIds.has(id)).length;
+            document.getElementById('bulk-schedule-apply-all-set-btn').textContent = `Set to ${selectedPendingCount} of ${pendingIds.length}`;
+            document.getElementById('bulk-schedule-confirm-btn').textContent = `Place ${selectedPendingCount} of ${pendingIds.length}`;
         }
 
         // "Apply to all" sets every row's own dropdown (and, for Custom
@@ -17660,7 +17677,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 alert('Could not place those to-dos - check the app is running and try again.');
             }
             confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Place';
+            updateBulkScheduleActionButtonLabels();
         }
 
         // The "Schedule" button - the one place anything from this popup
