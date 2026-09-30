@@ -3077,6 +3077,13 @@
             gap: 12px;
         }
 
+        .bulk-schedule-preview-footer {
+            flex-shrink: 0;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+        }
+
         .bulk-schedule-action-column {
             flex: 1;
             display: flex;
@@ -6497,12 +6504,6 @@
                                     <input type="checkbox" id="bulk-schedule-select-all-unplaced"> Select all unplaced
                                 </label>
                             </div>
-                            <div class="bulk-schedule-action-column" id="bulk-schedule-unplace-column">
-                                <button id="bulk-schedule-unplace-btn" type="button" class="bulk-schedule-action-btn bulk-schedule-action-btn-secondary">Unplace</button>
-                                <label class="bulk-schedule-select-all-label">
-                                    <input type="checkbox" id="bulk-schedule-select-all-placed"> Select all placed
-                                </label>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -6517,6 +6518,18 @@
                         <div class="calendar-week-grid">
                             <div class="calendar-week-gutter" id="bulk-schedule-preview-gutter"></div>
                             <div class="calendar-week-columns" id="bulk-schedule-preview-columns"></div>
+                        </div>
+                    </div>
+                    <!-- Pinned below the (scrollable) calendar grid, not the
+                         pending-todo list, so it's always visible without
+                         having to scroll the list pane - see
+                         .bulk-schedule-preview-pane's flex-column layout. -->
+                    <div class="bulk-schedule-action-columns bulk-schedule-preview-footer" id="bulk-schedule-unplace-column">
+                        <div class="bulk-schedule-action-column">
+                            <button id="bulk-schedule-unplace-btn" type="button" class="bulk-schedule-action-btn bulk-schedule-action-btn-secondary">Unplace</button>
+                            <label class="bulk-schedule-select-all-label">
+                                <input type="checkbox" id="bulk-schedule-select-all-placed"> Select all placed
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -17118,24 +17131,93 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // saveBulkScheduleTodos), so there's no past-time gate or
         // conflict/blackout check at drop time; that all happens once, for
         // the whole batch, when Save is actually clicked.
-        function placeBulkScheduleDrop(dateKey, minutes) {
+        // manual:true marks this as Francis's own deliberate placement -
+        // Save commits it exactly as-is, unlike an algorithm-placed one
+        // (see saveBulkScheduleTodos), which gets re-decided fresh against
+        // whatever's actually on the calendar by the time Save runs. A
+        // split placement's blocks aren't individually draggable (see
+        // buildBulkScheduleStagedBlock), so the dropped card here is always
+        // either fresh from the pending list or an existing single-part
+        // placement being repositioned - this is the one place a drop can
+        // turn it into a split.
+        //
+        // 4h+ cards can split around lunch or across midnight, same rule
+        // and same geometry (computeCalendarDragSplit) as the real
+        // Calendar page's own drag - see startCalendarEventDrag. A shorter
+        // card never splits, but dropping it onto lunch still asks the
+        // backend to shift lunch out of the way if it can (see
+        // _shift_lunch_to_avoid/lunch_settings_shift in app.py) - the same
+        // flexibility-based shift the automatic scheduler already does,
+        // just triggered by a manual drop instead of a search. Running
+        // past midnight without being long enough to split just pushes the
+        // whole card onto the next day.
+        async function placeBulkScheduleDrop(dateKey, minutes) {
             const payload = bulkScheduleDraggedPayload;
             bulkScheduleDraggedPayload = null;
             if (!payload) return;
             const todo = todosList.find(t => t.id === payload.todoId);
             if (!todo) return;
-            // manual:true marks this as Francis's own deliberate placement -
-            // Save commits it exactly as-is, unlike an algorithm-placed one
-            // (see saveBulkScheduleTodos), which gets re-decided fresh
-            // against whatever's actually on the calendar by the time Save
-            // runs. Always a single part - a split placement's blocks aren't
-            // individually draggable (see buildBulkScheduleStagedBlock), so
-            // this never runs against one of those.
+            const durationMin = todo.estimatedMinutes || 30;
+            const lunchRange = calendarLunchRangeForDay(dateKey);
+
+            if (durationMin >= 240) {
+                const split = computeCalendarDragSplit(minutes, durationMin, lunchRange);
+                if (split.piece1) {
+                    const part2Date = new Date(`${dateKey}T00:00:00`);
+                    part2Date.setDate(part2Date.getDate() + split.piece2.dayOffset);
+                    bulkScheduleStagedPlacements[payload.todoId] = {
+                        manual: true,
+                        parts: [
+                            { dateKey, minutes: split.piece1.startMin, durationMinutes: split.piece1.durationMin },
+                            { dateKey: calendarDateKey(part2Date), minutes: split.piece2.startMin, durationMinutes: split.piece2.durationMin }
+                        ]
+                    };
+                    rebuildBulkScheduleModalRows();
+                    return;
+                }
+                const finalDateKey = split.dayOffset === 1
+                    ? calendarDateKey(new Date(new Date(`${dateKey}T00:00:00`).getTime() + 86400000))
+                    : dateKey;
+                bulkScheduleStagedPlacements[payload.todoId] = {
+                    manual: true,
+                    parts: [{ dateKey: finalDateKey, minutes: split.startMin, durationMinutes: durationMin }]
+                };
+                rebuildBulkScheduleModalRows();
+                return;
+            }
+
+            let finalDateKey = dateKey;
+            let finalMinutes = minutes;
+            if (minutes + durationMin > 24 * 60) {
+                finalDateKey = calendarDateKey(new Date(new Date(`${dateKey}T00:00:00`).getTime() + 86400000));
+                finalMinutes = 0;
+            }
             bulkScheduleStagedPlacements[payload.todoId] = {
                 manual: true,
-                parts: [{ dateKey, minutes, durationMinutes: todo.estimatedMinutes || 30 }]
+                parts: [{ dateKey: finalDateKey, minutes: finalMinutes, durationMinutes: durationMin }]
             };
             rebuildBulkScheduleModalRows();
+
+            const finalLunchRange = calendarLunchRangeForDay(finalDateKey);
+            if (finalLunchRange && finalMinutes < finalLunchRange[1] && finalMinutes + durationMin > finalLunchRange[0]) {
+                const startDt = bulkSchedulePartStart({ dateKey: finalDateKey, minutes: finalMinutes });
+                const endDt = new Date(startDt.getTime() + durationMin * 60000);
+                try {
+                    const response = await fetch('/calendar/lunch-settings/shift', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ start: calendarToLocalISO(startDt), end: calendarToLocalISO(endDt) })
+                    });
+                    const data = await response.json();
+                    if (data.success && data.moved) {
+                        const idx = calendarEvents.findIndex(e => e.id === data.event.id);
+                        if (idx >= 0) Object.assign(calendarEvents[idx], data.event);
+                        else calendarEvents.push(data.event);
+                        renderBulkSchedulePreviewCalendar();
+                    }
+                } catch (e) {
+                    console.error('Failed to shift lunch out of the way:', e);
+                }
+            }
         }
 
         // The "Place" button - finds each checked, still-pending to-do a

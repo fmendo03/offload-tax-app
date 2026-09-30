@@ -2035,6 +2035,17 @@ def _find_lunch_slot(day_events, day, now, settings):
     window_end = min(24 * 60, natural_start_min + length + settings['flexAfterMinutes'])
     day_start = datetime.combine(day, datetime.min.time())
 
+    # For today specifically, once the window has already fully passed on
+    # the clock, there's nothing left to guarantee - lunch just doesn't
+    # happen today, the same way a to-do never gets scheduled into the
+    # past. The "never skip, push past the window" fallback below is only
+    # for when real events are what's in the way, not simply because it's
+    # later in the day than the window - without this check, a normal
+    # afternoon would push lunch to whatever's the next free moment (4pm,
+    # 5pm...) for no reason other than the clock having moved on.
+    if day == now.date() and now >= day_start + timedelta(minutes=window_end):
+        return None
+
     def best_fit(range_start, range_end, prefer_minute):
         best = None
         if range_end - range_start < length:
@@ -2165,6 +2176,82 @@ def _reevaluate_upcoming_lunches(days_ahead=14):
                 changed = True
         if changed:
             save_calendar_events(working_events)
+
+
+# Moves that day's Lunch card out of the way of `[busy_start, busy_end)` if
+# it's currently overlapping it and can - tries either extreme of its own
+# flexibility window (mirrors try_shift_lunch_for_slot in todos_bulk_schedule,
+# just driven by an already-known busy range instead of searching for one)
+# and only accepts a candidate that clears BOTH the given range and
+# everything else real that day. Used when something gets manually dropped
+# onto lunch - either a manual drag in the bulk-schedule popup, or a plain
+# (non-split-eligible, under 4h) drag on the real Calendar page - since
+# neither of those goes through the automatic scheduler's own search.
+# Mutates the matching entry in `working_events` in place; returns that
+# event on success, or None if there was nothing to do or nothing safe to do.
+def _shift_lunch_to_avoid(day, busy_start, busy_end, working_events):
+    day_iso = day.isoformat()
+    lunch_event = next(
+        (e for e in working_events if e.get('origin') == 'lunch'
+         and e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)),
+        None
+    )
+    if not lunch_event:
+        return None
+    try:
+        lunch_s = datetime.fromisoformat(lunch_event['start'])
+        lunch_e = datetime.fromisoformat(lunch_event['end'])
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not (lunch_s < busy_end and busy_start < lunch_e):
+        return None  # doesn't even overlap - nothing to avoid
+
+    lunch_settings = load_lunch_settings()
+    if not lunch_settings['days']:
+        return None
+    length_min = lunch_settings['lengthMinutes']
+    natural_start_min = _minutes_from_hhmm(lunch_settings['startTime'])
+    window_start = max(0, natural_start_min - lunch_settings['flexBeforeMinutes'])
+    window_end = min(24 * 60, natural_start_min + length_min + lunch_settings['flexAfterMinutes'])
+    day_start = datetime.combine(day, datetime.min.time())
+    orig_start_min = (lunch_s - day_start).total_seconds() / 60
+
+    other_events = [
+        e for e in working_events if e is not lunch_event
+        and e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)
+    ]
+
+    def overlaps(a_start, a_end, b_start, b_end):
+        return a_start < b_end and b_start < a_end
+
+    def overlaps_others(start_dt, end_dt):
+        for e in other_events:
+            if e.get('allDay'):
+                continue
+            try:
+                es = datetime.fromisoformat(e['start'])
+                ee = datetime.fromisoformat(e.get('end') or e['start'])
+            except (ValueError, KeyError, TypeError):
+                continue
+            if overlaps(es, ee, start_dt, end_dt):
+                return True
+        return False
+
+    for candidate_min in (window_start, window_end - length_min):
+        if candidate_min == orig_start_min:
+            continue
+        candidate_start = day_start + timedelta(minutes=candidate_min)
+        candidate_end = candidate_start + timedelta(minutes=length_min)
+        if overlaps(candidate_start, candidate_end, busy_start, busy_end):
+            continue
+        if overlaps_others(candidate_start, candidate_end):
+            continue
+        lunch_event['start'] = candidate_start.isoformat()
+        lunch_event['end'] = candidate_end.isoformat()
+        lunch_event['updatedAt'] = now_local().isoformat()
+        return lunch_event
+
+    return None
 
 
 # Short, chat-context-friendly rundown of what's on the calendar - given to
@@ -2483,6 +2570,30 @@ def lunch_settings_update():
         return jsonify({'success': True, 'settings': load_lunch_settings()})
     except Exception as e:
         print(f"Lunch settings update error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Called when something gets manually dropped onto lunch - see
+# _shift_lunch_to_avoid for the actual move logic. `start`/`end` describe
+# whatever needs the room; the response says whether lunch actually moved
+# (it may not need to, or may not be able to) and, if so, where.
+@app.route('/calendar/lunch-settings/shift', methods=['POST'])
+def lunch_settings_shift():
+    try:
+        data = request.json or {}
+        try:
+            busy_start = datetime.fromisoformat(str(data['start']))
+            busy_end = datetime.fromisoformat(str(data['end']))
+        except (KeyError, ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'Invalid start/end'}), 400
+        with calendar_lock:
+            working_events = load_calendar_events()
+            moved_event = _shift_lunch_to_avoid(busy_start.date(), busy_start, busy_end, working_events)
+            if moved_event:
+                save_calendar_events(working_events)
+        return jsonify({'success': True, 'moved': bool(moved_event), 'event': moved_event})
+    except Exception as e:
+        print(f"Lunch shift error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
