@@ -2155,6 +2155,20 @@
             z-index: 10;
         }
 
+        /* The second half's live ghost while dragging a 4h+ card across
+           lunch or midnight (see computeCalendarDragSplit/
+           ensureCalendarDragSplitPreview) - dashed to read as "not real
+           yet", same convention as a staged bulk-schedule card. */
+        .calendar-drag-split-preview {
+            border-left-style: dashed;
+            opacity: 0.75;
+            pointer-events: none;
+            z-index: 10;
+            padding: 2px 4px;
+            font-size: 11px;
+            overflow: hidden;
+        }
+
         /* A small grab-square at the mid-point of the top/bottom border -
            only it resizes; grabbing anywhere else in the box moves the
            whole event. Hidden until you hover the (selected, non-external)
@@ -13756,6 +13770,77 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return Math.round(minutes / CALENDAR_SLOT_MINUTES) * CALENDAR_SLOT_MINUTES;
         }
 
+        // That day's real Lunch card, as [startMin, endMin] - or null if
+        // there isn't one (lunch turned off, or this far-future/past a date
+        // it's never been generated for).
+        function calendarLunchRangeForDay(dateKey) {
+            const lunch = (calendarEvents || []).find(e =>
+                e.origin === 'lunch' && e.status !== 'cancelled' && (e.start || '').startsWith(dateKey));
+            if (!lunch) return null;
+            const s = new Date(lunch.start), en = new Date(lunch.end);
+            return [s.getHours() * 60 + s.getMinutes(), en.getHours() * 60 + en.getMinutes()];
+        }
+
+        // Where a 4h+ card being dragged (raw, unclamped target minute
+        // `rawStartMin`, `durationMin` long) should actually land - split
+        // around that day's lunch, spill into the next day past midnight, or
+        // just an ordinary single placement. Pure/deterministic so it can be
+        // driven straight off the live drag position on every mousemove
+        // (see onCalendarEventDragMove) without any guesswork, same
+        // reasoning as try_split_around_lunch in app.py (whose lunch-side
+        // math this mirrors exactly) - this is the one extra case app.py
+        // has no equivalent for, since the automatic scheduler never spans
+        // a to-do across two calendar days.
+        //
+        // Returns { startMin, piece1, piece2 } - piece1/piece2 are null for
+        // an ordinary (unsplit) placement, in which case `startMin` is
+        // already the correct, clamped single-block position. When split,
+        // piece1 is {startMin, durationMin} on the same day; piece2 is
+        // {dayOffset, startMin, durationMin} where dayOffset is 0 (lunch
+        // split, same day, right after lunch ends) or 1 (midnight split,
+        // start of the next day).
+        function computeCalendarDragSplit(rawStartMin, durationMin, lunchRange) {
+            const dayEnd = 24 * 60;
+            const MIN_PART = 60;
+
+            if (lunchRange) {
+                const [lunchStart, lunchEnd] = lunchRange;
+                if (rawStartMin < lunchEnd && rawStartMin + durationMin > lunchStart) {
+                    const piece1Duration = Math.max(0, lunchStart - rawStartMin);
+                    const piece2Duration = durationMin - piece1Duration;
+                    if (piece1Duration >= MIN_PART && piece2Duration >= MIN_PART) {
+                        return {
+                            startMin: rawStartMin,
+                            piece1: { startMin: rawStartMin, durationMin: piece1Duration },
+                            piece2: { dayOffset: 0, startMin: lunchEnd, durationMin: piece2Duration }
+                        };
+                    }
+                    if (piece1Duration < MIN_PART) {
+                        return { startMin: Math.min(lunchEnd, dayEnd - durationMin), piece1: null, piece2: null };
+                    }
+                    return { startMin: Math.max(0, lunchStart - durationMin), piece1: null, piece2: null };
+                }
+            }
+
+            if (rawStartMin + durationMin > dayEnd) {
+                const piece1Duration = Math.max(0, dayEnd - rawStartMin);
+                const piece2Duration = durationMin - piece1Duration;
+                if (piece1Duration >= MIN_PART && piece2Duration >= MIN_PART) {
+                    return {
+                        startMin: rawStartMin,
+                        piece1: { startMin: rawStartMin, durationMin: piece1Duration },
+                        piece2: { dayOffset: 1, startMin: 0, durationMin: piece2Duration }
+                    };
+                }
+                if (piece1Duration < MIN_PART) {
+                    return { startMin: 0, dayOffset: 1, piece1: null, piece2: null };
+                }
+                return { startMin: dayEnd - durationMin, piece1: null, piece2: null };
+            }
+
+            return { startMin: Math.max(0, rawStartMin), piece1: null, piece2: null };
+        }
+
         function startCalendarEventDrag(evt, e, block, mode) {
             if (evt.button !== 0) return; // left mouse button only
             if (e.source === 'external') return; // synced events are read-only - see openEventModal
@@ -13765,6 +13850,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const origStart = new Date(e.start);
             const origEnd = e.end ? new Date(e.end) : new Date(origStart.getTime() + 30 * 60000);
+            // Only an ordinary, not-already-split 4h+ card dragged by its
+            // body (not a resize) is eligible to split as it crosses lunch
+            // or midnight - see computeCalendarDragSplit. An existing split
+            // half just drags normally, like any other event.
+            const splitEligible = mode === 'move' && !e.splitTotal && (origEnd - origStart) / 60000 >= 240;
             calendarDragState = {
                 mode,
                 event: e,
@@ -13774,11 +13864,34 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 origStart,
                 origEnd,
                 origDateKey: (e.start || '').slice(0, 10),
-                moved: false
+                moved: false,
+                splitEligible,
+                splitPreviewBlock: null,
+                dragSplit: null
             };
             document.body.classList.add('calendar-dragging-active');
             document.addEventListener('mousemove', onCalendarEventDragMove);
             document.addEventListener('mouseup', onCalendarEventDragEnd);
+        }
+
+        // The second half's ghost, shown only while a drag is actively
+        // split (see computeCalendarDragSplit/onCalendarEventDragMove) -
+        // created lazily on the first mousemove that actually needs it,
+        // removed again the moment the drag no longer does.
+        function ensureCalendarDragSplitPreview(state) {
+            if (state.splitPreviewBlock) return state.splitPreviewBlock;
+            const el = document.createElement('div');
+            el.className = 'calendar-week-event calendar-drag-split-preview';
+            el.textContent = `${state.event.title} (2/2)`;
+            state.splitPreviewBlock = el;
+            return el;
+        }
+
+        function removeCalendarDragSplitPreview(state) {
+            if (state.splitPreviewBlock) {
+                state.splitPreviewBlock.remove();
+                state.splitPreviewBlock = null;
+            }
         }
 
         function onCalendarEventDragMove(evt) {
@@ -13806,10 +13919,54 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     targetCol.appendChild(state.block);
                 }
                 const durationMin = (state.origEnd - state.origStart) / 60000;
-                const newStartMin = Math.max(0, Math.min(24 * 60 - durationMin, origStartMin + deltaMinutes));
-                state.block.style.top = `${newStartMin / 60 * CALENDAR_PX_PER_HOUR}px`;
-                state.previewStartMin = newStartMin;
-                state.previewDateKey = targetCol ? targetCol.dataset.date : state.origDateKey;
+
+                if (state.splitEligible) {
+                    const targetDateKey = targetCol ? targetCol.dataset.date : state.origDateKey;
+                    const rawStartMin = origStartMin + deltaMinutes;
+                    const split = computeCalendarDragSplit(rawStartMin, durationMin, calendarLunchRangeForDay(targetDateKey));
+                    state.dragSplit = split;
+                    state.previewDateKey = targetDateKey;
+
+                    if (split.piece1) {
+                        state.block.style.top = `${split.piece1.startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+                        state.block.style.height = `${Math.max(16, split.piece1.durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+
+                        const ghost = ensureCalendarDragSplitPreview(state);
+                        const idx = targetCol ? cols.indexOf(targetCol) : -1;
+                        const ghostCol = split.piece2.dayOffset === 0 ? targetCol : (idx >= 0 ? cols[idx + 1] : null);
+                        if (ghostCol) {
+                            ghostCol.appendChild(ghost);
+                            ghost.style.top = `${split.piece2.startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+                            ghost.style.height = `${Math.max(16, split.piece2.durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+                            ghost.style.display = '';
+                        } else {
+                            // No column to the right (dragged into Saturday) -
+                            // nowhere to show the overflow piece, so fall back
+                            // to an ordinary same-day placement instead.
+                            state.dragSplit = { startMin: Math.max(0, Math.min(24 * 60 - durationMin, rawStartMin)), piece1: null, piece2: null };
+                            state.block.style.top = `${state.dragSplit.startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+                            state.block.style.height = `${Math.max(16, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+                            removeCalendarDragSplitPreview(state);
+                        }
+                    } else {
+                        removeCalendarDragSplitPreview(state);
+                        // dayOffset:1 with no split means the whole card
+                        // pushed onto the next column (past-midnight, too
+                        // little room left today to be worth splitting).
+                        const idx = targetCol ? cols.indexOf(targetCol) : -1;
+                        const destCol = split.dayOffset === 1 && idx >= 0 && cols[idx + 1] ? cols[idx + 1] : targetCol;
+                        if (destCol && destCol !== state.block.parentElement) destCol.appendChild(state.block);
+                        state.previewDateKey = destCol ? destCol.dataset.date : targetDateKey;
+                        state.block.style.top = `${split.startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+                        state.block.style.height = `${Math.max(16, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+                    }
+                    state.previewStartMin = split.startMin;
+                } else {
+                    const newStartMin = Math.max(0, Math.min(24 * 60 - durationMin, origStartMin + deltaMinutes));
+                    state.block.style.top = `${newStartMin / 60 * CALENDAR_PX_PER_HOUR}px`;
+                    state.previewStartMin = newStartMin;
+                    state.previewDateKey = targetCol ? targetCol.dataset.date : state.origDateKey;
+                }
             } else if (state.mode === 'resize-bottom') {
                 const origDurationMin = (state.origEnd - state.origStart) / 60000;
                 const newDurationMin = Math.min(
@@ -13835,6 +13992,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             calendarDragState = null;
             if (!state) return;
             state.block.classList.remove('dragging');
+            removeCalendarDragSplitPreview(state);
             if (!state.moved) return; // no real movement - let the click handler treat it as a select
 
             state.block.dataset.justDragged = '1';
@@ -13842,6 +14000,39 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const durationMin = (state.origEnd - state.origStart) / 60000;
             let newStart, newEnd;
+
+            // Dropped while actually split (see computeCalendarDragSplit) -
+            // commits both pieces atomically through the dedicated split
+            // route rather than the ordinary single-event update, and skips
+            // the recurring-series scope prompt below entirely: splitting a
+            // card by dragging is a one-off override of this specific
+            // occurrence, not a "this vs. all future" kind of edit.
+            if (state.mode === 'move' && state.dragSplit && state.dragSplit.piece1) {
+                const dateKey = state.previewDateKey || state.origDateKey;
+                const part1Start = new Date(`${dateKey}T00:00:00`);
+                part1Start.setHours(Math.floor(state.dragSplit.piece1.startMin / 60), state.dragSplit.piece1.startMin % 60, 0, 0);
+                const part1End = new Date(part1Start.getTime() + state.dragSplit.piece1.durationMin * 60000);
+                const part2Day = new Date(`${dateKey}T00:00:00`);
+                part2Day.setDate(part2Day.getDate() + state.dragSplit.piece2.dayOffset);
+                const part2Start = new Date(part2Day);
+                part2Start.setHours(Math.floor(state.dragSplit.piece2.startMin / 60), state.dragSplit.piece2.startMin % 60, 0, 0);
+                const part2End = new Date(part2Start.getTime() + state.dragSplit.piece2.durationMin * 60000);
+
+                const response = await fetch(`/calendar/events/${state.event.id}/split`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        part1_start: calendarToLocalISO(part1Start), part1_end: calendarToLocalISO(part1End),
+                        part2_start: calendarToLocalISO(part2Start), part2_end: calendarToLocalISO(part2End)
+                    })
+                });
+                const result = await response.json();
+                if (!result.success) {
+                    alert(result.error || 'Could not split that card - it has been reset.');
+                }
+                renderCalendarWeek();
+                return;
+            }
 
             if (state.mode === 'move') {
                 const dateKey = state.previewDateKey || state.origDateKey;

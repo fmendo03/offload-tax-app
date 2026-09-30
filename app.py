@@ -2309,6 +2309,59 @@ def calendar_events_update(event_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# Splits an existing event into two, in place - used when dragging a 4h+
+# to-do card over lunch or past the end of the day on the real Calendar
+# page (see the drag-split logic in index.html: computeCalendarDragSplit,
+# onCalendarEventDragEnd). The event being split becomes part 1 (keeps its
+# id, so a todo's calendarEventId never has to change); part 2 is a new
+# event carrying the same title/description/location/origin, linked back
+# via splitOf - the exact same shape try_split_around_lunch produces for
+# the automatic scheduler, so every existing split-aware code path
+# (findTodoForCalendarEvent, delete/unschedule cascades, the "(1/2)"
+# display) already handles it with no changes needed here.
+@app.route('/calendar/events/<event_id>/split', methods=['POST'])
+def calendar_events_split(event_id):
+    try:
+        data = request.json or {}
+        try:
+            part1_start = str(data['part1_start'])
+            part1_end = str(data['part1_end'])
+            part2_start = str(data['part2_start'])
+            part2_end = str(data['part2_end'])
+        except KeyError:
+            return jsonify({'success': False, 'error': 'Missing split part times'}), 400
+        with calendar_lock:
+            events = load_calendar_events()
+            event = next((e for e in events if e['id'] == event_id), None)
+            if not event:
+                return jsonify({'success': False, 'error': 'Event not found'}), 404
+            now_iso = now_local().isoformat()
+            event['start'] = part1_start
+            event['end'] = part1_end
+            event['splitPart'] = 1
+            event['splitTotal'] = 2
+            event['updatedAt'] = now_iso
+            event2 = dict(event)
+            event2['id'] = uuid.uuid4().hex
+            event2['start'] = part2_start
+            event2['end'] = part2_end
+            event2['splitPart'] = 2
+            event2['splitOf'] = event['id']
+            event2['createdAt'] = now_iso
+            event2['updatedAt'] = now_iso
+            events.append(event2)
+            try:
+                _reevaluate_lunch_for_day(datetime.fromisoformat(part1_start).date(), events)
+                _reevaluate_lunch_for_day(datetime.fromisoformat(part2_start).date(), events)
+            except (ValueError, TypeError):
+                pass
+            save_calendar_events(events)
+        return jsonify({'success': True, 'event': event, 'event2': event2})
+    except Exception as e:
+        print(f"Calendar split error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/calendar/events/<event_id>', methods=['DELETE'])
 def calendar_events_delete(event_id):
     try:
