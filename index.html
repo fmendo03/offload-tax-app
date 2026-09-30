@@ -16552,7 +16552,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const payload = bulkScheduleDraggedPayload;
             bulkScheduleDraggedPayload = null;
             if (!payload) return;
-            bulkScheduleStagedPlacements[payload.todoId] = { dateKey, minutes };
+            // manual:true marks this as Francis's own deliberate placement -
+            // Save commits it exactly as-is, unlike an algorithm-placed one
+            // (see saveBulkScheduleTodos), which gets re-decided fresh
+            // against whatever's actually on the calendar by the time Save
+            // runs.
+            bulkScheduleStagedPlacements[payload.todoId] = { dateKey, minutes, manual: true };
             rebuildBulkScheduleModalRows();
         }
 
@@ -16585,6 +16590,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 items.push({ todo_id: row.dataset.todoId, start_date: range.start, end_date: range.end });
             }
             if (!items.length) return;
+            const periodByTodoId = new Map(items.map(it => [it.todo_id, { periodStart: it.start_date, periodEnd: it.end_date }]));
 
             // Everything already sitting on the preview calendar from an
             // earlier Schedule click (or a manual drag) in this same popup
@@ -16617,9 +16623,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 } else {
                     data.scheduled.forEach(s => {
                         const start = new Date(s.start);
+                        // Keeps the period Francis actually picked for it
+                        // riding along on the staged entry - see
+                        // saveBulkScheduleTodos, which re-runs the real
+                        // scheduling call against that same period (not just
+                        // the single day it happened to land on here) so the
+                        // final commit is decided fresh, not replayed from
+                        // this preview snapshot.
                         bulkScheduleStagedPlacements[s.todoId] = {
                             dateKey: calendarDateKey(start),
-                            minutes: start.getHours() * 60 + start.getMinutes()
+                            minutes: start.getHours() * 60 + start.getMinutes(),
+                            manual: false,
+                            ...periodByTodoId.get(s.todoId)
                         };
                     });
                     bulkScheduleUnscheduledReasons = data.unscheduled;
@@ -16634,13 +16649,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // The "Save" button - the one place anything from this popup
-        // actually becomes a real calendar event. Commits exactly what's
-        // currently in bulkScheduleStagedPlacements - i.e. whatever is
-        // physically sitting on the live preview calendar right now, however
-        // it got there (Schedule's algorithm or a manual drag). Anything
-        // dragged off the calendar or removed via its card's red x is
-        // already gone from that map by the time this runs, so it's simply
-        // never saved.
+        // actually becomes a real calendar event. Anything dragged off the
+        // calendar or removed via its card's red x is already gone from
+        // bulkScheduleStagedPlacements by the time this runs, so it's
+        // simply never saved. A manual drag commits at the exact spot
+        // Francis put it; an algorithm placement (from clicking Schedule)
+        // is re-decided fresh against the live calendar right now rather
+        // than replayed from its preview position - see the algorithmIds
+        // branch below.
         async function saveBulkScheduleTodos() {
             const stagedTodoIds = Object.keys(bulkScheduleStagedPlacements);
             if (!stagedTodoIds.length) return;
@@ -16667,13 +16683,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 if (!proceed) return;
             }
 
+            const manualIds = stagedTodoIds.filter(id => bulkScheduleStagedPlacements[id].manual);
+            const algorithmIds = stagedTodoIds.filter(id => !bulkScheduleStagedPlacements[id].manual);
+
             const saveBtn = document.getElementById('bulk-schedule-save-btn');
             saveBtn.disabled = true;
             saveBtn.textContent = 'Saving…';
             try {
-                // Same create-and-link pattern saveEventModal's create path
-                // already uses for a todo-linked event.
-                for (const todoId of stagedTodoIds) {
+                // Manual placements commit first, exactly where Francis put
+                // them - same create-and-link pattern saveEventModal's
+                // create path already uses for a todo-linked event. Once
+                // they're real, saved events, the algorithm re-run below
+                // (which reads the live calendar fresh) naturally avoids
+                // them too - no extra hint needed.
+                for (const todoId of manualIds) {
                     const todo = todosList.find(t => t.id === todoId);
                     const placement = bulkScheduleStagedPlacements[todoId];
                     if (!todo || !placement) continue;
@@ -16698,6 +16721,48 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     selectedTodoIds.delete(todo.id);
                     delete bulkScheduleStagedPlacements[todoId];
                 }
+
+                // Algorithm-placed items are re-decided fresh here, for
+                // real, against whatever's actually on the calendar right
+                // now - any pre-existing event, the manual placements just
+                // committed above, and lunch (freshly generated if it
+                // wasn't already) - see todos_bulk_schedule/
+                // _ensure_lunch_generated in app.py. This deliberately
+                // doesn't just replay the position this popup happened to
+                // land on during preview, which may no longer be free by
+                // the time Save is actually clicked - it re-searches the
+                // same period Francis originally picked for each one.
+                if (algorithmIds.length) {
+                    const items = algorithmIds.map(todoId => {
+                        const p = bulkScheduleStagedPlacements[todoId];
+                        return { todo_id: todoId, start_date: p.periodStart || p.dateKey, end_date: p.periodEnd || p.dateKey };
+                    });
+                    const response = await fetch('/todos/bulk-schedule', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ items, preview: false })
+                    });
+                    const data = await response.json();
+                    if (!data.success) {
+                        alert(data.error || 'Could not save those to-dos.');
+                    } else {
+                        await loadTodosData();
+                        data.scheduled.forEach(s => {
+                            removeTodoFromMorningCheckin(s.todoId);
+                            selectedTodoIds.delete(s.todoId);
+                            delete bulkScheduleStagedPlacements[s.todoId];
+                        });
+                        // Couldn't find room for it after all (something
+                        // claimed its period in the interim) - back to
+                        // pending with the reason, instead of vanishing or
+                        // staying stuck showing a position it never got.
+                        const algorithmIdSet = new Set(algorithmIds);
+                        bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => !algorithmIdSet.has(u.todoId));
+                        data.unscheduled.forEach(u => { delete bulkScheduleStagedPlacements[u.todoId]; });
+                        bulkScheduleUnscheduledReasons.push(...data.unscheduled);
+                    }
+                }
+
                 await loadCalendarData();
                 renderTodosPage();
                 if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();

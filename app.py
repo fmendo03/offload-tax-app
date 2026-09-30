@@ -2022,25 +2022,36 @@ def compute_personal_free_slots(day_events, day, now):
 # Among every free stretch long enough to fit it, picks whichever placement
 # sits closest to the configured natural start time - so it stays right at
 # that time whenever nothing's in the way, and only drifts earlier/later by
-# exactly as much as it has to. Returns None if nothing in the window fits.
+# exactly as much as it has to. Lunch is never simply skipped for the day:
+# if nothing in the flexibility window fits it at all (every slot there is
+# too small or already taken), it falls back to the next available slot
+# starting right after the window ends - later than Francis's own
+# flexibility, but still guaranteed to exist and still never overlapping
+# anything, rather than silently not happening that day.
 def _find_lunch_slot(day_events, day, now, settings):
     natural_start_min = _minutes_from_hhmm(settings['startTime'])
     length = settings['lengthMinutes']
     window_start = max(0, natural_start_min - settings['flexBeforeMinutes'])
     window_end = min(24 * 60, natural_start_min + length + settings['flexAfterMinutes'])
-    if window_end - window_start < length:
-        return None
-
     day_start = datetime.combine(day, datetime.min.time())
-    best = None
-    for s, en in compute_free_slots_in_window(day_events, day, now, window_start, window_end):
-        s_min = (s - day_start).total_seconds() / 60
-        en_min = (en - day_start).total_seconds() / 60
-        if en_min - s_min < length:
-            continue
-        candidate = min(max(natural_start_min, s_min), en_min - length)
-        if best is None or abs(candidate - natural_start_min) < abs(best - natural_start_min):
-            best = candidate
+
+    def best_fit(range_start, range_end, prefer_minute):
+        best = None
+        if range_end - range_start < length:
+            return None
+        for s, en in compute_free_slots_in_window(day_events, day, now, range_start, range_end):
+            s_min = (s - day_start).total_seconds() / 60
+            en_min = (en - day_start).total_seconds() / 60
+            if en_min - s_min < length:
+                continue
+            candidate = min(max(prefer_minute, s_min), en_min - length)
+            if best is None or abs(candidate - prefer_minute) < abs(best - prefer_minute):
+                best = candidate
+        return best
+
+    best = best_fit(window_start, window_end, natural_start_min)
+    if best is None:
+        best = best_fit(window_end, 24 * 60, window_end)
     return day_start + timedelta(minutes=best) if best is not None else None
 
 
