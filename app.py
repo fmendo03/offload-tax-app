@@ -3325,6 +3325,7 @@ def todos_bulk_schedule():
         data = request.json or {}
         preview = bool(data.get('preview'))
         raw_items = data.get('items') or []
+        reserved_raw = data.get('reserved') or []
         if not raw_items:
             return jsonify({'success': False, 'error': 'No to-dos selected'}), 400
 
@@ -3350,6 +3351,23 @@ def todos_bulk_schedule():
                 return jsonify({'success': False, 'error': 'None of the selected to-dos were found'}), 400
 
             working_events = load_calendar_events()
+
+            # Placements the popup already has staged locally but hasn't
+            # saved yet (see bulkScheduleStagedPlacements/previewBulkScheduleTodos)
+            # - without these, scheduling a second batch in the same popup
+            # session has no way to know what an earlier batch already
+            # claimed and happily lands right on top of it, since nothing
+            # staged is a real, saved event yet for this search to see.
+            # Synthetic and never persisted - filtered back out below,
+            # before anything is saved.
+            for r in reserved_raw:
+                try:
+                    working_events.append({
+                        'start': str(r['start']), 'end': str(r['end']),
+                        'allDay': False, 'status': 'confirmed', '_synthetic': True
+                    })
+                except (KeyError, TypeError):
+                    continue
 
             def day_events_for(day):
                 day_iso = day.isoformat()
@@ -3419,7 +3437,7 @@ def todos_bulk_schedule():
                     unscheduled.append((todo, "No free time left over in the selected period - try a different period."))
 
             if not preview:
-                save_calendar_events(working_events)
+                save_calendar_events([e for e in working_events if not e.get('_synthetic')])
                 for todo, start_dt, end_dt, event in scheduled:
                     todo['calendarEventId'] = event['id']
                     # Same clean-slate rule as a manual reschedule (see

@@ -16586,6 +16586,22 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
             if (!items.length) return;
 
+            // Everything already sitting on the preview calendar from an
+            // earlier Schedule click (or a manual drag) in this same popup
+            // session - none of it is a real, saved event yet, so without
+            // handing it along explicitly this batch's own free-slot search
+            // has no way to know it's there and happily lands right on top
+            // of it (see the matching `reserved` handling in
+            // todos_bulk_schedule, app.py).
+            const reserved = Object.entries(bulkScheduleStagedPlacements).map(([todoId, p]) => {
+                const todo = todosList.find(t => t.id === todoId);
+                if (!todo) return null;
+                const startDt = new Date(`${p.dateKey}T00:00:00`);
+                startDt.setHours(Math.floor(p.minutes / 60), p.minutes % 60, 0, 0);
+                const endDt = new Date(startDt.getTime() + (todo.estimatedMinutes || 30) * 60000);
+                return { start: calendarToLocalISO(startDt), end: calendarToLocalISO(endDt) };
+            }).filter(Boolean);
+
             const confirmBtn = document.getElementById('bulk-schedule-confirm-btn');
             confirmBtn.disabled = true;
             confirmBtn.textContent = 'Scheduling…';
@@ -16593,7 +16609,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const response = await fetch('/todos/bulk-schedule', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items, preview: true })
+                    body: JSON.stringify({ items, preview: true, reserved })
                 });
                 const data = await response.json();
                 if (!data.success) {
