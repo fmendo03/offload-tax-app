@@ -3074,14 +3074,6 @@
             opacity: 0.3;
         }
 
-        /* Closed-hand cursor for the whole page while a card from this
-           popup is being dragged, since the browser's own native drag
-           cursor doesn't reliably show one over the grid/columns. */
-        .bulk-schedule-dragging-active,
-        .bulk-schedule-dragging-active * {
-            cursor: grabbing !important;
-        }
-
         /* Lunch sliding out of the way live while a card hovers over it
            (see bulkScheduleMoveLunchBlock) - the position change is
            already obvious, this just softens the jump from one slot to
@@ -16470,20 +16462,31 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return m ? `${h}h ${m}m` : `${h}h`;
         }
 
-        // A single shared 1x1 transparent image, reused as the native drag
-        // image for every drag in this popup - suppresses the browser's
-        // own cursor-following ghost entirely. The live preview
-        // (bulkScheduleUpdateDragPreview) already shows a card snapped to
-        // the grid at exactly where the drop would land, split into two
-        // where it would split and sized to the to-do's real duration -
-        // showing the native ghost on top of that was a second, competing
-        // "phantom" copy of the card (one following the pointer, one
-        // moving around the grid); this keeps it to just the one.
-        const BULK_SCHEDULE_BLANK_DRAG_IMAGE = new Image();
-        BULK_SCHEDULE_BLANK_DRAG_IMAGE.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
-
+        // A small closed-hand emoji as the native drag image, in place of
+        // the browser's own cursor icon and (would-be) translucent copy of
+        // the dragged card. A 1x1 transparent image here was NOT enough -
+        // Chrome falls back to auto-generating its own ghost from the drag
+        // source (a faded copy of the card, plus its default "drag" cursor
+        // - a pointer with a dashed square) whenever the custom image is
+        // that degenerate, so the fallback showed up looking exactly like
+        // the "phantom card"/wrong-cursor problem this was meant to fix.
+        // A real, visibly-rendered custom image is what actually gets
+        // Chrome to use it instead of falling back - the live preview
+        // (bulkScheduleUpdateDragPreview) already shows the card itself
+        // snapped to the grid at exactly where the drop would land, so
+        // this just needs to read as "you're holding something", not
+        // duplicate the card.
         function setBulkScheduleDragImage(evt) {
-            evt.dataTransfer.setDragImage(BULK_SCHEDULE_BLANK_DRAG_IMAGE, 0, 0);
+            const hand = document.createElement('div');
+            hand.textContent = '✊';
+            hand.style.position = 'fixed';
+            hand.style.top = '-9999px';
+            hand.style.left = '-9999px';
+            hand.style.fontSize = '22px';
+            hand.style.lineHeight = '22px';
+            document.body.appendChild(hand);
+            evt.dataTransfer.setDragImage(hand, 11, 11);
+            setTimeout(() => hand.remove(), 0);
         }
 
         // Each option's date(s), computed fresh per row so "Today"/"This
@@ -16585,13 +16588,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDraggedPayload = { kind: 'unscheduled', todoId: todo.id };
                 bulkScheduleDragGrabOffsetPx = 0;
                 row.classList.add('dragging');
-                document.body.classList.add('bulk-schedule-dragging-active');
                 evt.dataTransfer.effectAllowed = 'copy';
                 setBulkScheduleDragImage(evt);
             });
             row.addEventListener('dragend', () => {
                 row.classList.remove('dragging');
-                document.body.classList.remove('bulk-schedule-dragging-active');
                 bulkScheduleDraggedPayload = null;
                 // Wipes any leftover live-preview DOM (moved lunch block,
                 // split ghost - see bulkScheduleUpdateDragPreview) back to
@@ -17212,7 +17213,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDragGrabOffsetPx = evt.clientY - block.getBoundingClientRect().top;
                 evt.dataTransfer.effectAllowed = 'move';
                 setBulkScheduleDragImage(evt);
-                document.body.classList.add('bulk-schedule-dragging-active');
                 // Hiding the drag source has to wait a tick - Chrome
                 // captures the native drag image (or finishes its own
                 // internal drag setup) synchronously right after dragstart
@@ -17226,7 +17226,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
             block.addEventListener('dragend', () => {
                 document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${todoId}"]`).forEach(b => b.classList.remove('drag-hidden'));
-                document.body.classList.remove('bulk-schedule-dragging-active');
                 bulkScheduleDraggedPayload = null;
                 renderBulkSchedulePreviewCalendar();
             });
