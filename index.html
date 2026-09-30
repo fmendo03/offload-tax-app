@@ -13913,7 +13913,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 + (e.id === selectedCalendarEventId ? ' selected' : '');
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(16, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            block.title = `${calendarEventSourceIcon(e)}${calendarEventTodoIcons(e)} ${e.title}` + (e.location ? ` @ ${e.location}` : '');
+            // A to-do too long to fit in one contiguous block even after
+            // trying to shift lunch gets split into two ordinary events
+            // (see try_split_around_lunch in app.py) - splitPart/splitTotal
+            // are purely for this "(1/2)" display, the two halves are
+            // otherwise just two normal calendar-linked events.
+            const splitSuffix = e.splitTotal ? ` (${e.splitPart}/${e.splitTotal})` : '';
+            block.title = `${calendarEventSourceIcon(e)}${calendarEventTodoIcons(e)} ${e.title}${splitSuffix}` + (e.location ? ` @ ${e.location}` : '');
 
             const timeEl = document.createElement('div');
             timeEl.className = 'calendar-week-event-time';
@@ -13948,7 +13954,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const titleTextEl = document.createElement('span');
             titleTextEl.className = 'calendar-week-event-title-text';
-            titleTextEl.textContent = `${calendarEventSourceIcon(e)}${calendarEventTodoIcons(e)} ${e.title}`;
+            titleTextEl.textContent = `${calendarEventSourceIcon(e)}${calendarEventTodoIcons(e)} ${e.title}${splitSuffix}`;
             titleEl.appendChild(titleTextEl);
 
             block.appendChild(titleEl);
@@ -14045,7 +14051,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // of which of the three places (To-Do page/Workspace/Calendar)
             // it's deleted from, not just unscheduled. Use Unschedule instead
             // to remove just the calendar placement and keep the to-do.
-            const linkedTodo = todosList.find(t => t.calendarEventId === id);
+            // findTodoForCalendarEvent (not a direct calendarEventId lookup)
+            // so deleting either half of a to-do split around lunch (see
+            // try_split_around_lunch in app.py) correctly reaches the to-do
+            // and cascades to both halves, not just whichever one was clicked.
+            const linkedTodo = findTodoForCalendarEvent(id);
             if (linkedTodo) {
                 return await deleteTodoItem(linkedTodo.id);
             }
@@ -14069,15 +14079,24 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // itself intact (reverts it to "Not Scheduled" so it can be
         // rescheduled later) - the non-destructive counterpart to Delete,
         // which removes the to-do entirely.
+        // `id` can be either half of a to-do split around lunch (see
+        // try_split_around_lunch in app.py) - findTodoForCalendarEvent
+        // follows splitOf back to the to-do either way, and both halves get
+        // removed together so "Unschedule" always means the whole to-do
+        // goes back to unscheduled, not just whichever half was clicked.
         async function unscheduleCalendarEvent(id) {
-            const linkedTodo = todosList.find(t => t.calendarEventId === id);
+            const linkedTodo = findTodoForCalendarEvent(id);
             if (!linkedTodo) return;
             try {
-                const response = await fetch(`/calendar/events/${id}`, { method: 'DELETE' });
-                const data = await response.json();
-                if (!data.success) {
-                    alert(data.error || 'Could not unschedule that item - try again.');
-                    return;
+                const partnerEvent = calendarEvents.find(e => e.splitOf === linkedTodo.calendarEventId);
+                const idsToDelete = [linkedTodo.calendarEventId, ...(partnerEvent ? [partnerEvent.id] : [])];
+                for (const eventId of idsToDelete) {
+                    const response = await fetch(`/calendar/events/${eventId}`, { method: 'DELETE' });
+                    const data = await response.json();
+                    if (!data.success) {
+                        alert(data.error || 'Could not unschedule that item - try again.');
+                        return;
+                    }
                 }
                 await updateTodoItem(linkedTodo.id, { calendar_event_id: null });
                 loadCalendarData();
@@ -14195,9 +14214,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // The to-do (if any) this calendar event was scheduled for - see
         // todoStatusLabels/renderTodosPreviewPane, which link the two the same
         // way (by calendarEventId, not by origin - a todo's link always wins
-        // regardless of how the event happens to be tagged).
+        // regardless of how the event happens to be tagged). A to-do split
+        // around lunch (see try_split_around_lunch in app.py) only ever
+        // writes its FIRST half to calendarEventId - the second half points
+        // back at the first via splitOf, so it's found the same way any
+        // other linked event is, just one hop further.
         function findTodoForCalendarEvent(eventId) {
-            return todosList.find(t => t.calendarEventId === eventId) || null;
+            const direct = todosList.find(t => t.calendarEventId === eventId);
+            if (direct) return direct;
+            const event = calendarEvents.find(e => e.id === eventId);
+            if (event && event.splitOf) {
+                return todosList.find(t => t.calendarEventId === event.splitOf) || null;
+            }
+            return null;
         }
 
         function formatMinutesAsHHMM(minutes) {
@@ -15730,12 +15759,17 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     renderTodosPage();
 
                     // Deleting a to-do from here means gone everywhere - its
-                    // calendar event (if it was ever scheduled) and any
+                    // calendar event(s) (if it was ever scheduled) and any
                     // Workspace item(s) referencing it (which also drops the
                     // chat exchange that quoted it - see removeWorkspaceItem) go
-                    // with it.
+                    // with it. A to-do split around lunch (see
+                    // try_split_around_lunch in app.py) has a second half
+                    // linked only via splitOf, not its own todo field - both
+                    // still have to go together.
                     if (todo && todo.calendarEventId) {
+                        const splitPartner = calendarEvents.find(e => e.splitOf === todo.calendarEventId);
                         fetch(`/calendar/events/${todo.calendarEventId}`, { method: 'DELETE' })
+                            .then(() => splitPartner ? fetch(`/calendar/events/${splitPartner.id}`, { method: 'DELETE' }) : null)
                             .then(() => loadCalendarData())
                             .catch(() => {});
                     }
@@ -16269,20 +16303,36 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return row;
         }
 
+        // A placement part's {dateKey, minutes} as an actual Date - every
+        // placement is a list of 1 or 2 of these (bulkScheduleStagedPlacements
+        // .parts - 2 only for a to-do split around lunch, see
+        // try_split_around_lunch in app.py), never a bare dateKey/minutes
+        // pair on the placement itself, so a split and a plain placement can
+        // share every code path below.
+        function bulkSchedulePartStart(part) {
+            const dt = new Date(`${part.dateKey}T00:00:00`);
+            dt.setHours(Math.floor(part.minutes / 60), part.minutes % 60, 0, 0);
+            return dt;
+        }
+
         // A row for a to-do placed on the live preview calendar - either
         // Ashanti's own algorithm found it a slot (Schedule click - see
         // previewBulkScheduleTodos) or it was dragged straight onto the
         // calendar (see bulkScheduleStagedPlacements) - shows where it's
         // currently sitting, but makes clear nothing's actually been saved
-        // until Save is clicked.
+        // until Save is clicked. A split placement (placement.parts.length
+        // === 2 - too long to fit in one contiguous block even after trying
+        // to shift lunch, see try_split_around_lunch in app.py) shows both
+        // times.
         function buildBulkScheduleStagedRow(todo, placement) {
             const row = document.createElement('div');
             row.className = 'bulk-schedule-todo-row';
             row.dataset.todoId = todo.id;
             row.dataset.staged = 'true';
-            // Flashes the matching card on the preview calendar - jumps to
-            // its week first if it's not the one currently shown.
-            row.addEventListener('dblclick', () => flashBulkScheduleCalendarCard(todo.id, placement.dateKey));
+            // Flashes the matching card(s) on the preview calendar - jumps
+            // to the first part's week first if it's not the one currently
+            // shown.
+            row.addEventListener('dblclick', () => flashBulkScheduleCalendarCard(todo.id, placement.parts[0].dateKey));
 
             const top = document.createElement('div');
             top.className = 'bulk-schedule-todo-row-top';
@@ -16314,10 +16364,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const badge = document.createElement('span');
             badge.className = 'bulk-schedule-todo-staged-badge';
-            const startDt = new Date(`${placement.dateKey}T00:00:00`);
-            startDt.setHours(Math.floor(placement.minutes / 60), placement.minutes % 60, 0, 0);
-            const when = startDt.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-            badge.textContent = `Placed — ${when} · click Schedule to confirm`;
+            const fmt = (part) => bulkSchedulePartStart(part).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            badge.textContent = placement.parts.length === 2
+                ? `Split — ${fmt(placement.parts[0])} & ${fmt(placement.parts[1])} · click Schedule to confirm`
+                : `Placed — ${fmt(placement.parts[0])} · click Schedule to confirm`;
 
             row.appendChild(top);
             row.appendChild(badge);
@@ -16406,6 +16456,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // nothing to unschedule (see saveBulkScheduleTodos, the only place
         // any of this becomes real).
         function removeBulkScheduleRow(todoId) {
+            const wasStaged = !!bulkScheduleStagedPlacements[todoId];
             bulkScheduleRowOrder = bulkScheduleRowOrder.filter(id => id !== todoId);
             bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => u.todoId !== todoId);
             delete bulkScheduleStagedPlacements[todoId];
@@ -16417,6 +16468,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 return;
             }
             rebuildBulkScheduleModalRows();
+            if (wasStaged) refreshBulkScheduleLunchAfterRemoval();
         }
 
         // The blue x on a placed calendar card - same effect as dragging it
@@ -16428,6 +16480,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             delete bulkScheduleStagedPlacements[todoId];
             bulkScheduleSelectedIds.delete(todoId);
             rebuildBulkScheduleModalRows();
+            refreshBulkScheduleLunchAfterRemoval();
         }
 
         // The "Unplace" button - unplaces every currently-checked placed
@@ -16445,6 +16498,26 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleSelectedIds.delete(id);
             });
             rebuildBulkScheduleModalRows();
+            refreshBulkScheduleLunchAfterRemoval();
+        }
+
+        // A staged placement being removed - whether via the list pane's red
+        // x, the calendar card's blue x, bulk Unplace, or dragging it back
+        // off the calendar - might have been the only reason a Lunch card
+        // was shown shifted in the preview (see try_shift_lunch_for_slot/
+        // mergeLunchMovedIntoCalendarEvents): nothing about that shift was
+        // ever actually saved unless a real Schedule click already
+        // persisted it, so re-fetching from the server is exactly the right
+        // "undo" - it naturally restores lunch's true current position,
+        // whether that's back to its original spot (shift never saved) or a
+        // still-genuinely-needed shift from an earlier, already-committed
+        // Schedule click. Re-renders the preview calendar once that lands so
+        // a corrected lunch position actually shows up.
+        async function refreshBulkScheduleLunchAfterRemoval() {
+            await loadCalendarData();
+            if (document.getElementById('bulk-schedule-modal').style.display !== 'none') {
+                renderBulkSchedulePreviewCalendar();
+            }
         }
 
         // Keeps the two "select all" checkboxes honest against the current
@@ -16668,36 +16741,50 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // is clicked (see saveBulkScheduleTodos), so there's no dblclick to
         // open an Edit Event modal - there's no real event yet to show
         // details for.
-        function buildBulkScheduleStagedBlock(todoId, placement) {
+        //
+        // One block per placement part (placement.parts - see
+        // bulkSchedulePartStart) - almost always just the one, but a to-do
+        // split around lunch (see try_split_around_lunch in app.py) has two,
+        // rendered on whichever day column each actually falls on. A split
+        // part isn't individually draggable - repositioning one half without
+        // the other doesn't make sense as a plain drag, so the whole
+        // placement (both halves) only ever moves by unplacing and running
+        // Place again; the blue x still removes both at once.
+        function buildBulkScheduleStagedBlock(todoId, part, partIndex, totalParts) {
             const todo = todosList.find(t => t.id === todoId);
             if (!todo) return null;
-            const startMin = placement.minutes;
-            let durationMin = todo.estimatedMinutes || 30;
+            const startMin = part.minutes;
+            let durationMin = part.durationMinutes || todo.estimatedMinutes || 30;
             if (startMin + durationMin > 24 * 60) durationMin = 24 * 60 - startMin;
+            const isSplit = totalParts === 2;
 
             const block = document.createElement('div');
             block.className = 'bulk-schedule-preview-block bulk-schedule-preview-block-staged';
             block.dataset.todoId = todoId;
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            block.title = `${todo.title} - not saved yet, drag to reposition, or click the x to unplace it`;
-            block.draggable = true;
-            block.addEventListener('dragstart', (evt) => {
-                bulkScheduleDraggedPayload = { kind: 'staged', todoId };
-                block.classList.add('drag-hidden');
-                evt.dataTransfer.effectAllowed = 'move';
-                // Same top-anchored ghost as the scheduled block above - see
-                // that dragstart's comment.
-                setBulkScheduleDragImage(evt, todo.title, durationMin);
-            });
-            block.addEventListener('dragend', () => {
-                block.classList.remove('drag-hidden');
-                bulkScheduleDraggedPayload = null;
-            });
+            block.title = isSplit
+                ? `${todo.title} - split around lunch (part ${partIndex + 1} of 2), not saved yet - click the x to unplace both parts`
+                : `${todo.title} - not saved yet, drag to reposition, or click the x to unplace it`;
+            if (!isSplit) {
+                block.draggable = true;
+                block.addEventListener('dragstart', (evt) => {
+                    bulkScheduleDraggedPayload = { kind: 'staged', todoId };
+                    block.classList.add('drag-hidden');
+                    evt.dataTransfer.effectAllowed = 'move';
+                    // Same top-anchored ghost as the scheduled block above - see
+                    // that dragstart's comment.
+                    setBulkScheduleDragImage(evt, todo.title, durationMin);
+                });
+                block.addEventListener('dragend', () => {
+                    block.classList.remove('drag-hidden');
+                    bulkScheduleDraggedPayload = null;
+                });
+            }
 
             const titleEl = document.createElement('span');
             titleEl.className = 'bulk-schedule-preview-block-title';
-            titleEl.textContent = todo.title;
+            titleEl.textContent = isSplit ? `${todo.title} (${partIndex + 1}/2)` : todo.title;
             block.appendChild(titleEl);
 
             // Same effect as dragging it off the calendar (unplaces just
@@ -16803,13 +16890,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
                 // This run's own placements, not saved yet (see
                 // bulkScheduleStagedPlacements) - dashed so they read as a
-                // preview, not a done deal.
-                Object.entries(bulkScheduleStagedPlacements)
-                    .filter(([, p]) => p.dateKey === key)
-                    .forEach(([todoId, p]) => {
-                        const block = buildBulkScheduleStagedBlock(todoId, p);
+                // preview, not a done deal. Each placement is 1-2 parts
+                // (see bulkSchedulePartStart) - only whichever part(s)
+                // actually fall on this day column render here, so a split
+                // placement's two halves naturally end up in the right
+                // columns even when they land on different days.
+                Object.entries(bulkScheduleStagedPlacements).forEach(([todoId, placement]) => {
+                    placement.parts.forEach((part, i) => {
+                        if (part.dateKey !== key) return;
+                        const block = buildBulkScheduleStagedBlock(todoId, part, i, placement.parts.length);
                         if (block) col.appendChild(block);
                     });
+                });
 
                 col.addEventListener('dragover', (evt) => {
                     if (!bulkScheduleDraggedPayload) return;
@@ -16839,12 +16931,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const payload = bulkScheduleDraggedPayload;
             bulkScheduleDraggedPayload = null;
             if (!payload) return;
+            const todo = todosList.find(t => t.id === payload.todoId);
+            if (!todo) return;
             // manual:true marks this as Francis's own deliberate placement -
             // Save commits it exactly as-is, unlike an algorithm-placed one
             // (see saveBulkScheduleTodos), which gets re-decided fresh
             // against whatever's actually on the calendar by the time Save
-            // runs.
-            bulkScheduleStagedPlacements[payload.todoId] = { dateKey, minutes, manual: true };
+            // runs. Always a single part - a split placement's blocks aren't
+            // individually draggable (see buildBulkScheduleStagedBlock), so
+            // this never runs against one of those.
+            bulkScheduleStagedPlacements[payload.todoId] = {
+                manual: true,
+                parts: [{ dateKey, minutes, durationMinutes: todo.estimatedMinutes || 30 }]
+            };
             rebuildBulkScheduleModalRows();
         }
 
@@ -16893,14 +16992,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // has no way to know it's there and happily lands right on top
             // of it (see the matching `reserved` handling in
             // todos_bulk_schedule, app.py).
-            const reserved = Object.entries(bulkScheduleStagedPlacements).map(([todoId, p]) => {
+            // One reserved entry per placement PART - a split placement's
+            // two halves are on (usually) different days/times and both
+            // have to read as busy, not just whichever one a naive single
+            // start/end would represent.
+            const reserved = Object.entries(bulkScheduleStagedPlacements).flatMap(([todoId, placement]) => {
                 const todo = todosList.find(t => t.id === todoId);
-                if (!todo) return null;
-                const startDt = new Date(`${p.dateKey}T00:00:00`);
-                startDt.setHours(Math.floor(p.minutes / 60), p.minutes % 60, 0, 0);
-                const endDt = new Date(startDt.getTime() + (todo.estimatedMinutes || 30) * 60000);
-                return { start: calendarToLocalISO(startDt), end: calendarToLocalISO(endDt) };
-            }).filter(Boolean);
+                if (!todo) return [];
+                return placement.parts.map(part => {
+                    const startDt = bulkSchedulePartStart(part);
+                    const endDt = new Date(startDt.getTime() + (part.durationMinutes || todo.estimatedMinutes || 30) * 60000);
+                    return { start: calendarToLocalISO(startDt), end: calendarToLocalISO(endDt) };
+                });
+            });
 
             const confirmBtn = document.getElementById('bulk-schedule-confirm-btn');
             confirmBtn.disabled = true;
@@ -16916,18 +17020,25 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     alert(data.error || 'Could not place those to-dos.');
                 } else {
                     data.scheduled.forEach(s => {
-                        const start = new Date(s.start);
                         // Keeps the period Francis actually picked for it
                         // riding along on the staged entry - see
                         // saveBulkScheduleTodos, which re-runs the real
                         // scheduling call against that same period (not just
-                        // the single day it happened to land on here) so the
+                        // the day(s) it happened to land on here) so the
                         // final commit is decided fresh, not replayed from
-                        // this preview snapshot.
+                        // this preview snapshot. s.parts is 1 entry normally,
+                        // 2 for a to-do split around lunch (see
+                        // try_split_around_lunch in app.py).
                         bulkScheduleStagedPlacements[s.todoId] = {
-                            dateKey: calendarDateKey(start),
-                            minutes: start.getHours() * 60 + start.getMinutes(),
                             manual: false,
+                            parts: s.parts.map(p => {
+                                const start = new Date(p.start);
+                                return {
+                                    dateKey: calendarDateKey(start),
+                                    minutes: start.getHours() * 60 + start.getMinutes(),
+                                    durationMinutes: Math.round((new Date(p.end) - start) / 60000)
+                                };
+                            }),
                             ...periodByTodoId.get(s.todoId)
                         };
                     });
@@ -16968,13 +17079,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // Ashanti's own algorithm-driven slots never do
             // (compute_free_slots always clamps to "not before now" - see
             // app.py) - so this only needs to check what's currently staged,
-            // once, covering the whole batch that's about to be saved.
-            const hasPastStaged = stagedTodoIds.some(todoId => {
-                const p = bulkScheduleStagedPlacements[todoId];
-                const dt = new Date(`${p.dateKey}T00:00:00`);
-                dt.setHours(Math.floor(p.minutes / 60), p.minutes % 60, 0, 0);
-                return dt < new Date();
-            });
+            // once, covering the whole batch that's about to be saved. Checks
+            // every part (a split placement has two) - either landing in the
+            // past is enough to ask.
+            const hasPastStaged = stagedTodoIds.some(todoId =>
+                bulkScheduleStagedPlacements[todoId].parts.some(p => bulkSchedulePartStart(p) < new Date())
+            );
             if (hasPastStaged) {
                 const proceed = await new Promise(resolve => {
                     showAshantiConfirm(
@@ -17003,9 +17113,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     const todo = todosList.find(t => t.id === todoId);
                     const placement = bulkScheduleStagedPlacements[todoId];
                     if (!todo || !placement) continue;
-                    const startDt = new Date(`${placement.dateKey}T00:00:00`);
-                    startDt.setHours(Math.floor(placement.minutes / 60), placement.minutes % 60, 0, 0);
-                    const endDt = new Date(startDt.getTime() + (todo.estimatedMinutes || 30) * 60000);
+                    // Always exactly one part - placeBulkScheduleDrop (the
+                    // only place that ever creates a manual placement) never
+                    // produces more than that (split blocks aren't
+                    // individually draggable - see buildBulkScheduleStagedBlock).
+                    const part = placement.parts[0];
+                    const startDt = bulkSchedulePartStart(part);
+                    const endDt = new Date(startDt.getTime() + (part.durationMinutes || todo.estimatedMinutes || 30) * 60000);
                     const data = await createCalendarEvent({
                         title: todo.title,
                         start: calendarToLocalISO(startDt),
@@ -17038,7 +17152,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 if (algorithmIds.length) {
                     const items = algorithmIds.map(todoId => {
                         const p = bulkScheduleStagedPlacements[todoId];
-                        return { todo_id: todoId, start_date: p.periodStart || p.dateKey, end_date: p.periodEnd || p.dateKey };
+                        return { todo_id: todoId, start_date: p.periodStart || p.parts[0].dateKey, end_date: p.periodEnd || p.parts[0].dateKey };
                     });
                     const response = await fetch('/todos/bulk-schedule', {
                         method: 'POST',
@@ -18045,7 +18159,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDraggedPayload = null;
                 if (payload.kind === 'staged') {
                     delete bulkScheduleStagedPlacements[payload.todoId];
+                    bulkScheduleSelectedIds.delete(payload.todoId);
                     rebuildBulkScheduleModalRows();
+                    refreshBulkScheduleLunchAfterRemoval();
                 }
             });
         })();

@@ -2109,6 +2109,42 @@ def _ensure_lunch_generated():
             save_calendar_events(working_events)
 
 
+# Re-derives where Lunch should sit on `day` given whatever's still on the
+# calendar, and moves it there (mutating the matching entry in
+# `working_events` in place) if that's different from where it currently
+# is. Called whenever a real event on that day is deleted (see
+# calendar_events_delete) - a lunch shift (see try_shift_lunch_for_slot in
+# todos_bulk_schedule) only ever existed to make room for something that
+# might now be gone, so it has to be free to revert on its own rather than
+# lingering forever once whatever needed it is deleted. Returns True if it
+# actually moved anything, so the caller knows whether a save is warranted.
+def _reevaluate_lunch_for_day(day, working_events):
+    day_iso = day.isoformat()
+    lunch_event = next(
+        (e for e in working_events if e.get('origin') == 'lunch'
+         and e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)),
+        None
+    )
+    if not lunch_event:
+        return False
+    lunch_settings = load_lunch_settings()
+    if not lunch_settings['days']:
+        return False
+    now = now_local()
+    day_events = [
+        e for e in working_events if e is not lunch_event
+        and e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)
+    ]
+    best_start = _find_lunch_slot(day_events, day, now, lunch_settings)
+    if not best_start or best_start.isoformat() == lunch_event['start']:
+        return False
+    length = timedelta(minutes=lunch_settings['lengthMinutes'])
+    lunch_event['start'] = best_start.isoformat()
+    lunch_event['end'] = (best_start + length).isoformat()
+    lunch_event['updatedAt'] = now.isoformat()
+    return True
+
+
 # Short, chat-context-friendly rundown of what's on the calendar - given to
 # Ashanti on every turn so she can talk about it and reference an event's id
 # for manage_calendar. Bounded to the next 20 upcoming events so a heavily
@@ -2259,6 +2295,11 @@ def calendar_events_delete(event_id):
             if not event:
                 return jsonify({'success': False, 'error': 'Event not found'}), 404
             events = [e for e in events if e['id'] != event_id]
+            if not event.get('allDay') and event.get('start'):
+                try:
+                    _reevaluate_lunch_for_day(datetime.fromisoformat(event['start']).date(), events)
+                except (ValueError, TypeError):
+                    pass
             save_calendar_events(events)
             # An imported event that's deleted locally would just reappear on
             # the next sync otherwise - remember its UID so re-import skips it.
@@ -3458,19 +3499,76 @@ def todos_bulk_schedule():
 
                 return None
 
+            # Only tried for a to-do of 4 hours (240 min) or longer, and only
+            # once a plain search AND a lunch shift have both already failed
+            # for `day` - splitting is the last resort, not the first idea.
+            # Finds the free stretch immediately before lunch and the one
+            # immediately after it, and - if each is at least an hour - divides
+            # the to-do's full duration between them (favoring filling the
+            # side with more natural room first, falling back to the other
+            # side if that leaves too little for the far side), so it reads
+            # as "as much as fits before lunch, the rest right after" rather
+            # than an arbitrary 50/50 cut. Returns None if either side would
+            # end up under an hour.
+            def try_split_around_lunch(day, duration_min, slot_fn):
+                day_iso = day.isoformat()
+                lunch_event = next(
+                    (e for e in working_events if e.get('origin') == 'lunch'
+                     and e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)),
+                    None
+                )
+                if not lunch_event:
+                    return None
+                try:
+                    lunch_start = datetime.fromisoformat(lunch_event['start'])
+                    lunch_end = datetime.fromisoformat(lunch_event['end'])
+                except (ValueError, KeyError, TypeError):
+                    return None
+
+                free = slot_fn(day_events_for(day), day, now)
+                before = [(s, e) for s, e in free if e <= lunch_start]
+                after = [(s, e) for s, e in free if s >= lunch_end]
+                if not before or not after:
+                    return None
+                b_s, b_e = before[-1]
+                a_s, a_e = after[0]
+                avail_before = (b_e - b_s).total_seconds() / 60
+                avail_after = (a_e - a_s).total_seconds() / 60
+                if avail_before < 60 or avail_after < 60:
+                    return None
+
+                piece1 = min(avail_before, duration_min - 60)
+                piece2 = duration_min - piece1
+                if piece2 < 60 or piece2 > avail_after:
+                    piece2 = min(avail_after, duration_min - 60)
+                    piece1 = duration_min - piece2
+                    if piece1 < 60 or piece1 > avail_before:
+                        return None
+
+                part1_end = b_e
+                part1_start = part1_end - timedelta(minutes=piece1)
+                part2_start = a_s
+                part2_end = part2_start + timedelta(minutes=piece2)
+                return (part1_start, part1_end, part2_start, part2_end)
+
             def find_slot(todo, days):
-                duration = timedelta(minutes=todo.get('estimatedMinutes') or 30)
+                duration_min = todo.get('estimatedMinutes') or 30
+                duration = timedelta(minutes=duration_min)
                 slot_fn = compute_personal_free_slots if todo.get('personal') else compute_free_slots
                 for day in days:
                     for s, en in slot_fn(day_events_for(day), day, now):
                         if en - s >= duration:
-                            return (s, s + duration)
+                            return [(s, s + duration)]
                     shifted = try_shift_lunch_for_slot(day, duration, slot_fn)
                     if shifted:
-                        return shifted
+                        return [shifted]
+                    if duration_min >= 240:
+                        split = try_split_around_lunch(day, duration_min, slot_fn)
+                        if split:
+                            return [(split[0], split[1]), (split[2], split[3])]
                 return None
 
-            def create_event_for(todo, start_dt, end_dt):
+            def create_event_for(todo, start_dt, end_dt, split_part=None, split_of=None):
                 now_iso = now.isoformat()
                 event = {
                     'id': uuid.uuid4().hex,
@@ -3488,6 +3586,19 @@ def todos_bulk_schedule():
                     'createdAt': now_iso,
                     'updatedAt': now_iso
                 }
+                # A to-do split around lunch (see try_split_around_lunch)
+                # gets two ordinary events rather than a new kind of record -
+                # every existing single-event code path (drag, resize, edit,
+                # complete, delete) keeps working on each half unchanged.
+                # splitPart/splitTotal are display-only ("1 of 2"); splitOf on
+                # the second half is what findTodoForCalendarEvent (index.html)
+                # actually follows back to the to-do, since only the first
+                # half is ever written to calendarEventId.
+                if split_part:
+                    event['splitPart'] = split_part
+                    event['splitTotal'] = 2
+                    if split_of:
+                        event['splitOf'] = split_of
                 working_events.append(event)
                 return event
 
@@ -3505,9 +3616,9 @@ def todos_bulk_schedule():
                 priority = todo.get('priority', 'medium')
                 period_days = [it['start_date'] + timedelta(days=i) for i in range((it['end_date'] - it['start_date']).days + 1)]
 
-                slot = find_slot(todo, period_days)
+                parts = find_slot(todo, period_days)
 
-                if slot:
+                if parts:
                     # Always append to working_events, preview or not - a
                     # later item in this same batch has to see this slot as
                     # taken (day_events_for reads from working_events), or
@@ -3515,8 +3626,13 @@ def todos_bulk_schedule():
                     # open slot instead of filling the period in order. Only
                     # whether the batch is actually persisted (below) depends
                     # on preview.
-                    event = create_event_for(todo, *slot)
-                    scheduled.append((todo, slot[0], slot[1], event))
+                    if len(parts) == 2:
+                        event1 = create_event_for(todo, *parts[0], split_part=1)
+                        event2 = create_event_for(todo, *parts[1], split_part=2, split_of=event1['id'])
+                        events = [event1, event2]
+                    else:
+                        events = [create_event_for(todo, *parts[0])]
+                    scheduled.append((todo, parts, events))
                 elif priority == 'high':
                     unscheduled.append((todo, "No availability in the selected period, even at highest priority - try a different period."))
                 elif priority == 'medium':
@@ -3526,8 +3642,8 @@ def todos_bulk_schedule():
 
             if not preview:
                 save_calendar_events([e for e in working_events if not e.get('_synthetic')])
-                for todo, start_dt, end_dt, event in scheduled:
-                    todo['calendarEventId'] = event['id']
+                for todo, parts, events in scheduled:
+                    todo['calendarEventId'] = events[0]['id']
                     # Same clean-slate rule as a manual reschedule (see
                     # todos_update) - this writes calendarEventId directly rather
                     # than going through that route, so it has to clear
@@ -3540,13 +3656,14 @@ def todos_bulk_schedule():
             'scheduled': [
                 {
                     'todoId': todo['id'], 'title': todo['title'],
-                    'start': start_dt.isoformat(), 'end': end_dt.isoformat(),
+                    'start': parts[0][0].isoformat(), 'end': parts[-1][1].isoformat(),
+                    'parts': [{'start': s.isoformat(), 'end': en.isoformat()} for s, en in parts],
                     # A preview event's id is never persisted (see above) -
                     # leaving it out of the response keeps a discarded id
                     # from ever reaching the client.
-                    **({'event': event} if not preview else {})
+                    **({'events': events} if not preview else {})
                 }
-                for todo, start_dt, end_dt, event in scheduled
+                for todo, parts, events in scheduled
             ],
             'unscheduled': [
                 {'todoId': todo['id'], 'title': todo['title'], 'reason': reason}
