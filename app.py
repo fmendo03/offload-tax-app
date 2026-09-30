@@ -1455,6 +1455,15 @@ CALENDAR_CHECKIN_STATUS_FILE = _data_path('calendar_checkin_status.json')
 AVAILABILITY_SETTINGS_FILE = _data_path('availability_settings.json')
 availability_lock = threading.Lock()
 
+# Lunch is deliberately not another fixed Availability block - it's a real
+# calendar event, auto-placed fresh each applicable day (see
+# _ensure_lunch_generated), that slides within its flexibility window to
+# dodge whatever's already on the calendar that day. Once placed it's an
+# ordinary event like any other, so every existing free-slot/scheduling path
+# already treats it as busy time with no changes needed there.
+LUNCH_SETTINGS_FILE = _data_path('lunch_settings.json')
+lunch_lock = threading.Lock()
+
 # Guards every calendar_events.json/calendar_settings.json read-modify-write -
 # the frontend's poll, Ashanti's manage_calendar tool, and the checkin poll
 # can all land in the same second (threaded=True), and without this two
@@ -1837,6 +1846,65 @@ def _validate_availability_blocks(blocks):
     return cursor == 24 * 60
 
 
+# `days` empty means lunch is off entirely - no separate enabled flag, one
+# less piece of state that could disagree with itself. lastGeneratedThrough
+# is the same rolling-window cursor pattern as a recurring to-do series (see
+# _ensure_all_series_generated) - reset to yesterday whenever the settings
+# change (see lunch_settings_update) so every not-yet-passed lunch gets
+# recomputed under the new rule.
+def _default_lunch_settings():
+    return {
+        'days': [], 'startTime': '12:00', 'lengthMinutes': 60,
+        'flexBeforeMinutes': 30, 'flexAfterMinutes': 30,
+        'lastGeneratedThrough': (today_local() - timedelta(days=1)).isoformat()
+    }
+
+
+def load_lunch_settings():
+    if os.path.exists(LUNCH_SETTINGS_FILE):
+        try:
+            with open(LUNCH_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get('days'), list):
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    defaults = _default_lunch_settings()
+    save_lunch_settings(defaults)
+    return defaults
+
+
+def save_lunch_settings(data):
+    with open(LUNCH_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+def _validate_lunch_settings(raw):
+    try:
+        days = sorted({int(d) for d in (raw.get('days') or []) if 0 <= int(d) <= 6})
+    except (TypeError, ValueError):
+        return None, 'Invalid days'
+    start_time = str(raw.get('start_time') or '').strip()
+    try:
+        _minutes_from_hhmm(start_time)
+    except Exception:
+        return None, 'Please choose a lunch start time.'
+    try:
+        length = int(raw.get('length_minutes'))
+        flex_before = int(raw.get('flex_before_minutes'))
+        flex_after = int(raw.get('flex_after_minutes'))
+    except (TypeError, ValueError):
+        return None, 'Please fill in the length and flexibility fields.'
+    if not (15 <= length <= 4 * 60):
+        return None, 'Lunch length must be between 15 minutes and 4 hours.'
+    if not (0 <= flex_before <= 4 * 60) or not (0 <= flex_after <= 4 * 60):
+        return None, 'Flexibility must be zero or more, up to 4 hours.'
+    return {
+        'days': days, 'startTime': start_time, 'lengthMinutes': length,
+        'flexBeforeMinutes': flex_before, 'flexAfterMinutes': flex_after
+    }, None
+
+
 def _round_up_to_quarter_hour(dt):
     discard = timedelta(minutes=dt.minute % 15, seconds=dt.second, microseconds=dt.microsecond)
     dt = dt - discard
@@ -1946,6 +2014,90 @@ def compute_personal_free_slots(day_events, day, now):
     return compute_free_slots_for_type(day_events, day, now, 'personal')
 
 
+# Where lunch actually lands on `day`, given whatever's already on the
+# calendar that day - reuses compute_free_slots_in_window (the same interval
+# math every other scheduling path already trusts) over just the flexibility
+# window itself, rather than the Availability template's business/personal
+# blocks, since lunch is defined purely by its own window, not by hours type.
+# Among every free stretch long enough to fit it, picks whichever placement
+# sits closest to the configured natural start time - so it stays right at
+# that time whenever nothing's in the way, and only drifts earlier/later by
+# exactly as much as it has to. Returns None if nothing in the window fits.
+def _find_lunch_slot(day_events, day, now, settings):
+    natural_start_min = _minutes_from_hhmm(settings['startTime'])
+    length = settings['lengthMinutes']
+    window_start = max(0, natural_start_min - settings['flexBeforeMinutes'])
+    window_end = min(24 * 60, natural_start_min + length + settings['flexAfterMinutes'])
+    if window_end - window_start < length:
+        return None
+
+    day_start = datetime.combine(day, datetime.min.time())
+    best = None
+    for s, en in compute_free_slots_in_window(day_events, day, now, window_start, window_end):
+        s_min = (s - day_start).total_seconds() / 60
+        en_min = (en - day_start).total_seconds() / 60
+        if en_min - s_min < length:
+            continue
+        candidate = min(max(natural_start_min, s_min), en_min - length)
+        if best is None or abs(candidate - natural_start_min) < abs(best - natural_start_min):
+            best = candidate
+    return day_start + timedelta(minutes=best) if best is not None else None
+
+
+# Tops up lunch to the same rolling 4-week horizon a recurring to-do series
+# uses (see _ensure_all_series_generated) - called from every route that
+# either schedules something (todos_bulk_schedule) or just lists todos/
+# events, so lunch is always already sitting on the calendar, as a real
+# event, before anything else gets a chance to compete for its slot. Once
+# generated for a given date, that date's cursor never gets revisited - if
+# Francis deletes or moves one day's Lunch card by hand afterward, it stays
+# that way rather than quietly reappearing (same reasoning as a recurring
+# to-do occurrence never un-deleting itself).
+def _ensure_lunch_generated():
+    settings = load_lunch_settings()
+    if not settings['days']:
+        return
+    horizon = today_local() + timedelta(days=28)
+    if date.fromisoformat(settings['lastGeneratedThrough']) >= horizon:
+        return
+
+    with calendar_lock, lunch_lock:
+        settings = load_lunch_settings()
+        if not settings['days']:
+            return
+        after = date.fromisoformat(settings['lastGeneratedThrough'])
+        if after >= horizon:
+            return
+
+        now = now_local()
+        working_events = load_calendar_events()
+        changed = False
+        d = after + timedelta(days=1)
+        while d <= horizon:
+            if _day_of_week_sunday0(d) in settings['days']:
+                day_iso = d.isoformat()
+                day_events = [e for e in working_events if e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)]
+                slot_start = _find_lunch_slot(day_events, d, now, settings)
+                if slot_start:
+                    now_iso = now.isoformat()
+                    working_events.append({
+                        'id': uuid.uuid4().hex, 'userId': current_user_id(), 'title': 'Lunch',
+                        'description': '', 'location': '',
+                        'start': slot_start.isoformat(),
+                        'end': (slot_start + timedelta(minutes=settings['lengthMinutes'])).isoformat(),
+                        'allDay': False, 'source': 'internal', 'origin': 'lunch',
+                        'externalUid': None, 'status': 'confirmed',
+                        'createdAt': now_iso, 'updatedAt': now_iso
+                    })
+                    changed = True
+            d += timedelta(days=1)
+
+        settings['lastGeneratedThrough'] = horizon.isoformat()
+        save_lunch_settings(settings)
+        if changed:
+            save_calendar_events(working_events)
+
+
 # Short, chat-context-friendly rundown of what's on the calendar - given to
 # Ashanti on every turn so she can talk about it and reference an event's id
 # for manage_calendar. Bounded to the next 20 upcoming events so a heavily
@@ -2013,6 +2165,7 @@ def get_calendar_context():
 
 @app.route('/calendar/events', methods=['GET'])
 def calendar_events_list():
+    _ensure_lunch_generated()
     settings = sync_calendar_import()
     events = load_calendar_events()
     events.sort(key=lambda e: e.get('start') or '')
@@ -2169,6 +2322,39 @@ def availability_update():
         return jsonify({'success': True, 'availability': settings})
     except Exception as e:
         print(f"Availability update error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/calendar/lunch-settings', methods=['GET'])
+def lunch_settings_get():
+    return jsonify({'success': True, 'settings': load_lunch_settings()})
+
+
+@app.route('/calendar/lunch-settings', methods=['POST'])
+def lunch_settings_update():
+    try:
+        validated, err = _validate_lunch_settings(request.json or {})
+        if err:
+            return jsonify({'success': False, 'error': err}), 400
+        with lunch_lock, calendar_lock:
+            settings = load_lunch_settings()
+            settings.update(validated)
+            # Every not-yet-passed Lunch card (today or later) gets cleared
+            # so the next generation pass recreates it under the new rule -
+            # past ones are left alone as history, same "future only" scope
+            # as a recurring to-do's "apply to all" edit.
+            today_iso = today_local().isoformat()
+            working_events = [
+                e for e in load_calendar_events()
+                if not (e.get('origin') == 'lunch' and (e.get('start') or '') >= today_iso)
+            ]
+            save_calendar_events(working_events)
+            settings['lastGeneratedThrough'] = (today_local() - timedelta(days=1)).isoformat()
+            save_lunch_settings(settings)
+        _ensure_lunch_generated()
+        return jsonify({'success': True, 'settings': load_lunch_settings()})
+    except Exception as e:
+        print(f"Lunch settings update error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -2838,6 +3024,7 @@ def _ensure_all_series_generated():
 
 @app.route('/todos', methods=['GET'])
 def todos_list():
+    _ensure_lunch_generated()
     _ensure_all_series_generated()
     return jsonify({'success': True, 'todos': load_todos()})
 
@@ -3131,6 +3318,10 @@ def todos_series_delete(series_id):
 @app.route('/todos/bulk-schedule', methods=['POST'])
 def todos_bulk_schedule():
     try:
+        # Lunch has to already be sitting on the calendar as a real event
+        # before this does its own free-slot search, or it would happily
+        # bin-pack a to-do right into that window - see _ensure_lunch_generated.
+        _ensure_lunch_generated()
         data = request.json or {}
         preview = bool(data.get('preview'))
         raw_items = data.get('items') or []

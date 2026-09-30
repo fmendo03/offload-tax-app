@@ -1966,6 +1966,39 @@
             line-height: 1.5;
         }
 
+        .settings-section + .settings-section {
+            margin-top: 28px;
+            padding-top: 24px;
+            border-top: 1px solid #eee;
+        }
+
+        .settings-subsection h3 {
+            margin: 0 0 6px;
+            font-size: 14px;
+        }
+
+        .lunch-settings-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            color: #444;
+        }
+
+        .lunch-settings-row label {
+            width: 80px;
+            flex-shrink: 0;
+            font-weight: 600;
+        }
+
+        .lunch-settings-summary {
+            font-size: 12px;
+            color: #667eea;
+            font-weight: 600;
+            margin: 4px 0 14px;
+        }
+
         .availability-legend {
             display: flex;
             gap: 16px;
@@ -6065,6 +6098,37 @@
                             <div class="calendar-week-gutter" id="availability-week-gutter"></div>
                             <div class="calendar-week-columns" id="availability-week-columns"></div>
                         </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h2>Calendar Settings</h2>
+                    <div class="settings-subsection">
+                        <h3>Lunch</h3>
+                        <p class="settings-section-desc">
+                            Reserve lunch on whichever days you pick below. It isn't a fixed block -
+                            Ashanti (and your own scheduling) will slide it earlier or later within
+                            the flexibility window to stay out of whatever else lands on the calendar
+                            that day, but it always stays exactly as long as you set it here.
+                        </p>
+                        <div class="lunch-settings-row">
+                            <label>Days</label>
+                            <div class="todos-weekday-toggles" id="lunch-settings-days"></div>
+                        </div>
+                        <div class="lunch-settings-row">
+                            <label for="lunch-settings-start">Lunch</label>
+                            <input type="time" id="lunch-settings-start" value="12:00">
+                            <span>for</span>
+                            <select id="lunch-settings-length"></select>
+                        </div>
+                        <div class="lunch-settings-row">
+                            <label>Flexibility</label>
+                            <span>before</span>
+                            <select id="lunch-settings-flex-before"></select>
+                            <span>after</span>
+                            <select id="lunch-settings-flex-after"></select>
+                        </div>
+                        <div class="lunch-settings-summary" id="lunch-settings-summary"></div>
+                        <button type="button" class="task-action-btn solid-complete" id="lunch-settings-save-btn">Save Lunch Settings</button>
                     </div>
                 </div>
             </div>
@@ -13187,6 +13251,118 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
         }
 
+        // --- Lunch (Settings page) -------------------------------------------
+        // A flexible, auto-placed lunch reservation - see /calendar/lunch-settings
+        // and _ensure_lunch_generated in app.py, which does the actual
+        // placement math (never something to leave to a model). This page
+        // only edits the rule; every lunch card on the calendar it produces
+        // is a perfectly ordinary event (origin: 'lunch').
+        const LUNCH_FLEX_OPTIONS = [0, 15, 30, 45, 60, 90, 120];
+
+        function initLunchSettingsUi() {
+            const daysEl = document.getElementById('lunch-settings-days');
+            RECURRENCE_WEEKDAY_LETTERS.forEach((letter, i) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'todos-weekday-toggle';
+                btn.textContent = letter;
+                btn.dataset.day = i;
+                btn.addEventListener('click', () => { btn.classList.toggle('active'); updateLunchSettingsSummary(); });
+                daysEl.appendChild(btn);
+            });
+
+            const lengthSelect = document.getElementById('lunch-settings-length');
+            [15, 30, 45, 60, 90, 120, 180].forEach(m => lengthSelect.appendChild(new Option(formatTodoDuration(m), m)));
+
+            const flexBeforeSelect = document.getElementById('lunch-settings-flex-before');
+            const flexAfterSelect = document.getElementById('lunch-settings-flex-after');
+            LUNCH_FLEX_OPTIONS.forEach(m => {
+                flexBeforeSelect.appendChild(new Option(m === 0 ? 'None' : formatTodoDuration(m), m));
+                flexAfterSelect.appendChild(new Option(m === 0 ? 'None' : formatTodoDuration(m), m));
+            });
+
+            ['lunch-settings-start', 'lunch-settings-length', 'lunch-settings-flex-before', 'lunch-settings-flex-after'].forEach(id => {
+                document.getElementById(id).addEventListener('change', updateLunchSettingsSummary);
+            });
+            document.getElementById('lunch-settings-save-btn').addEventListener('click', saveLunchSettingsForm);
+        }
+
+        async function loadLunchSettingsData() {
+            try {
+                const response = await fetch('/calendar/lunch-settings');
+                const data = await response.json();
+                if (!data.success) return;
+                const s = data.settings;
+                document.querySelectorAll('#lunch-settings-days .todos-weekday-toggle').forEach(btn => {
+                    btn.classList.toggle('active', s.days.includes(parseInt(btn.dataset.day, 10)));
+                });
+                document.getElementById('lunch-settings-start').value = s.startTime;
+                document.getElementById('lunch-settings-length').value = s.lengthMinutes;
+                document.getElementById('lunch-settings-flex-before').value = s.flexBeforeMinutes;
+                document.getElementById('lunch-settings-flex-after').value = s.flexAfterMinutes;
+                updateLunchSettingsSummary();
+            } catch (error) {
+                console.error('Failed to load lunch settings:', error);
+            }
+        }
+
+        // Restates the rule in the same terms Francis described it in -
+        // "always N long, falls between X and Y" - so the effect of the
+        // current form values is obvious before saving, not something to
+        // work out from four separate fields.
+        function updateLunchSettingsSummary() {
+            const summaryEl = document.getElementById('lunch-settings-summary');
+            const days = Array.from(document.querySelectorAll('#lunch-settings-days .active')).map(b => parseInt(b.dataset.day, 10));
+            if (!days.length) {
+                summaryEl.textContent = 'Lunch is off - pick at least one day to reserve it.';
+                return;
+            }
+            const startTime = document.getElementById('lunch-settings-start').value || '12:00';
+            const length = parseInt(document.getElementById('lunch-settings-length').value, 10) || 60;
+            const flexBefore = parseInt(document.getElementById('lunch-settings-flex-before').value, 10) || 0;
+            const flexAfter = parseInt(document.getElementById('lunch-settings-flex-after').value, 10) || 0;
+            const [h, m] = startTime.split(':').map(Number);
+            const natural = new Date(2000, 0, 1, h, m);
+            const windowStart = new Date(natural.getTime() - flexBefore * 60000);
+            const windowEnd = new Date(natural.getTime() + (length + flexAfter) * 60000);
+            const fmt = (d) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+            const dayNames = days.sort((a, b) => a - b).map(d => RECURRENCE_WEEKDAY_LETTERS[d]).join('');
+            summaryEl.textContent = `On ${dayNames}: lunch will always be ${formatTodoDuration(length)} long and fall between ${fmt(windowStart)} and ${fmt(windowEnd)}.`;
+        }
+
+        async function saveLunchSettingsForm() {
+            const days = Array.from(document.querySelectorAll('#lunch-settings-days .active')).map(b => parseInt(b.dataset.day, 10));
+            const btn = document.getElementById('lunch-settings-save-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            try {
+                const response = await fetch('/calendar/lunch-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        days,
+                        start_time: document.getElementById('lunch-settings-start').value,
+                        length_minutes: parseInt(document.getElementById('lunch-settings-length').value, 10),
+                        flex_before_minutes: parseInt(document.getElementById('lunch-settings-flex-before').value, 10),
+                        flex_after_minutes: parseInt(document.getElementById('lunch-settings-flex-after').value, 10)
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    await loadLunchSettingsData();
+                    await loadCalendarData();
+                    if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
+                } else {
+                    alert(data.error || 'Could not save lunch settings - try again.');
+                }
+            } catch (error) {
+                console.error('Failed to save lunch settings:', error);
+                alert('Could not save lunch settings - check the app is running and try again.');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Save Lunch Settings';
+        }
+
         // --- Availability grid drag-select (Settings page) -----------------
         // Same drag mechanics as the Calendar page's own slot-select just
         // above (startCalendarSlotSelect etc.), kept as its own separate set
@@ -13391,6 +13567,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('settings-nav-btn').classList.add('active');
             clearAvailabilitySlotHighlight();
             loadAvailabilityData();
+            loadLunchSettingsData();
             recordNavHistory({ kind: 'settings' });
         }
 
@@ -13425,6 +13602,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (e.source === 'external') return '\u{1F504}'; // 🔄 synced from external calendar
             if (e.origin === 'todo') return isCalendarEventTodoCompleted(e) ? '✅' : '\u{1F4CB}'; // ✅ completed, 📋 still pending
             if (e.origin === 'discussion') return '\u{1F4AC}'; // 💬 Discussion Item
+            if (e.origin === 'lunch') return '\u{1F37D}\u{FE0F}'; // 🍽️ auto-placed lunch (see /calendar/lunch-settings)
             return '\u{1F4CC}'; // 📌 plain/manual calendar entry
         }
 
@@ -17314,6 +17492,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
         initNewTodoRecurrenceUi();
+        initLunchSettingsUi();
 
         document.getElementById('todos-nav-btn').addEventListener('click', showTodosPage);
         document.getElementById('todos-new-btn').addEventListener('click', submitNewTodo);
