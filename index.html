@@ -16410,29 +16410,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return m ? `${h}h ${m}m` : `${h}h`;
         }
 
-        // Swaps the native drag ghost for one sized (height only - width
-        // stays a fixed, readable card width) to the to-do's actual
-        // duration, using the exact same px-per-hour scale as the preview
-        // grid - so what Francis sees under the cursor while dragging
-        // already looks like what it'll become once dropped, instead of a
-        // generic list-row-sized ghost that gives no sense of how much room
-        // a 3-hour to-do is about to take up. The offset anchors the
-        // cursor at the ghost's top edge, matching how the drop handler
-        // reads it (placeBulkScheduleDrop treats the cursor's Y position as
-        // the new event's start time, not its center).
-        function setBulkScheduleDragImage(evt, title, estimatedMinutes) {
-            const heightPx = Math.max(16, (estimatedMinutes || 30) / 60 * CALENDAR_PX_PER_HOUR - 1);
-            const ghost = document.createElement('div');
-            ghost.className = 'bulk-schedule-preview-block bulk-schedule-drag-ghost';
-            ghost.style.position = 'fixed';
-            ghost.style.top = '-9999px';
-            ghost.style.left = '-9999px';
-            ghost.style.width = '160px';
-            ghost.style.height = `${heightPx}px`;
-            ghost.textContent = title;
-            document.body.appendChild(ghost);
-            evt.dataTransfer.setDragImage(ghost, 12, 6);
-            setTimeout(() => ghost.remove(), 0);
+        // A single shared 1x1 transparent image, reused as the native drag
+        // image for every drag in this popup - suppresses the browser's
+        // own cursor-following ghost entirely. The live preview
+        // (bulkScheduleUpdateDragPreview) already shows a card snapped to
+        // the grid at exactly where the drop would land, split into two
+        // where it would split and sized to the to-do's real duration -
+        // showing the native ghost on top of that was a second, competing
+        // "phantom" copy of the card (one following the pointer, one
+        // moving around the grid); this keeps it to just the one.
+        const BULK_SCHEDULE_BLANK_DRAG_IMAGE = new Image();
+        BULK_SCHEDULE_BLANK_DRAG_IMAGE.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+
+        function setBulkScheduleDragImage(evt) {
+            evt.dataTransfer.setDragImage(BULK_SCHEDULE_BLANK_DRAG_IMAGE, 0, 0);
         }
 
         // Each option's date(s), computed fresh per row so "Today"/"This
@@ -16514,7 +16505,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDraggedPayload = { kind: 'unscheduled', todoId: todo.id };
                 row.classList.add('dragging');
                 evt.dataTransfer.effectAllowed = 'copy';
-                setBulkScheduleDragImage(evt, todo.title, todo.estimatedMinutes);
+                setBulkScheduleDragImage(evt);
             });
             row.addEventListener('dragend', () => {
                 row.classList.remove('dragging');
@@ -17075,9 +17066,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 bulkScheduleDraggedPayload = { kind: 'staged', todoId };
                 document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${todoId}"]`).forEach(b => b.classList.add('drag-hidden'));
                 evt.dataTransfer.effectAllowed = 'move';
-                // Same top-anchored ghost as the scheduled block above - see
-                // that dragstart's comment.
-                setBulkScheduleDragImage(evt, todo.title, todo.estimatedMinutes || 30);
+                setBulkScheduleDragImage(evt);
             });
             block.addEventListener('dragend', () => {
                 document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${todoId}"]`).forEach(b => b.classList.remove('drag-hidden'));
@@ -17206,7 +17195,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // own drag - 4h+ cards only, midnight-bounded), this applies to
         // every duration and is business-hours-aware, matching how
         // compute_free_slots in app.py already scopes automatic scheduling
-        // to business blocks only.
+        // to business blocks only. Splitting itself only ever kicks in for
+        // a card 2h+ long (MIN_SPLIT_DURATION) - anything shorter either
+        // fits as one piece (lunch shifts instead) or doesn't land there at
+        // all (reverts/pushes wholly to the next business day), no matter
+        // where it's hovered.
         //
         // Returns null when no valid placement exists at all (lunch can't
         // move and the card is too short to split around it, or it simply
@@ -17220,6 +17213,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // business-day boundary.
         function computeBulkSchedulePlacement(dateKey, rawMinutes, durationMin, excludeTodoId) {
             const MIN_PART = 60;
+            const MIN_SPLIT_DURATION = 120;
+            const canSplit = durationMin >= MIN_SPLIT_DURATION;
             let curDateKey = dateKey;
             let curMinutes = rawMinutes;
 
@@ -17246,7 +17241,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     } else {
                         const piece1Dur = lunchRange[0] - curMinutes;
                         const piece2Dur = end - lunchRange[1];
-                        if (piece1Dur >= MIN_PART && piece2Dur >= MIN_PART && lunchRange[1] + piece2Dur <= businessRange[1]) {
+                        if (canSplit && piece1Dur >= MIN_PART && piece2Dur >= MIN_PART && lunchRange[1] + piece2Dur <= businessRange[1]) {
                             return {
                                 parts: [
                                     { dateKey: curDateKey, minutes: curMinutes, durationMinutes: piece1Dur },
@@ -17255,7 +17250,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                                 lunchShift: null
                             };
                         }
-                        return null; // can't clear lunch, can't split around it either - revert
+                        return null; // can't clear lunch, can't (or isn't long enough to) split around it either - revert
                     }
                 }
 
@@ -17263,7 +17258,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     const piece1Dur = businessRange[1] - curMinutes;
                     const piece2Dur = durationMin - piece1Dur;
                     const next = calendarNextBusinessDay(curDateKey);
-                    if (piece1Dur >= MIN_PART && piece2Dur >= MIN_PART && next) {
+                    if (canSplit && piece1Dur >= MIN_PART && piece2Dur >= MIN_PART && next) {
                         return {
                             parts: [
                                 { dateKey: curDateKey, minutes: curMinutes, durationMinutes: piece1Dur },
