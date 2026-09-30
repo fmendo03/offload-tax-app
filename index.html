@@ -2960,6 +2960,35 @@
             border-left-style: dashed;
         }
 
+        .bulk-schedule-preview-block-title {
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 13px;
+        }
+
+        /* Same effect as dragging the card off the calendar (see
+           unplaceBulkScheduleEntry) - a quicker, no-drag way to unplace
+           right from the card itself. Tiny and corner-anchored so it stays
+           out of the way even on a 15-minute card's minimum-height block. */
+        .bulk-schedule-preview-block-unplace-btn {
+            position: absolute;
+            top: 1px;
+            right: 2px;
+            width: 12px;
+            height: 12px;
+            padding: 0;
+            line-height: 11px;
+            border: none;
+            border-radius: 50%;
+            background: #2563eb;
+            color: white;
+            font-size: 9px;
+            cursor: pointer;
+            z-index: 3;
+        }
+
         .bulk-schedule-preview-day-col.drop-target {
             background-color: rgba(31, 58, 95, 0.06);
         }
@@ -2990,10 +3019,11 @@
             gap: 8px;
             font-size: 12px;
             color: #555;
-            margin: 16px 20px 10px;
+            margin: 0 0 10px;
         }
 
         .bulk-schedule-apply-all select {
+            flex: 1;
             font-size: 12px;
             padding: 5px 6px;
             border: 1px solid #ccc;
@@ -3003,7 +3033,44 @@
         }
 
         #bulk-schedule-apply-all-custom {
-            margin: 0 20px 10px;
+            margin: 0 0 10px;
+        }
+
+        .bulk-schedule-action-columns {
+            display: flex;
+            gap: 12px;
+        }
+
+        .bulk-schedule-action-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .bulk-schedule-action-btn {
+            width: 100%;
+            padding: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .bulk-schedule-action-btn-secondary {
+            background: #e6e9f5;
+            color: #333;
+        }
+
+        .bulk-schedule-select-all-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #555;
         }
 
         /* One card per to-do in the bulk-schedule modal (see
@@ -3045,6 +3112,11 @@
             display: flex;
             align-items: center;
             gap: 6px;
+        }
+
+        .bulk-schedule-row-checkbox {
+            flex-shrink: 0;
+            margin: 0;
         }
 
         .bulk-schedule-todo-remove-btn {
@@ -6371,17 +6443,30 @@
             </div>
             <div class="bulk-schedule-body">
                 <div class="bulk-schedule-list-pane" id="bulk-schedule-list-pane">
-                    <div class="bulk-schedule-apply-all" id="bulk-schedule-apply-all">
-                        <label for="bulk-schedule-apply-all-select">Apply to all:</label>
-                        <select id="bulk-schedule-apply-all-select"></select>
-                    </div>
-                    <div class="bulk-schedule-todo-custom-range" id="bulk-schedule-apply-all-custom">
-                        <input type="date" id="bulk-schedule-apply-all-start">
-                        <input type="date" id="bulk-schedule-apply-all-end">
-                    </div>
                     <div class="bulk-schedule-todo-list" id="bulk-schedule-todo-list"></div>
                     <div class="bulk-schedule-list-pane-footer">
-                        <button id="bulk-schedule-confirm-btn" style="width: 100%; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Schedule</button>
+                        <div class="bulk-schedule-apply-all" id="bulk-schedule-apply-all">
+                            <label for="bulk-schedule-apply-all-select">Choose period</label>
+                            <select id="bulk-schedule-apply-all-select"></select>
+                        </div>
+                        <div class="bulk-schedule-todo-custom-range" id="bulk-schedule-apply-all-custom">
+                            <input type="date" id="bulk-schedule-apply-all-start">
+                            <input type="date" id="bulk-schedule-apply-all-end">
+                        </div>
+                        <div class="bulk-schedule-action-columns">
+                            <div class="bulk-schedule-action-column" id="bulk-schedule-place-column">
+                                <button id="bulk-schedule-confirm-btn" type="button" class="bulk-schedule-action-btn">Place</button>
+                                <label class="bulk-schedule-select-all-label">
+                                    <input type="checkbox" id="bulk-schedule-select-all-unplaced"> Select all unplaced
+                                </label>
+                            </div>
+                            <div class="bulk-schedule-action-column" id="bulk-schedule-unplace-column">
+                                <button id="bulk-schedule-unplace-btn" type="button" class="bulk-schedule-action-btn bulk-schedule-action-btn-secondary">Unplace</button>
+                                <label class="bulk-schedule-select-all-label">
+                                    <input type="checkbox" id="bulk-schedule-select-all-placed"> Select all placed
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="bulk-schedule-preview-pane">
@@ -6401,7 +6486,7 @@
             </div>
             <div class="bulk-schedule-footer">
                 <button id="bulk-schedule-cancel-btn" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
-                <button id="bulk-schedule-save-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" disabled>Save</button>
+                <button id="bulk-schedule-save-btn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" disabled>Schedule</button>
             </div>
         </div>
     </div>
@@ -16042,6 +16127,27 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             select.appendChild(customOpt);
         }
 
+        // Marks a to-do (pending or already-placed) for a bulk Place/Unplace
+        // action - see bulkScheduleSelectedIds, previewBulkScheduleTodos
+        // (Place) and unplaceBulkScheduleSelected (Unplace), which only ever
+        // act on whichever rows are currently checked, never "everything
+        // pending"/"everything placed" outright. Shared by both row builders
+        // below so a to-do keeps its checked state across being placed,
+        // unplaced, or just re-rendered.
+        function buildBulkScheduleRowCheckbox(todoId) {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'bulk-schedule-row-checkbox';
+            checkbox.checked = bulkScheduleSelectedIds.has(todoId);
+            checkbox.addEventListener('click', (evt) => evt.stopPropagation());
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) bulkScheduleSelectedIds.add(todoId);
+                else bulkScheduleSelectedIds.delete(todoId);
+                updateBulkScheduleSelectAllCheckboxes();
+            });
+            return checkbox;
+        }
+
         // One row per selected to-do (title + its own period dropdown +
         // a custom-range pair that only shows for that row) - lets each
         // to-do go to a different period instead of one choice for the
@@ -16073,6 +16179,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const top = document.createElement('div');
             top.className = 'bulk-schedule-todo-row-top';
+
+            top.appendChild(buildBulkScheduleRowCheckbox(todo.id));
 
             const title = document.createElement('span');
             title.className = 'bulk-schedule-todo-title';
@@ -16153,6 +16261,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const top = document.createElement('div');
             top.className = 'bulk-schedule-todo-row-top';
 
+            top.appendChild(buildBulkScheduleRowCheckbox(todo.id));
+
             const title = document.createElement('span');
             title.className = 'bulk-schedule-todo-title';
             title.textContent = todo.title;
@@ -16181,7 +16291,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const startDt = new Date(`${placement.dateKey}T00:00:00`);
             startDt.setHours(Math.floor(placement.minutes / 60), placement.minutes % 60, 0, 0);
             const when = startDt.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-            badge.textContent = `Placed — ${when} · click Save to confirm`;
+            badge.textContent = `Placed — ${when} · click Schedule to confirm`;
 
             row.appendChild(top);
             row.appendChild(badge);
@@ -16197,6 +16307,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // either of those, so the popup always states the outcome instead
         // of closing silently. Also re-renders the preview calendar.
         function rebuildBulkScheduleModalRows() {
+            // A todoId only ever belongs in this set while it's still part
+            // of the batch - drop anything left over from a row that's
+            // since been removed entirely (removeBulkScheduleRow).
+            const rowIdSet = new Set(bulkScheduleRowOrder);
+            bulkScheduleSelectedIds.forEach(id => { if (!rowIdSet.has(id)) bulkScheduleSelectedIds.delete(id); });
+
             const list = document.getElementById('bulk-schedule-todo-list');
             list.innerHTML = '';
             const unscheduledById = new Map(bulkScheduleUnscheduledReasons.map(u => [u.todoId, u]));
@@ -16218,7 +16334,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             let countText;
             if (remainingCount === 0) {
-                countText = `All ${total} to-do${total === 1 ? '' : 's'} on the calendar - click Save to confirm`;
+                countText = `All ${total} to-do${total === 1 ? '' : 's'} on the calendar - click Schedule to confirm`;
             } else {
                 const parts = [];
                 if (stagedCount) parts.push(`${stagedCount} placed`);
@@ -16227,21 +16343,24 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
             document.getElementById('bulk-schedule-count').textContent = countText;
 
-            // Nothing left to pick a period for once every to-do is on the
-            // calendar - the Schedule button (and the now-pointless Apply to
-            // all) hide rather than sit there disabled. Save is the one
-            // place any of this becomes real (see saveBulkScheduleTodos) -
-            // it stays disabled until there's at least something on the
-            // calendar to commit.
-            document.getElementById('bulk-schedule-confirm-btn').style.display = remainingCount === 0 ? 'none' : '';
+            // Nothing left to place once every to-do is on the calendar -
+            // the Place column (button, "select all unplaced", and the
+            // period picker) hides rather than sitting there with nothing
+            // to act on; the Unplace column does the same, symmetrically,
+            // once nothing's placed. Schedule (see saveBulkScheduleTodos) is
+            // the one place any of this becomes real - it stays disabled
+            // until there's at least something on the calendar to commit.
+            document.getElementById('bulk-schedule-place-column').style.display = remainingCount === 0 ? 'none' : '';
             document.getElementById('bulk-schedule-apply-all').style.display = remainingCount === 0 ? 'none' : '';
             if (remainingCount === 0) {
                 document.getElementById('bulk-schedule-apply-all-custom').classList.remove('visible');
             } else {
                 resetBulkScheduleApplyAll();
             }
+            document.getElementById('bulk-schedule-unplace-column').style.display = stagedCount === 0 ? 'none' : '';
             document.getElementById('bulk-schedule-save-btn').disabled = stagedCount === 0;
 
+            updateBulkScheduleSelectAllCheckboxes();
             renderBulkSchedulePreviewCalendar();
         }
 
@@ -16256,6 +16375,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             bulkScheduleRowOrder = bulkScheduleRowOrder.filter(id => id !== todoId);
             bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => u.todoId !== todoId);
             delete bulkScheduleStagedPlacements[todoId];
+            bulkScheduleSelectedIds.delete(todoId);
             selectedTodoIds.delete(todoId);
             renderTodosPage();
             if (bulkScheduleRowOrder.length === 0) {
@@ -16263,6 +16383,49 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 return;
             }
             rebuildBulkScheduleModalRows();
+        }
+
+        // The blue x on a placed calendar card - same effect as dragging it
+        // off the calendar (see the list-pane drop handler), just a direct
+        // click instead: unplaces this one to-do only, keeping it in the
+        // batch as an ordinary pending row again. Nothing was ever saved for
+        // it, so there's no backend call.
+        function unplaceBulkScheduleEntry(todoId) {
+            delete bulkScheduleStagedPlacements[todoId];
+            bulkScheduleSelectedIds.delete(todoId);
+            rebuildBulkScheduleModalRows();
+        }
+
+        // The "Unplace" button - unplaces every currently-checked placed
+        // to-do in one go (see bulkScheduleSelectedIds), the bulk
+        // counterpart to a single card's blue x/drag-off. Never acts on
+        // pending rows, even if they happen to be checked too.
+        function unplaceBulkScheduleSelected() {
+            const stagedIds = Object.keys(bulkScheduleStagedPlacements).filter(id => bulkScheduleSelectedIds.has(id));
+            if (!stagedIds.length) {
+                alert('Please select at least one placed to-do to unplace.');
+                return;
+            }
+            stagedIds.forEach(id => {
+                delete bulkScheduleStagedPlacements[id];
+                bulkScheduleSelectedIds.delete(id);
+            });
+            rebuildBulkScheduleModalRows();
+        }
+
+        // Keeps the two "select all" checkboxes honest against the current
+        // per-row checkboxes - checked only when every row of that kind
+        // (pending for "unplaced", staged for "placed") is currently
+        // selected, same semantics as the To-Do page's own
+        // todos-select-all-checkbox. Called after every row-checkbox toggle
+        // and every rebuild.
+        function updateBulkScheduleSelectAllCheckboxes() {
+            const pendingIds = bulkScheduleRowOrder.filter(id => !bulkScheduleStagedPlacements[id]);
+            const stagedIds = Object.keys(bulkScheduleStagedPlacements);
+            const selectAllUnplaced = document.getElementById('bulk-schedule-select-all-unplaced');
+            const selectAllPlaced = document.getElementById('bulk-schedule-select-all-placed');
+            selectAllUnplaced.checked = pendingIds.length > 0 && pendingIds.every(id => bulkScheduleSelectedIds.has(id));
+            selectAllPlaced.checked = stagedIds.length > 0 && stagedIds.every(id => bulkScheduleSelectedIds.has(id));
         }
 
         // "Apply to all" sets every row's own dropdown (and, for Custom
@@ -16273,8 +16436,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function resetBulkScheduleApplyAll() {
             const select = document.getElementById('bulk-schedule-apply-all-select');
             populateBulkSchedulePeriodSelect(select);
-            select.insertBefore(new Option('Choose a period…', ''), select.firstChild);
-            select.value = '';
+            // Next available opening leads BULK_SCHEDULE_PERIODS already, so
+            // this is just picking it as the visible default - it doesn't
+            // apply anything on its own (that only happens on an actual
+            // `change`, see the listener below), same as any other default
+            // selection.
+            select.value = 'next_available';
             const todayIso = computeBulkSchedulePeriod('today').start;
             document.getElementById('bulk-schedule-apply-all-start').value = todayIso;
             document.getElementById('bulk-schedule-apply-all-end').value = todayIso;
@@ -16334,6 +16501,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // or hitting its card's red x, deletes the entry outright - it was
         // never saved, so there's nothing to unschedule.
         let bulkScheduleStagedPlacements = {};
+        // Which to-dos (by id) are currently checked, for the bulk
+        // Place/Unplace actions - see buildBulkScheduleRowCheckbox,
+        // previewBulkScheduleTodos (Place) and unplaceBulkScheduleSelected
+        // (Unplace), which only ever act on whatever's checked here, never
+        // "every pending row"/"every placed row" outright. Reset whenever
+        // the popup opens; pruned of a todoId wherever it leaves the batch
+        // entirely (removeBulkScheduleRow) or gets unplaced.
+        let bulkScheduleSelectedIds = new Set();
         // The preview calendar's currently-viewed week (see
         // renderBulkSchedulePreviewCalendar/bulkSchedulePreviewNav) - reset
         // to the week containing today every time the popup opens.
@@ -16359,6 +16534,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (bulkScheduleRowOrder.length === 0) return;
             bulkScheduleUnscheduledReasons = [];
             bulkScheduleStagedPlacements = {};
+            // Starts with everything checked - matches how this used to
+            // work before Place/Unplace were selection-based (Schedule just
+            // processed every pending row) - unchecking specific ones is
+            // the exception, not something to opt into every time.
+            bulkScheduleSelectedIds = new Set(bulkScheduleRowOrder);
             bulkSchedulePreviewWeekStart = getCalendarWeekStart(new Date());
             resetBulkScheduleApplyAll();
             rebuildBulkScheduleModalRows();
@@ -16413,8 +16593,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.className = 'bulk-schedule-preview-block bulk-schedule-preview-block-staged';
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            block.textContent = todo.title;
-            block.title = `${todo.title} - not saved yet, drag to reposition or off the calendar to remove`;
+            block.title = `${todo.title} - not saved yet, drag to reposition, or click the x to unplace it`;
             block.draggable = true;
             block.addEventListener('dragstart', (evt) => {
                 bulkScheduleDraggedPayload = { kind: 'staged', todoId };
@@ -16428,6 +16607,27 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 block.classList.remove('drag-hidden');
                 bulkScheduleDraggedPayload = null;
             });
+
+            const titleEl = document.createElement('span');
+            titleEl.className = 'bulk-schedule-preview-block-title';
+            titleEl.textContent = todo.title;
+            block.appendChild(titleEl);
+
+            // Same effect as dragging it off the calendar (unplaces just
+            // this one, keeps it in the batch as pending) - a quicker way to
+            // do that without a drag, right on the card itself.
+            const unplaceBtn = document.createElement('button');
+            unplaceBtn.type = 'button';
+            unplaceBtn.className = 'bulk-schedule-preview-block-unplace-btn';
+            unplaceBtn.textContent = '✕';
+            unplaceBtn.title = 'Unplace from the calendar';
+            unplaceBtn.addEventListener('click', (evt) => {
+                evt.stopPropagation();
+                unplaceBulkScheduleEntry(todoId);
+            });
+            unplaceBtn.addEventListener('dragstart', (evt) => evt.stopPropagation());
+            block.appendChild(unplaceBtn);
+
             return block;
         }
 
@@ -16561,17 +16761,24 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             rebuildBulkScheduleModalRows();
         }
 
-        // The "Schedule" button - finds each still-pending to-do a slot
-        // within its chosen period and places it on the live preview
-        // calendar (bulkScheduleStagedPlacements), exactly like dragging it
-        // there by hand would. Preview mode only (see todos_bulk_schedule in
-        // app.py) - nothing is created or saved here. Francis can keep
-        // clicking Schedule for whatever's still pending, drag things
-        // around, or remove them, until Save (see saveBulkScheduleTodos)
-        // commits whatever's actually sitting on the calendar at that
-        // moment.
+        // The "Place" button - finds each checked, still-pending to-do a
+        // slot within its own chosen period and places it on the live
+        // preview calendar (bulkScheduleStagedPlacements), exactly like
+        // dragging it there by hand would. Only acts on rows currently
+        // checked via buildBulkScheduleRowCheckbox (or "Select all
+        // unplaced") - never silently everything pending. Preview mode only
+        // (see todos_bulk_schedule in app.py) - nothing is created or saved
+        // here. Francis can keep selecting and clicking Place for whatever's
+        // still pending, drag things around, or remove them, until Schedule
+        // (see saveBulkScheduleTodos) commits whatever's actually sitting on
+        // the calendar at that moment.
         async function previewBulkScheduleTodos() {
-            const pendingRows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-staged="true"])'));
+            const pendingRows = Array.from(document.querySelectorAll('#bulk-schedule-todo-list .bulk-schedule-todo-row:not([data-staged="true"])'))
+                .filter(row => bulkScheduleSelectedIds.has(row.dataset.todoId));
+            if (!pendingRows.length) {
+                alert('Please select at least one to-do to place.');
+                return;
+            }
             const items = [];
             for (const row of pendingRows) {
                 const periodType = row.querySelector('.bulk-schedule-todo-period').value;
@@ -16610,7 +16817,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const confirmBtn = document.getElementById('bulk-schedule-confirm-btn');
             confirmBtn.disabled = true;
-            confirmBtn.textContent = 'Scheduling…';
+            confirmBtn.textContent = 'Placing…';
             try {
                 const response = await fetch('/todos/bulk-schedule', {
                     method: 'POST',
@@ -16619,7 +16826,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 });
                 const data = await response.json();
                 if (!data.success) {
-                    alert(data.error || 'Could not schedule those to-dos.');
+                    alert(data.error || 'Could not place those to-dos.');
                 } else {
                     data.scheduled.forEach(s => {
                         const start = new Date(s.start);
@@ -16637,22 +16844,30 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                             ...periodByTodoId.get(s.todoId)
                         };
                     });
-                    bulkScheduleUnscheduledReasons = data.unscheduled;
+                    // Only this click's own selection has fresh reasons -
+                    // anything else still pending (not selected this time)
+                    // keeps whatever reason it already had, rather than
+                    // losing it just because a different, smaller batch was
+                    // placed this time.
+                    const placedIdSet = new Set(items.map(it => it.todo_id));
+                    bulkScheduleUnscheduledReasons = bulkScheduleUnscheduledReasons.filter(u => !placedIdSet.has(u.todoId));
+                    bulkScheduleUnscheduledReasons.push(...data.unscheduled);
                 }
                 rebuildBulkScheduleModalRows();
             } catch (e) {
                 console.error('Bulk schedule preview failed:', e);
-                alert('Could not schedule those to-dos - check the app is running and try again.');
+                alert('Could not place those to-dos - check the app is running and try again.');
             }
             confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Schedule';
+            confirmBtn.textContent = 'Place';
         }
 
-        // The "Save" button - the one place anything from this popup
+        // The "Schedule" button - the one place anything from this popup
         // actually becomes a real calendar event. Anything dragged off the
-        // calendar or removed via its card's red x is already gone from
-        // bulkScheduleStagedPlacements by the time this runs, so it's
-        // simply never saved. A manual drag commits at the exact spot
+        // calendar or removed via its card's red x (or unplaced, via the
+        // blue x/Unplace) is already gone from bulkScheduleStagedPlacements
+        // by the time this runs, so it's simply never saved. A manual drag
+        // commits at the exact spot
         // Francis put it; an algorithm placement (from clicking Schedule)
         // is re-decided fresh against the live calendar right now rather
         // than replayed from its preview position - see the algorithmIds
@@ -16688,7 +16903,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const saveBtn = document.getElementById('bulk-schedule-save-btn');
             saveBtn.disabled = true;
-            saveBtn.textContent = 'Saving…';
+            saveBtn.textContent = 'Scheduling…';
             try {
                 // Manual placements commit first, exactly where Francis put
                 // them - same create-and-link pattern saveEventModal's
@@ -16779,10 +16994,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 }
             } catch (e) {
                 console.error('Bulk save failed:', e);
-                alert('Could not save those to-dos - check the app is running and try again.');
+                alert('Could not schedule those to-dos - check the app is running and try again.');
             }
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Save';
+            saveBtn.textContent = 'Schedule';
         }
 
         // The bulk counterpart to a single event's Unschedule button (see
@@ -17706,7 +17921,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
         document.getElementById('bulk-schedule-cancel-btn').addEventListener('click', closeBulkScheduleModal);
         document.getElementById('bulk-schedule-confirm-btn').addEventListener('click', previewBulkScheduleTodos);
+        document.getElementById('bulk-schedule-unplace-btn').addEventListener('click', unplaceBulkScheduleSelected);
         document.getElementById('bulk-schedule-save-btn').addEventListener('click', saveBulkScheduleTodos);
+        document.getElementById('bulk-schedule-select-all-unplaced').addEventListener('change', (e) => {
+            const pendingIds = bulkScheduleRowOrder.filter(id => !bulkScheduleStagedPlacements[id]);
+            if (e.target.checked) pendingIds.forEach(id => bulkScheduleSelectedIds.add(id));
+            else pendingIds.forEach(id => bulkScheduleSelectedIds.delete(id));
+            rebuildBulkScheduleModalRows();
+        });
+        document.getElementById('bulk-schedule-select-all-placed').addEventListener('change', (e) => {
+            const stagedIds = Object.keys(bulkScheduleStagedPlacements);
+            if (e.target.checked) stagedIds.forEach(id => bulkScheduleSelectedIds.add(id));
+            else stagedIds.forEach(id => bulkScheduleSelectedIds.delete(id));
+            rebuildBulkScheduleModalRows();
+        });
         document.getElementById('bulk-schedule-preview-prev-btn').addEventListener('click', () => bulkSchedulePreviewNav(-1));
         document.getElementById('bulk-schedule-preview-next-btn').addEventListener('click', () => bulkSchedulePreviewNav(1));
         // Drag an already-placed staged card back off the calendar and onto
