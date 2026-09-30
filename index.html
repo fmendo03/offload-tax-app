@@ -3074,6 +3074,20 @@
             opacity: 0.3;
         }
 
+        /* Closed-hand cursor for the whole page while a card from this
+           popup is actively being dragged (see startBulkScheduleMouseDrag) -
+           this is mouse-tracked, not native HTML5 drag-and-drop, so CSS
+           cursor actually applies throughout the drag instead of the
+           browser taking it over. */
+        .bulk-schedule-mouse-dragging,
+        .bulk-schedule-mouse-dragging * {
+            cursor: grabbing !important;
+        }
+
+        .bulk-schedule-mouse-dragging {
+            user-select: none;
+        }
+
         /* Lunch sliding out of the way live while a card hovers over it
            (see bulkScheduleMoveLunchBlock) - the position change is
            already obvious, this just softens the jump from one slot to
@@ -16462,33 +16476,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return m ? `${h}h ${m}m` : `${h}h`;
         }
 
-        // A small closed-hand emoji as the native drag image, in place of
-        // the browser's own cursor icon and (would-be) translucent copy of
-        // the dragged card. A 1x1 transparent image here was NOT enough -
-        // Chrome falls back to auto-generating its own ghost from the drag
-        // source (a faded copy of the card, plus its default "drag" cursor
-        // - a pointer with a dashed square) whenever the custom image is
-        // that degenerate, so the fallback showed up looking exactly like
-        // the "phantom card"/wrong-cursor problem this was meant to fix.
-        // A real, visibly-rendered custom image is what actually gets
-        // Chrome to use it instead of falling back - the live preview
-        // (bulkScheduleUpdateDragPreview) already shows the card itself
-        // snapped to the grid at exactly where the drop would land, so
-        // this just needs to read as "you're holding something", not
-        // duplicate the card.
-        function setBulkScheduleDragImage(evt) {
-            const hand = document.createElement('div');
-            hand.textContent = '✊';
-            hand.style.position = 'fixed';
-            hand.style.top = '-9999px';
-            hand.style.left = '-9999px';
-            hand.style.fontSize = '22px';
-            hand.style.lineHeight = '22px';
-            document.body.appendChild(hand);
-            evt.dataTransfer.setDragImage(hand, 11, 11);
-            setTimeout(() => hand.remove(), 0);
-        }
-
         // Each option's date(s), computed fresh per row so "Today"/"This
         // week"/etc. are always relative to now rather than baked in once.
         const BULK_SCHEDULE_PERIODS = [
@@ -16582,23 +16569,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // Draggable straight onto the preview calendar (see
             // renderBulkSchedulePreviewCalendar/placeBulkScheduleDrop) - an
             // alternative to picking a period and hitting Schedule, for when
-            // Francis can just see the open slot he wants right there.
-            row.draggable = true;
-            row.addEventListener('dragstart', (evt) => {
-                bulkScheduleDraggedPayload = { kind: 'unscheduled', todoId: todo.id };
-                bulkScheduleDragGrabOffsetPx = 0;
-                row.classList.add('dragging');
-                evt.dataTransfer.effectAllowed = 'copy';
-                setBulkScheduleDragImage(evt);
-            });
-            row.addEventListener('dragend', () => {
-                row.classList.remove('dragging');
-                bulkScheduleDraggedPayload = null;
-                // Wipes any leftover live-preview DOM (moved lunch block,
-                // split ghost - see bulkScheduleUpdateDragPreview) back to
-                // the real state, whether this drag ended in a drop or was
-                // simply let go outside a valid target.
-                renderBulkSchedulePreviewCalendar();
+            // Francis can just see the open slot he wants right there. Mouse
+            // tracking (mousedown/move/up), not native HTML5 drag-and-drop -
+            // see startBulkScheduleMouseDrag for why.
+            row.addEventListener('mousedown', (evt) => {
+                if (evt.target.closest('input, select, button')) return;
+                startBulkScheduleMouseDrag(evt, { kind: 'unscheduled', todoId: todo.id }, row, 0);
             });
 
             const top = document.createElement('div');
@@ -17046,11 +17022,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // renderBulkSchedulePreviewCalendar/bulkSchedulePreviewNav) - reset
         // to the week containing today every time the popup opens.
         let bulkSchedulePreviewWeekStart = null;
-        // Set on dragstart, read on drop - dataTransfer's own payload isn't
-        // readable during dragover for the drop-target highlight, same
-        // reasoning as draggedSuggestionId. {kind:'unscheduled', todoId} for
-        // a list row being placed for the first time, {kind:'staged', todoId}
-        // for an already-placed (but still unsaved) card being repositioned.
+        // Set once an in-progress mouse drag (see startBulkScheduleMouseDrag)
+        // actually starts moving, read by bulkScheduleUpdateDragPreview and
+        // placeBulkScheduleDrop. {kind:'unscheduled', todoId} for a list row
+        // being placed for the first time, {kind:'staged', todoId} for an
+        // already-placed (but still unsaved) card being repositioned.
         let bulkScheduleDraggedPayload = null;
         // How far below the card's own top edge it was grabbed (pixels) -
         // a staged card can be picked up anywhere on it, not just at its
@@ -17060,9 +17036,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // onCalendarEventDragMove, which tracks a delta from the original
         // mouse-down point rather than snapping the pointer itself to a
         // slot). Subtracted from the pointer's Y before converting to a
-        // slot in every dragover/drop handler below. Always 0 for a fresh
-        // drag from the pending list - there's no existing card shape yet
-        // to have grabbed a particular point on.
+        // slot everywhere a slot is read during the drag. Always 0 for a
+        // fresh drag from the pending list - there's no existing card shape
+        // yet to have grabbed a particular point on.
         let bulkScheduleDragGrabOffsetPx = 0;
         // True only while previewBulkScheduleTodos' own request is in
         // flight - lets updateBulkScheduleActionButtonLabels leave the
@@ -17070,6 +17046,121 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // change while it's running, instead of clobbering it back to a
         // static "Place N of M" mid-request.
         let bulkSchedulePlaceRequestInFlight = false;
+
+        // --- Drag system (mouse-tracked, not native HTML5 drag-and-drop) --
+        // Everything in this popup used to be draggable="true" with native
+        // dragstart/dragover/drop - simple to wire up, but the browser owns
+        // the cursor and the "ghost" image the whole time a native drag is
+        // active, and neither can be changed by page CSS or JS once it
+        // starts (a documented, universal limitation, not a bug to work
+        // around). That's why the cursor stayed a plain arrow/no-drop icon
+        // and a faint copy of the card kept following the pointer no matter
+        // what was tried. Tracking the mouse ourselves - exactly what the
+        // real Calendar page's own event dragging already does (see
+        // startCalendarEventDrag/onCalendarEventDragMove) - hands the
+        // cursor back to ordinary CSS (:active/.bulk-schedule-mouse-dragging
+        // below) and removes the native ghost entirely, since there's
+        // nothing native involved anymore.
+        //
+        // {payload, sourceEl, startClientX, startClientY, grabOffsetPx,
+        // moved} - moved stays false until the pointer has actually moved a
+        // few pixels, the same click-vs-drag threshold
+        // onCalendarEventDragMove uses, so a plain click (handled by each
+        // row/card's own 'click' listener - see buildBulkScheduleTodoRow/
+        // buildBulkScheduleStagedRow/buildBulkScheduleStagedBlock) never
+        // gets mistaken for the start of a drag.
+        let bulkScheduleMouseDrag = null;
+
+        function startBulkScheduleMouseDrag(evt, payload, sourceEl, grabOffsetPx) {
+            if (evt.button !== 0) return;
+            evt.preventDefault(); // avoid a text-selection drag instead of ours
+            bulkScheduleMouseDrag = {
+                payload, sourceEl, grabOffsetPx,
+                startClientX: evt.clientX, startClientY: evt.clientY,
+                moved: false
+            };
+            document.addEventListener('mousemove', onBulkScheduleMouseDragMove);
+            document.addEventListener('mouseup', onBulkScheduleMouseDragEnd);
+        }
+
+        // Where the pointer is hovering right now, in the terms the rest of
+        // the drag system already understands: the day column under it (or
+        // null), and whether it's over the left pane's list area instead
+        // (only meaningful for repositioning an already-placed card - see
+        // the list-pane drop-to-unschedule handler this mirrors).
+        function bulkScheduleHitTest(clientX, clientY, isStagedCard) {
+            const el = document.elementFromPoint(clientX, clientY);
+            const col = el ? el.closest('.bulk-schedule-preview-day-col') : null;
+            const listPane = document.getElementById('bulk-schedule-list-pane');
+            const overListPane = isStagedCard && el && listPane.contains(el);
+            return { col, overListPane, listPane };
+        }
+
+        function bulkScheduleClearHoverHighlights() {
+            document.querySelectorAll('.bulk-schedule-preview-day-col.drop-target, .bulk-schedule-preview-day-col.drop-target-invalid')
+                .forEach(c => { c.classList.remove('drop-target'); c.classList.remove('drop-target-invalid'); });
+            document.getElementById('bulk-schedule-list-pane').classList.remove('drop-target');
+            bulkScheduleClearDragGhosts();
+            bulkScheduleResetLunchGhost();
+        }
+
+        function onBulkScheduleMouseDragMove(evt) {
+            const state = bulkScheduleMouseDrag;
+            if (!state) return;
+            if (!state.moved) {
+                if (Math.abs(evt.clientX - state.startClientX) <= 3 && Math.abs(evt.clientY - state.startClientY) <= 3) return;
+                state.moved = true;
+                bulkScheduleDraggedPayload = state.payload;
+                bulkScheduleDragGrabOffsetPx = state.grabOffsetPx;
+                document.body.classList.add('bulk-schedule-mouse-dragging');
+                if (state.payload.kind === 'staged') {
+                    document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${state.payload.todoId}"]`).forEach(b => b.classList.add('drag-hidden'));
+                } else {
+                    state.sourceEl.classList.add('dragging');
+                }
+            }
+
+            bulkScheduleClearHoverHighlights();
+            const { col, overListPane, listPane } = bulkScheduleHitTest(evt.clientX, evt.clientY, state.payload.kind === 'staged');
+            if (overListPane) {
+                listPane.classList.add('drop-target');
+            } else if (col) {
+                col.classList.add('drop-target');
+                bulkScheduleUpdateDragPreview(col, col.dataset.date, calendarSlotMinutesFromY(col, evt.clientY - state.grabOffsetPx));
+            }
+        }
+
+        function onBulkScheduleMouseDragEnd(evt) {
+            document.removeEventListener('mousemove', onBulkScheduleMouseDragMove);
+            document.removeEventListener('mouseup', onBulkScheduleMouseDragEnd);
+            const state = bulkScheduleMouseDrag;
+            bulkScheduleMouseDrag = null;
+            if (!state) return;
+
+            document.body.classList.remove('bulk-schedule-mouse-dragging');
+            bulkScheduleClearHoverHighlights();
+            if (!state.moved) return; // no real movement - the element's own 'click' listener handles selection
+
+            if (state.payload.kind === 'staged') {
+                document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${state.payload.todoId}"]`).forEach(b => b.classList.remove('drag-hidden'));
+            } else {
+                state.sourceEl.classList.remove('dragging');
+            }
+
+            const { col, overListPane } = bulkScheduleHitTest(evt.clientX, evt.clientY, state.payload.kind === 'staged');
+            bulkScheduleDraggedPayload = state.payload;
+            if (overListPane) {
+                bulkScheduleDraggedPayload = null;
+                unplaceBulkScheduleEntry(state.payload.todoId);
+            } else if (col) {
+                placeBulkScheduleDrop(col.dataset.date, calendarSlotMinutesFromY(col, evt.clientY - state.grabOffsetPx));
+            } else {
+                // Let go somewhere that's neither the calendar nor (for a
+                // staged card) the list pane - nothing changes.
+                bulkScheduleDraggedPayload = null;
+                renderBulkSchedulePreviewCalendar();
+            }
+        }
 
         function openBulkScheduleModal() {
             if (selectedTodoIds.size === 0) return;
@@ -17207,27 +17298,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.title = isSplit
                 ? `${todo.title} - split (part ${partIndex + 1} of 2), not saved yet - drag either half to reposition, or click the x to unplace both parts`
                 : `${todo.title} - not saved yet, drag to reposition, or click the x to unplace it`;
-            block.draggable = true;
-            block.addEventListener('dragstart', (evt) => {
-                bulkScheduleDraggedPayload = { kind: 'staged', todoId };
-                bulkScheduleDragGrabOffsetPx = evt.clientY - block.getBoundingClientRect().top;
-                evt.dataTransfer.effectAllowed = 'move';
-                setBulkScheduleDragImage(evt);
-                // Hiding the drag source has to wait a tick - Chrome
-                // captures the native drag image (or finishes its own
-                // internal drag setup) synchronously right after dragstart
-                // returns, and making the source invisible before that
-                // completes was silently killing the drag entirely (the
-                // card could never be dragged again once it had come from a
-                // native drag itself - see bug report).
-                setTimeout(() => {
-                    document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${todoId}"]`).forEach(b => b.classList.add('drag-hidden'));
-                }, 0);
-            });
-            block.addEventListener('dragend', () => {
-                document.querySelectorAll(`.bulk-schedule-preview-block[data-todo-id="${todoId}"]`).forEach(b => b.classList.remove('drag-hidden'));
-                bulkScheduleDraggedPayload = null;
-                renderBulkSchedulePreviewCalendar();
+            // Mouse tracking (mousedown/move/up), not native HTML5
+            // drag-and-drop - see startBulkScheduleMouseDrag. Either half of
+            // a split card can be grabbed; dropping it recomputes the whole
+            // to-do's placement fresh at the new position (see
+            // placeBulkScheduleDrop), so it may re-split somewhere else, or
+            // not split at all, depending on where it lands.
+            block.addEventListener('mousedown', (evt) => {
+                if (evt.target.closest('input, button')) return;
+                const grabOffsetPx = evt.clientY - block.getBoundingClientRect().top;
+                startBulkScheduleMouseDrag(evt, { kind: 'staged', todoId }, block, grabOffsetPx);
             });
 
             // Same checkbox/selection state as the row in the left pane
@@ -17237,7 +17317,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // right here.
             const selectCheckbox = buildBulkScheduleRowCheckbox(todoId);
             selectCheckbox.classList.add('bulk-schedule-preview-block-select-checkbox');
-            selectCheckbox.addEventListener('dragstart', (evt) => evt.stopPropagation());
             block.appendChild(selectCheckbox);
 
             // Clicking anywhere on the card (that isn't the checkbox or the
@@ -17266,7 +17345,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 evt.stopPropagation();
                 unplaceBulkScheduleEntry(todoId);
             });
-            unplaceBtn.addEventListener('dragstart', (evt) => evt.stopPropagation());
             block.appendChild(unplaceBtn);
 
             return block;
@@ -17635,25 +17713,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     });
                 });
 
-                col.addEventListener('dragover', (evt) => {
-                    if (!bulkScheduleDraggedPayload) return;
-                    evt.preventDefault();
-                    col.classList.add('drop-target');
-                    bulkScheduleUpdateDragPreview(col, key, calendarSlotMinutesFromY(col, evt.clientY - bulkScheduleDragGrabOffsetPx));
-                });
-                col.addEventListener('dragleave', () => {
-                    col.classList.remove('drop-target');
-                    col.classList.remove('drop-target-invalid');
-                });
-                col.addEventListener('drop', (evt) => {
-                    evt.preventDefault();
-                    col.classList.remove('drop-target');
-                    col.classList.remove('drop-target-invalid');
-                    bulkScheduleClearDragGhosts();
-                    bulkScheduleResetLunchGhost();
-                    if (!bulkScheduleDraggedPayload) return;
-                    placeBulkScheduleDrop(key, calendarSlotMinutesFromY(col, evt.clientY - bulkScheduleDragGrabOffsetPx));
-                });
+                // Hovering/dropping onto this column while dragging a card
+                // is handled globally now (onBulkScheduleMouseDragMove/End
+                // hit-test with document.elementFromPoint), not per-column
+                // native drag events - see the mouse-tracking drag system
+                // below buildBulkScheduleStagedBlock.
 
                 columns.appendChild(col);
             });
@@ -18948,36 +19012,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
         document.getElementById('bulk-schedule-preview-prev-btn').addEventListener('click', () => bulkSchedulePreviewNav(-1));
         document.getElementById('bulk-schedule-preview-next-btn').addEventListener('click', () => bulkSchedulePreviewNav(1));
-        // Drag an already-placed staged card back off the calendar and onto
-        // this pane to drop the placement - nothing was ever saved for it,
-        // so this is just a local removal, no backend call needed. A
-        // still-pending list row being dragged around within its own pane
-        // doesn't match this and is ignored, same as dropping it on itself
-        // would be a no-op anyway.
-        (() => {
-            const pane = document.getElementById('bulk-schedule-list-pane');
-            pane.addEventListener('dragover', (evt) => {
-                if (!bulkScheduleDraggedPayload || bulkScheduleDraggedPayload.kind !== 'staged') return;
-                evt.preventDefault();
-                pane.classList.add('drop-target');
-            });
-            pane.addEventListener('dragleave', (evt) => {
-                if (!pane.contains(evt.relatedTarget)) pane.classList.remove('drop-target');
-            });
-            pane.addEventListener('drop', (evt) => {
-                evt.preventDefault();
-                pane.classList.remove('drop-target');
-                const payload = bulkScheduleDraggedPayload;
-                if (!payload) return;
-                bulkScheduleDraggedPayload = null;
-                if (payload.kind === 'staged') {
-                    delete bulkScheduleStagedPlacements[payload.todoId];
-                    bulkScheduleSelectedIds.delete(payload.todoId);
-                    rebuildBulkScheduleModalRows();
-                    refreshBulkScheduleLunchAfterRemoval();
-                }
-            });
-        })();
+        // Dragging an already-placed staged card back off the calendar and
+        // onto the list pane to drop the placement is handled directly in
+        // onBulkScheduleMouseDragEnd (see startBulkScheduleMouseDrag) - no
+        // separate listener needed here now that hit-testing happens via
+        // document.elementFromPoint instead of native dragover/drop.
         document.getElementById('bulk-schedule-modal').addEventListener('click', (e) => {
             if (e.target.id === 'bulk-schedule-modal') closeBulkScheduleModal();
         });
