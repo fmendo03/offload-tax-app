@@ -2675,7 +2675,7 @@
             gap: 8px;
         }
 
-        .topics-new-bar input,
+        .topics-new-bar input:not([type="checkbox"]),
         .topics-new-bar textarea,
         .topics-new-bar select {
             flex: 1;
@@ -2711,12 +2711,47 @@
         }
 
         .todos-personal-checkbox-label {
+            display: flex;
             flex-direction: row !important;
             align-items: center;
             gap: 6px !important;
             font-size: 12px !important;
             font-weight: 500 !important;
             color: #444 !important;
+        }
+
+        .todos-personal-checkbox-label input[type="checkbox"] {
+            width: auto;
+            flex: none;
+        }
+
+        /* Checkbox+label on the left, color swatches (once Personal is
+           checked - see toggleNewTodoColorSwatches) right next to it on the
+           same line rather than stacked. */
+        .todos-personal-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .todos-color-swatches {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .todos-color-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .todos-color-swatch.selected {
+            border-color: #1F3A5F;
         }
 
         .todos-recurrence-options {
@@ -3406,6 +3441,13 @@
 
         .topics-item.completed.selected {
             color: #1F3A5F;
+        }
+
+        .todo-scheduled-when {
+            flex-shrink: 0;
+            font-size: 11px;
+            color: #777;
+            white-space: nowrap;
         }
 
         .todo-status-badge {
@@ -6205,10 +6247,13 @@
                             </select>
                         </div>
                         <div class="topics-new-field">
-                            <label class="todos-personal-checkbox-label">
-                                <input type="checkbox" id="todos-new-personal">
-                                Personal (only ever scheduled outside business hours)
-                            </label>
+                            <div class="todos-personal-row">
+                                <label class="todos-personal-checkbox-label">
+                                    <input type="checkbox" id="todos-new-personal">
+                                    Personal (only ever scheduled outside business hours)
+                                </label>
+                                <div class="todos-color-swatches" id="todos-new-color-swatches" style="display: none;"></div>
+                            </div>
                         </div>
                         <div class="topics-new-field">
                             <label for="todos-new-repeat">Repeat</label>
@@ -14404,6 +14449,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 + (e.id === selectedCalendarEventId ? ' selected' : '');
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(16, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+            // A personal to-do's own chosen color (see TODO_COLOR_PALETTE)
+            // tints its card instead of the default blue - every other kind
+            // of event (manual, synced, discussion, a business to-do) keeps
+            // the default look.
+            const linkedTodoForColor = findTodoForCalendarEvent(e.id);
+            if (linkedTodoForColor && linkedTodoForColor.color) {
+                block.style.background = linkedTodoForColor.color;
+            }
             // A to-do too long to fit in one contiguous block even after
             // trying to shift lunch gets split into two ordinary events
             // (see try_split_around_lunch in app.py) - splitPart/splitTotal
@@ -15735,6 +15788,23 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         const TODO_PRIORITY_ICON = { high: '!!!', medium: '!!', low: '!' };
         const TODO_PRIORITY_LABEL = { high: 'High priority', medium: 'Medium priority', low: 'Low priority' };
 
+        // A personal to-do's own color (see the swatch row next to the
+        // Personal checkbox in the Add To-Do form, and its edit-in-place
+        // equivalent) - pastel versions of each agent's own brand color (see
+        // .agent-card[data-agent="..."] background), so a to-do's card reads
+        // as a soft tint rather than competing with the agents' own bold
+        // colors elsewhere in the app. Blended 35% original / 65% white.
+        const TODO_COLOR_PALETTE = [
+            { name: 'Manny', hex: '#a6afc2' },
+            { name: 'Sasha', hex: '#ffadd9' },
+            { name: 'Mark', hex: '#b2d6b2' },
+            { name: 'Kat', hex: '#c9b8db' },
+            { name: 'Scott', hex: '#ffd7a6' },
+            { name: 'Tasha', hex: '#eda6a6' },
+            { name: 'Techi', hex: '#a6e9ff' },
+            { name: 'Ashanti', hex: '#fff1a6' }
+        ];
+
         async function loadTodosData() {
             try {
                 const response = await fetch('/todos');
@@ -15758,10 +15828,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             recordNavHistory({ kind: 'todos' });
         }
 
+        // When this to-do is actually scheduled, its linked event's own
+        // start time; otherwise Infinity, so an unscheduled to-do always
+        // sorts after every scheduled one instead of landing in the middle
+        // by coincidence of its (unrelated) id/creation order.
+        function todoScheduledSortKey(todo) {
+            const event = todo.calendarEventId ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
+            return event ? new Date(event.start).getTime() : Infinity;
+        }
+
         function renderTodosPage() {
             const activeContainer = document.getElementById('todos-active-list');
             activeContainer.innerHTML = '';
-            const active = todosList.filter(t => !t.completed);
+            const active = todosList.filter(t => !t.completed)
+                .sort((a, b) => todoScheduledSortKey(a) - todoScheduledSortKey(b));
             const completed = todosList.filter(t => t.completed)
                 .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
 
@@ -15862,6 +15942,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             titleEl.style.textOverflow = 'ellipsis';
             titleEl.style.whiteSpace = 'nowrap';
             row.appendChild(titleEl);
+
+            // Same date/time format as the preview pane's own "Scheduled:"
+            // button, just inline in the row - lets the list be scanned for
+            // when things actually land without opening each one.
+            const scheduledEvent = todo.calendarEventId ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
+            if (scheduledEvent) {
+                const whenEl = document.createElement('span');
+                whenEl.className = 'todo-scheduled-when';
+                const when = new Date(scheduledEvent.start);
+                whenEl.textContent = `${when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${formatCalendarTime(scheduledEvent.start)}`;
+                row.appendChild(whenEl);
+            }
 
             const badges = document.createElement('span');
             badges.style.display = 'flex';
@@ -16043,6 +16135,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 });
                 editFieldsRow.appendChild(prioritySelect);
 
+                const personalRow = document.createElement('div');
+                personalRow.className = 'todos-personal-row';
+
                 const personalLabel = document.createElement('label');
                 personalLabel.className = 'todos-personal-checkbox-label';
                 const personalCheckbox = document.createElement('input');
@@ -16050,7 +16145,36 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 personalCheckbox.checked = !!todo.personal;
                 personalLabel.appendChild(personalCheckbox);
                 personalLabel.appendChild(document.createTextNode('Personal'));
-                editFieldsRow.appendChild(personalLabel);
+                personalRow.appendChild(personalLabel);
+
+                // Starts on whatever this to-do already has (even if it's
+                // somehow set while not personal - unlikely, but nothing to
+                // lose by remembering it) - only shown/changeable while
+                // Personal is checked, matching the Add To-Do form.
+                let editTodoSelectedColor = todo.color || null;
+                const colorSwatches = document.createElement('div');
+                colorSwatches.className = 'todos-color-swatches';
+                colorSwatches.style.display = todo.personal ? 'flex' : 'none';
+                TODO_COLOR_PALETTE.forEach(({ name, hex }) => {
+                    const swatch = document.createElement('button');
+                    swatch.type = 'button';
+                    swatch.className = 'todos-color-swatch' + (editTodoSelectedColor === hex ? ' selected' : '');
+                    swatch.style.background = hex;
+                    swatch.title = name;
+                    swatch.addEventListener('click', () => {
+                        editTodoSelectedColor = editTodoSelectedColor === hex ? null : hex;
+                        colorSwatches.querySelectorAll('.todos-color-swatch').forEach(el => {
+                            el.classList.toggle('selected', el === swatch && editTodoSelectedColor === hex);
+                        });
+                    });
+                    colorSwatches.appendChild(swatch);
+                });
+                personalCheckbox.addEventListener('change', () => {
+                    colorSwatches.style.display = personalCheckbox.checked ? 'flex' : 'none';
+                });
+                personalRow.appendChild(colorSwatches);
+
+                editFieldsRow.appendChild(personalRow);
 
                 contentEl.appendChild(editFieldsRow);
 
@@ -16068,7 +16192,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         alert('Please fill in both the title and details.');
                         return;
                     }
-                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked };
+                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked, color: editTodoSelectedColor };
                     unbindClickOutsideToCancel(contentEl);
                     editingTodoId = null;
                     if (todo.seriesId) {
@@ -16325,6 +16449,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if ('details' in fields) seriesPayload.details = fields.details;
             if ('priority' in fields) seriesPayload.priority = fields.priority;
             if ('personal' in fields) seriesPayload.personal = fields.personal;
+            if ('color' in fields) seriesPayload.color = fields.color;
             if ('estimated_minutes' in fields) seriesPayload.estimated_minutes = fields.estimated_minutes;
             if (Object.keys(seriesPayload).length) {
                 await fetch(`/todos/series/${seriesId}`, {
@@ -16393,6 +16518,46 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 document.getElementById('todos-new-recurrence-end-date').style.display =
                     document.getElementById('todos-new-recurrence-end-type').value === 'on' ? '' : 'none';
             });
+        }
+
+        // Which swatch is currently picked for the to-do being composed -
+        // null until one's clicked, cleared by submitNewTodo once the
+        // to-do's actually created. Only ever shown/settable while Personal
+        // is checked (see toggleNewTodoColorSwatches), but keeps whatever
+        // was picked if Francis unchecks and rechecks it rather than
+        // forgetting the choice.
+        let newTodoSelectedColor = null;
+
+        // Built once at init (same pattern as initNewTodoRecurrenceUi) - one
+        // swatch button per TODO_COLOR_PALETTE entry, toggled visible
+        // alongside the Personal checkbox rather than rebuilt each time.
+        function initNewTodoColorSwatches() {
+            const container = document.getElementById('todos-new-color-swatches');
+            TODO_COLOR_PALETTE.forEach(({ name, hex }) => {
+                const swatch = document.createElement('button');
+                swatch.type = 'button';
+                swatch.className = 'todos-color-swatch';
+                swatch.style.background = hex;
+                swatch.title = name;
+                swatch.dataset.color = hex;
+                swatch.addEventListener('click', () => {
+                    newTodoSelectedColor = newTodoSelectedColor === hex ? null : hex;
+                    updateNewTodoColorSwatchSelection();
+                });
+                container.appendChild(swatch);
+            });
+            document.getElementById('todos-new-personal').addEventListener('change', toggleNewTodoColorSwatches);
+        }
+
+        function updateNewTodoColorSwatchSelection() {
+            document.querySelectorAll('#todos-new-color-swatches .todos-color-swatch').forEach(el => {
+                el.classList.toggle('selected', el.dataset.color === newTodoSelectedColor);
+            });
+        }
+
+        function toggleNewTodoColorSwatches() {
+            const personal = document.getElementById('todos-new-personal').checked;
+            document.getElementById('todos-new-color-swatches').style.display = personal ? 'flex' : 'none';
         }
 
         // Shows only the sub-row that matches the chosen frequency (weekly
@@ -16515,7 +16680,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         title, details, estimated_minutes: estimatedMinutes, attachments: newTodoAttachments,
-                        priority: priorityInput.value, personal: personalInput.checked,
+                        priority: priorityInput.value, personal: personalInput.checked, color: newTodoSelectedColor,
                         ...(recurrence ? { recurrence } : {})
                     })
                 });
@@ -16529,6 +16694,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     durationInput.value = '';
                     priorityInput.value = 'medium';
                     personalInput.checked = false;
+                    newTodoSelectedColor = null;
+                    updateNewTodoColorSwatchSelection();
+                    toggleNewTodoColorSwatches();
                     resetNewTodoRecurrenceUi();
                     newTodoAttachments.length = 0;
                     refreshNewTodoAttachments();
@@ -17444,6 +17612,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.dataset.todoId = todoId;
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
+            if (todo.color) block.style.background = todo.color;
             block.title = isSplit
                 ? `${todo.title} - split (part ${partIndex + 1} of 2), not saved yet - drag either half to reposition, or click the x to unplace both parts`
                 : `${todo.title} - not saved yet, drag to reposition, or click the x to unplace it`;
@@ -19051,6 +19220,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
         initNewTodoRecurrenceUi();
+        initNewTodoColorSwatches();
         initLunchSettingsUi();
 
         document.getElementById('todos-nav-btn').addEventListener('click', showTodosPage);
