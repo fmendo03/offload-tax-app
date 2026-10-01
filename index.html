@@ -1946,6 +1946,43 @@
             background: #e3ebfb;
         }
 
+        .settings-tabs {
+            display: flex;
+            gap: 4px;
+            padding: 0 28px;
+            border-bottom: 1px solid #eee;
+            flex-shrink: 0;
+        }
+
+        .settings-tab-btn {
+            padding: 10px 16px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #777;
+            cursor: pointer;
+        }
+
+        .settings-tab-btn:hover {
+            color: #333;
+        }
+
+        .settings-tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .settings-tab-panel {
+            display: none;
+        }
+
+        .settings-tab-panel.active {
+            display: block;
+        }
+
         .settings-body {
             flex: 1;
             min-height: 0;
@@ -6372,7 +6409,19 @@
         <!-- Settings Page -->
         <div class="page-view" id="settings-view" style="display: none;">
             <div class="page-view-header"><h1>Settings</h1></div>
+            <div class="settings-tabs">
+                <button type="button" class="settings-tab-btn" data-tab="agents">Agents</button>
+                <button type="button" class="settings-tab-btn" data-tab="todos">To-Dos</button>
+                <button type="button" class="settings-tab-btn active" data-tab="calendar">Calendar</button>
+            </div>
             <div class="settings-body">
+                <div class="settings-tab-panel" id="settings-tab-agents">
+                    <p class="settings-section-desc">Nothing here yet.</p>
+                </div>
+                <div class="settings-tab-panel" id="settings-tab-todos">
+                    <p class="settings-section-desc">Nothing here yet.</p>
+                </div>
+                <div class="settings-tab-panel active" id="settings-tab-calendar">
                 <div class="settings-section">
                     <h2>Availability</h2>
                     <p class="settings-section-desc">
@@ -6432,6 +6481,7 @@
                         <div class="lunch-settings-summary" id="lunch-settings-summary"></div>
                         <button type="button" class="task-action-btn solid-complete" id="lunch-settings-save-btn">Save Lunch Settings</button>
                     </div>
+                </div>
                 </div>
             </div>
         </div>
@@ -13995,7 +14045,21 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             clearAvailabilitySlotHighlight();
             loadAvailabilityData();
             loadLunchSettingsData();
+            // Calendar is the only tab with any real content right now
+            // (Agents/To-Dos are placeholders - see showSettingsTab), so
+            // that's always what Settings opens to, regardless of which tab
+            // was showing on a previous visit.
+            showSettingsTab('calendar');
             recordNavHistory({ kind: 'settings' });
+        }
+
+        // Agents/To-Dos are intentionally blank for now - just a holding
+        // spot for settings that'll live there later. Calendar has
+        // everything that used to be the whole Settings page (Availability,
+        // Lunch).
+        function showSettingsTab(tab) {
+            document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+            document.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-tab-${tab}`));
         }
 
         // Single click on an existing event just selects it (a highlighted
@@ -19235,6 +19299,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         document.getElementById('suggestions-nav-btn').addEventListener('click', showSuggestionsPage);
         document.getElementById('settings-nav-btn').addEventListener('click', showSettingsPage);
+        document.querySelectorAll('.settings-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => showSettingsTab(btn.dataset.tab));
+        });
         document.querySelectorAll('.availability-toolbar-btn').forEach(btn => {
             btn.addEventListener('click', () => applyAvailabilitySelection(btn.dataset.type));
         });
