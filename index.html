@@ -2762,16 +2762,8 @@
             flex: none;
         }
 
-        /* Checkbox+label on the left, color swatches (once Personal is
-           checked - see toggleNewTodoColorSwatches) right next to it on the
-           same line rather than stacked. */
-        .todos-personal-row {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            flex-wrap: wrap;
-        }
-
+        /* Reused by the Settings > To-Dos tab's single global
+           personal-to-do color picker (see initTodoSettingsUi). */
         .todos-color-swatches {
             display: flex;
             align-items: center;
@@ -2867,9 +2859,21 @@
             margin-right: 8px;
         }
 
-        .todo-priority-badge, .todo-personal-badge {
+        .todo-personal-badge {
             font-size: 12px;
             margin-right: 4px;
+        }
+
+        /* A small colored bar instead of the old "!"/"!!"/"!!!" text -
+           background set inline per row from TODO_PRIORITY_COLOR (see
+           buildTodoItemEl). */
+        .todo-priority-badge {
+            display: inline-block;
+            width: 4px;
+            align-self: stretch;
+            border-radius: 2px;
+            margin-right: 8px;
+            flex-shrink: 0;
         }
 
         /* Compact header - a small circular portrait rather than the full
@@ -6284,13 +6288,10 @@
                             </select>
                         </div>
                         <div class="topics-new-field">
-                            <div class="todos-personal-row">
-                                <label class="todos-personal-checkbox-label">
-                                    <input type="checkbox" id="todos-new-personal">
-                                    Personal (only ever scheduled outside business hours)
-                                </label>
-                                <div class="todos-color-swatches" id="todos-new-color-swatches" style="display: none;"></div>
-                            </div>
+                            <label class="todos-personal-checkbox-label">
+                                <input type="checkbox" id="todos-new-personal">
+                                Personal (only ever scheduled outside business hours)
+                            </label>
                         </div>
                         <div class="topics-new-field">
                             <label for="todos-new-repeat">Repeat</label>
@@ -6419,7 +6420,16 @@
                     <p class="settings-section-desc">Nothing here yet.</p>
                 </div>
                 <div class="settings-tab-panel" id="settings-tab-todos">
-                    <p class="settings-section-desc">Nothing here yet.</p>
+                    <div class="settings-section">
+                        <h2>Personal To-Do Color</h2>
+                        <p class="settings-section-desc">
+                            Every personal to-do's card on the Calendar uses this one color, so it's
+                            easy to spot personal time at a glance next to business to-dos and other
+                            events. Priority shows separately, as the color of the card's left edge.
+                        </p>
+                        <div class="todos-color-swatches" id="todo-settings-color-swatches"></div>
+                        <button type="button" class="task-action-btn solid-complete" id="todo-settings-save-btn" style="margin-top: 14px;">Save</button>
+                    </div>
                 </div>
                 <div class="settings-tab-panel active" id="settings-tab-calendar">
                 <div class="settings-section">
@@ -14106,18 +14116,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return !!(todo && todo.completed);
         }
 
-        // For a to-do-origin event, its linked to-do's priority icon plus a
-        // business/personal icon (see TODO_PRIORITY_ICON) - empty for a
-        // manual/external/discussion event, or a todo-origin event whose
-        // to-do has since been deleted.
+        // For a to-do-origin event, its linked to-do's business/personal
+        // icon - empty for a manual/external/discussion event, or a
+        // todo-origin event whose to-do has since been deleted. Priority no
+        // longer shows as an icon here - the card's own left border color
+        // already carries that (see buildCalendarWeekEventBlock).
         function calendarEventTodoIcons(e) {
             if (e.origin !== 'todo') return '';
             const todo = findTodoForCalendarEvent(e.id);
             if (!todo) return '';
-            const priorityIcon = TODO_PRIORITY_ICON[todo.priority] || TODO_PRIORITY_ICON.medium;
             const typeIcon = todo.personal ? '\u{1F3E0}' : '\u{1F4BC}';
             const recurringIcon = todo.seriesId ? '\u{1F501}' : '';
-            return `${priorityIcon}${typeIcon}${recurringIcon}`;
+            return `${typeIcon}${recurringIcon}`;
         }
 
         // --- Calendar event drag/resize (no modal needed) ------------------
@@ -14513,13 +14523,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 + (e.id === selectedCalendarEventId ? ' selected' : '');
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(16, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            // A personal to-do's own chosen color (see TODO_COLOR_PALETTE)
-            // tints its card instead of the default blue - every other kind
-            // of event (manual, synced, discussion, a business to-do) keeps
-            // the default look.
+            // A to-do-linked event's card: the single global personal color
+            // (see todoPersonalColor/Settings > To-Dos) tints its background
+            // when the to-do is personal, and its priority colors the left
+            // border (red/orange/yellow - see TODO_PRIORITY_COLOR) in place
+            // of the navy every other kind of event (manual, synced,
+            // discussion) keeps.
             const linkedTodoForColor = findTodoForCalendarEvent(e.id);
-            if (linkedTodoForColor && linkedTodoForColor.color) {
-                block.style.background = linkedTodoForColor.color;
+            if (linkedTodoForColor) {
+                if (linkedTodoForColor.personal) block.style.background = todoPersonalColor;
+                block.style.borderLeftColor = TODO_PRIORITY_COLOR[linkedTodoForColor.priority] || TODO_PRIORITY_COLOR.medium;
             }
             // A to-do too long to fit in one contiguous block even after
             // trying to shift lunch gets split into two ordinary events
@@ -15849,15 +15862,20 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Projects page's selectedProjectIds.
         let selectedTodoIds = new Set();
 
-        const TODO_PRIORITY_ICON = { high: '!!!', medium: '!!', low: '!' };
+        // Replaces the old "!"/"!!"/"!!!" text icons - a to-do's priority
+        // now reads as a color (red/orange/yellow) instead, on the left
+        // border of its calendar card (see buildCalendarWeekEventBlock) and
+        // as a small swatch in its To-Do list row (see buildTodoItemEl).
+        const TODO_PRIORITY_COLOR = { high: '#d32f2f', medium: '#f57c00', low: '#fbc02d' };
         const TODO_PRIORITY_LABEL = { high: 'High priority', medium: 'Medium priority', low: 'Low priority' };
 
-        // A personal to-do's own color (see the swatch row next to the
-        // Personal checkbox in the Add To-Do form, and its edit-in-place
-        // equivalent) - pastel versions of each agent's own brand color (see
-        // .agent-card[data-agent="..."] background), so a to-do's card reads
-        // as a soft tint rather than competing with the agents' own bold
-        // colors elsewhere in the app. Blended 35% original / 65% white.
+        // One global color (see the Settings > To-Dos tab, initTodoSettingsUi)
+        // for every personal to-do's calendar card - not a per-to-do choice.
+        // Pastel versions of each agent's own brand color (see
+        // .agent-card[data-agent="..."] background), so a personal to-do's
+        // card reads as a soft tint rather than competing with the agents'
+        // own bold colors elsewhere in the app. Blended 35% original / 65%
+        // white.
         const TODO_COLOR_PALETTE = [
             { name: 'Manny', hex: '#a6afc2' },
             { name: 'Sasha', hex: '#ffadd9' },
@@ -15868,6 +15886,82 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             { name: 'Techi', hex: '#a6e9ff' },
             { name: 'Ashanti', hex: '#fff1a6' }
         ];
+
+        // The current global personal-to-do color (see load_todo_settings in
+        // app.py) - loaded once at app init (loadTodoSettingsData, alongside
+        // loadLunchSettingsData) and whenever Settings > To-Dos saves a new
+        // one. Defaults to the palette's own first entry so a card still
+        // looks reasonable in the brief window before that load resolves.
+        let todoPersonalColor = TODO_COLOR_PALETTE[0].hex;
+
+        async function loadTodoSettingsData() {
+            try {
+                const response = await fetch('/todos/settings');
+                const data = await response.json();
+                if (!data.success) return;
+                todoPersonalColor = data.settings.personalColor;
+                updateTodoSettingsSwatchSelection();
+                if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
+            } catch (error) {
+                console.error('Failed to load to-do settings:', error);
+            }
+        }
+
+        // Built once at init (same pattern as initLunchSettingsUi) - one
+        // swatch per TODO_COLOR_PALETTE entry in the Settings > To-Dos tab.
+        // Clicking just marks a selection locally; Save is what actually
+        // persists it (see saveTodoSettingsForm) and re-renders the
+        // calendar with the new color.
+        function initTodoSettingsUi() {
+            const container = document.getElementById('todo-settings-color-swatches');
+            TODO_COLOR_PALETTE.forEach(({ name, hex }) => {
+                const swatch = document.createElement('button');
+                swatch.type = 'button';
+                swatch.className = 'todos-color-swatch';
+                swatch.style.background = hex;
+                swatch.title = name;
+                swatch.dataset.color = hex;
+                swatch.addEventListener('click', () => {
+                    document.querySelectorAll('#todo-settings-color-swatches .todos-color-swatch')
+                        .forEach(el => el.classList.toggle('selected', el === swatch));
+                });
+                container.appendChild(swatch);
+            });
+            updateTodoSettingsSwatchSelection();
+            document.getElementById('todo-settings-save-btn').addEventListener('click', saveTodoSettingsForm);
+        }
+
+        function updateTodoSettingsSwatchSelection() {
+            document.querySelectorAll('#todo-settings-color-swatches .todos-color-swatch').forEach(el => {
+                el.classList.toggle('selected', el.dataset.color === todoPersonalColor);
+            });
+        }
+
+        async function saveTodoSettingsForm() {
+            const selected = document.querySelector('#todo-settings-color-swatches .todos-color-swatch.selected');
+            if (!selected) return;
+            const btn = document.getElementById('todo-settings-save-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            try {
+                const response = await fetch('/todos/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ personal_color: selected.dataset.color })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    await loadTodoSettingsData();
+                } else {
+                    alert(data.error || 'Could not save that color - try again.');
+                }
+            } catch (error) {
+                console.error('Failed to save to-do settings:', error);
+                alert('Could not save that color - check the app is running and try again.');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Save';
+        }
 
         async function loadTodosData() {
             try {
@@ -15979,7 +16073,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const priorityIcon = document.createElement('span');
             priorityIcon.className = 'todo-priority-badge';
-            priorityIcon.textContent = TODO_PRIORITY_ICON[todo.priority] || TODO_PRIORITY_ICON.medium;
+            priorityIcon.style.background = TODO_PRIORITY_COLOR[todo.priority] || TODO_PRIORITY_COLOR.medium;
             priorityIcon.title = TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.medium;
             row.appendChild(priorityIcon);
 
@@ -16149,7 +16243,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
             const priorityTag = document.createElement('span');
             priorityTag.className = 'topics-category-agent-badge';
-            priorityTag.textContent = `${TODO_PRIORITY_ICON[todo.priority] || TODO_PRIORITY_ICON.medium} ${TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.medium}`;
+            priorityTag.style.borderLeft = `3px solid ${TODO_PRIORITY_COLOR[todo.priority] || TODO_PRIORITY_COLOR.medium}`;
+            priorityTag.textContent = TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.medium;
             tags.appendChild(priorityTag);
             if (todo.personal) {
                 const personalTag = document.createElement('span');
@@ -16199,9 +16294,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 });
                 editFieldsRow.appendChild(prioritySelect);
 
-                const personalRow = document.createElement('div');
-                personalRow.className = 'todos-personal-row';
-
                 const personalLabel = document.createElement('label');
                 personalLabel.className = 'todos-personal-checkbox-label';
                 const personalCheckbox = document.createElement('input');
@@ -16209,36 +16301,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 personalCheckbox.checked = !!todo.personal;
                 personalLabel.appendChild(personalCheckbox);
                 personalLabel.appendChild(document.createTextNode('Personal'));
-                personalRow.appendChild(personalLabel);
-
-                // Starts on whatever this to-do already has (even if it's
-                // somehow set while not personal - unlikely, but nothing to
-                // lose by remembering it) - only shown/changeable while
-                // Personal is checked, matching the Add To-Do form.
-                let editTodoSelectedColor = todo.color || null;
-                const colorSwatches = document.createElement('div');
-                colorSwatches.className = 'todos-color-swatches';
-                colorSwatches.style.display = todo.personal ? 'flex' : 'none';
-                TODO_COLOR_PALETTE.forEach(({ name, hex }) => {
-                    const swatch = document.createElement('button');
-                    swatch.type = 'button';
-                    swatch.className = 'todos-color-swatch' + (editTodoSelectedColor === hex ? ' selected' : '');
-                    swatch.style.background = hex;
-                    swatch.title = name;
-                    swatch.addEventListener('click', () => {
-                        editTodoSelectedColor = editTodoSelectedColor === hex ? null : hex;
-                        colorSwatches.querySelectorAll('.todos-color-swatch').forEach(el => {
-                            el.classList.toggle('selected', el === swatch && editTodoSelectedColor === hex);
-                        });
-                    });
-                    colorSwatches.appendChild(swatch);
-                });
-                personalCheckbox.addEventListener('change', () => {
-                    colorSwatches.style.display = personalCheckbox.checked ? 'flex' : 'none';
-                });
-                personalRow.appendChild(colorSwatches);
-
-                editFieldsRow.appendChild(personalRow);
+                editFieldsRow.appendChild(personalLabel);
 
                 contentEl.appendChild(editFieldsRow);
 
@@ -16256,7 +16319,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         alert('Please fill in both the title and details.');
                         return;
                     }
-                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked, color: editTodoSelectedColor };
+                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked };
                     unbindClickOutsideToCancel(contentEl);
                     editingTodoId = null;
                     if (todo.seriesId) {
@@ -16513,7 +16576,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if ('details' in fields) seriesPayload.details = fields.details;
             if ('priority' in fields) seriesPayload.priority = fields.priority;
             if ('personal' in fields) seriesPayload.personal = fields.personal;
-            if ('color' in fields) seriesPayload.color = fields.color;
             if ('estimated_minutes' in fields) seriesPayload.estimated_minutes = fields.estimated_minutes;
             if (Object.keys(seriesPayload).length) {
                 await fetch(`/todos/series/${seriesId}`, {
@@ -16584,45 +16646,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
         }
 
-        // Which swatch is currently picked for the to-do being composed -
-        // null until one's clicked, cleared by submitNewTodo once the
-        // to-do's actually created. Only ever shown/settable while Personal
-        // is checked (see toggleNewTodoColorSwatches), but keeps whatever
-        // was picked if Francis unchecks and rechecks it rather than
-        // forgetting the choice.
-        let newTodoSelectedColor = null;
-
-        // Built once at init (same pattern as initNewTodoRecurrenceUi) - one
-        // swatch button per TODO_COLOR_PALETTE entry, toggled visible
-        // alongside the Personal checkbox rather than rebuilt each time.
-        function initNewTodoColorSwatches() {
-            const container = document.getElementById('todos-new-color-swatches');
-            TODO_COLOR_PALETTE.forEach(({ name, hex }) => {
-                const swatch = document.createElement('button');
-                swatch.type = 'button';
-                swatch.className = 'todos-color-swatch';
-                swatch.style.background = hex;
-                swatch.title = name;
-                swatch.dataset.color = hex;
-                swatch.addEventListener('click', () => {
-                    newTodoSelectedColor = newTodoSelectedColor === hex ? null : hex;
-                    updateNewTodoColorSwatchSelection();
-                });
-                container.appendChild(swatch);
-            });
-            document.getElementById('todos-new-personal').addEventListener('change', toggleNewTodoColorSwatches);
-        }
-
-        function updateNewTodoColorSwatchSelection() {
-            document.querySelectorAll('#todos-new-color-swatches .todos-color-swatch').forEach(el => {
-                el.classList.toggle('selected', el.dataset.color === newTodoSelectedColor);
-            });
-        }
-
-        function toggleNewTodoColorSwatches() {
-            const personal = document.getElementById('todos-new-personal').checked;
-            document.getElementById('todos-new-color-swatches').style.display = personal ? 'flex' : 'none';
-        }
 
         // Shows only the sub-row that matches the chosen frequency (weekly
         // needs which weekdays, monthly needs a day-of-month, yearly needs a
@@ -16744,7 +16767,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         title, details, estimated_minutes: estimatedMinutes, attachments: newTodoAttachments,
-                        priority: priorityInput.value, personal: personalInput.checked, color: newTodoSelectedColor,
+                        priority: priorityInput.value, personal: personalInput.checked,
                         ...(recurrence ? { recurrence } : {})
                     })
                 });
@@ -16758,9 +16781,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     durationInput.value = '';
                     priorityInput.value = 'medium';
                     personalInput.checked = false;
-                    newTodoSelectedColor = null;
-                    updateNewTodoColorSwatchSelection();
-                    toggleNewTodoColorSwatches();
                     resetNewTodoRecurrenceUi();
                     newTodoAttachments.length = 0;
                     refreshNewTodoAttachments();
@@ -17676,7 +17696,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.dataset.todoId = todoId;
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            if (todo.color) block.style.background = todo.color;
+            if (todo.personal) block.style.background = todoPersonalColor;
+            block.style.borderLeftColor = TODO_PRIORITY_COLOR[todo.priority] || TODO_PRIORITY_COLOR.medium;
             block.title = isSplit
                 ? `${todo.title} - split (part ${partIndex + 1} of 2), not saved yet - drag either half to reposition, or click the x to unplace both parts`
                 : `${todo.title} - not saved yet, drag to reposition, or click the x to unplace it`;
@@ -19284,8 +19305,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
         initNewTodoRecurrenceUi();
-        initNewTodoColorSwatches();
         initLunchSettingsUi();
+        initTodoSettingsUi();
 
         document.getElementById('todos-nav-btn').addEventListener('click', showTodosPage);
         document.getElementById('todos-new-btn').addEventListener('click', submitNewTodo);
@@ -19484,6 +19505,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // bulkScheduleTryShiftLunch), even if Settings > Lunch is never
             // opened this session.
             loadLunchSettingsData();
+            // Eager, one-time load so todoPersonalColor is correct before a
+            // personal to-do's calendar card ever renders, even if Settings
+            // > To-Dos is never opened this session.
+            loadTodoSettingsData();
             // Eager, one-time load (not the Calendar page's own 15s poll) so
             // calendarEvents is populated app-wide - the To-Do page's "Scheduled"
             // status badge needs it even if Calendar itself is never opened.

@@ -1464,6 +1464,18 @@ availability_lock = threading.Lock()
 LUNCH_SETTINGS_FILE = _data_path('lunch_settings.json')
 lunch_lock = threading.Lock()
 
+# A single global color for every personal to-do's calendar card (see the
+# To-Dos tab in Settings, index.html) - not a per-to-do choice, so there's
+# nothing to store on the to-do itself, just this one setting. The 8 options
+# are pastel versions of each agent's own brand color (see
+# .agent-card[data-agent="..."] background in index.html) - kept in sync
+# with TODO_COLOR_PALETTE there.
+TODO_SETTINGS_FILE = _data_path('todo_settings.json')
+todo_settings_lock = threading.Lock()
+TODO_PERSONAL_COLOR_PALETTE = [
+    '#a6afc2', '#ffadd9', '#b2d6b2', '#c9b8db', '#ffd7a6', '#eda6a6', '#a6e9ff', '#fff1a6'
+]
+
 # Guards every calendar_events.json/calendar_settings.json read-modify-write -
 # the frontend's poll, Ashanti's manage_calendar tool, and the checkin poll
 # can all land in the same second (threaded=True), and without this two
@@ -1903,6 +1915,29 @@ def _validate_lunch_settings(raw):
         'days': days, 'startTime': start_time, 'lengthMinutes': length,
         'flexBeforeMinutes': flex_before, 'flexAfterMinutes': flex_after
     }, None
+
+
+def _default_todo_settings():
+    return {'personalColor': TODO_PERSONAL_COLOR_PALETTE[0]}
+
+
+def load_todo_settings():
+    if os.path.exists(TODO_SETTINGS_FILE):
+        try:
+            with open(TODO_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, dict) and data.get('personalColor') in TODO_PERSONAL_COLOR_PALETTE:
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    defaults = _default_todo_settings()
+    save_todo_settings(defaults)
+    return defaults
+
+
+def save_todo_settings(data):
+    with open(TODO_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
 
 
 def _round_up_to_quarter_hour(dt):
@@ -2605,6 +2640,27 @@ def lunch_settings_update():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/todos/settings', methods=['GET'])
+def todo_settings_get():
+    return jsonify({'success': True, 'settings': load_todo_settings(), 'palette': TODO_PERSONAL_COLOR_PALETTE})
+
+
+@app.route('/todos/settings', methods=['POST'])
+def todo_settings_update():
+    try:
+        color = str((request.json or {}).get('personal_color') or '').strip()
+        if color not in TODO_PERSONAL_COLOR_PALETTE:
+            return jsonify({'success': False, 'error': 'Invalid color'}), 400
+        with todo_settings_lock:
+            settings = load_todo_settings()
+            settings['personalColor'] = color
+            save_todo_settings(settings)
+        return jsonify({'success': True, 'settings': settings})
+    except Exception as e:
+        print(f"Todo settings update error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # Called when something gets manually dropped onto lunch - see
 # _shift_lunch_to_avoid for the actual move logic. `start`/`end` describe
 # whatever needs the room; the response says whether lunch actually moved
@@ -3281,7 +3337,6 @@ def _ensure_all_series_generated():
                     'completed': False, 'createdAt': now_iso, 'completedAt': None,
                     'calendarEventId': event['id'], 'attachments': [],
                     'priority': series['priority'], 'personal': series.get('personal', False),
-                    'color': series.get('color'),
                     'notFinished': False, 'seriesId': series['id'], 'occurrenceDate': occ_date.isoformat()
                 })
                 changed = True
@@ -3337,13 +3392,10 @@ def todos_create():
                 'priority': priority,
                 # Personal todos only ever get scheduled outside business
                 # hours (see compute_personal_free_slots) - a business todo
-                # never lands there and vice versa.
+                # never lands there and vice versa. Its calendar card's color
+                # comes from the single global personal-to-do color setting
+                # (see load_todo_settings), not anything stored per to-do.
                 'personal': bool(data.get('personal')),
-                # A pastel swatch (see TODO_COLOR_PALETTE in index.html) -
-                # only ever offered in the UI for a personal to-do, but
-                # stored plainly either way; colors its calendar card once
-                # scheduled (see calendarEventColor in index.html).
-                'color': str(data.get('color') or '').strip() or None,
                 # Set by _apply_todo_rollovers when a scheduled day passes
                 # with the to-do still incomplete - see that function.
                 'notFinished': False
@@ -3394,8 +3446,6 @@ def todos_update(todo_id):
                     todo['priority'] = new_priority
             if 'personal' in data:
                 todo['personal'] = bool(data['personal'])
-            if 'color' in data:
-                todo['color'] = str(data['color'] or '').strip() or None
             # Set once Ashanti actually creates the calendar event this to-do
             # was scheduled for (see the calendar_update handling in
             # runOneOnOneAgentTurn) - null explicitly clears it, e.g. if
@@ -3458,7 +3508,7 @@ def todos_series_create():
         series = {
             'id': uuid.uuid4().hex, 'userId': current_user_id(), 'title': title,
             'details': details, 'estimatedMinutes': estimated_minutes, 'priority': priority,
-            'personal': bool(data.get('personal')), 'color': str(data.get('color') or '').strip() or None,
+            'personal': bool(data.get('personal')),
             'recurrence': recurrence, 'active': True,
             'createdAt': now_local().isoformat(),
             # One day before its own first occurrence, so the very first
@@ -3513,8 +3563,6 @@ def todos_series_update(series_id):
                     series['priority'] = new_priority
             if 'personal' in data:
                 series['personal'] = bool(data['personal'])
-            if 'color' in data:
-                series['color'] = str(data['color'] or '').strip() or None
             # Only the time of day is ever edited after the series exists
             # (dragging/resizing a linked event and choosing "all future") -
             # the frequency/weekday/month-day rule itself isn't editable in
