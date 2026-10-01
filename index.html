@@ -3054,11 +3054,17 @@
            COULD land - the .invalid modifier (more transparent) is the
            only thing that changes, when hovering a slot it can't actually
            go in (see computeBulkSchedulePlacement returning null). */
+        /* Same colors as .bulk-schedule-preview-block (a placed card) -
+           this is a preview of exactly what dropping here would look like,
+           not a visually distinct "ghost" style. Fully opaque wherever the
+           drop would actually work; only the .invalid modifier (hovering
+           somewhere it can't go - already occupied, or before right now)
+           fades it out. */
         .bulk-schedule-drag-ghost {
             position: absolute;
             left: 2px;
             right: 2px;
-            background: #b7c8f0;
+            background: #dce7f5;
             border-left: 3px solid #1F3A5F;
             border-radius: 3px;
             font-size: 11px;
