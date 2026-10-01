@@ -3065,7 +3065,7 @@
             color: #1F3A5F;
             padding: 2px 5px;
             overflow: hidden;
-            opacity: 0.85;
+            opacity: 1;
             pointer-events: none;
             z-index: 2;
         }
@@ -17185,6 +17185,17 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             resetBulkScheduleApplyAll();
             rebuildBulkScheduleModalRows();
             document.getElementById('bulk-schedule-modal').style.display = 'flex';
+            // Opens scrolled to business hours, same starting point as the
+            // real Calendar page (scrollCalendarWeekToDefault) - has to run
+            // after display:flex, not before, since a hidden element reports
+            // no scroll height to actually scroll within.
+            scrollBulkSchedulePreviewToDefault();
+        }
+
+        function scrollBulkSchedulePreviewToDefault() {
+            const scrollEl = document.getElementById('bulk-schedule-preview-scroll');
+            if (!scrollEl) return;
+            scrollEl.scrollTop = 9 * CALENDAR_PX_PER_HOUR - 20;
         }
 
         function closeBulkScheduleModal() {
