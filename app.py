@@ -2008,6 +2008,38 @@ def compute_free_slots(day_events, day, now):
     return compute_free_slots_for_type(day_events, day, now, 'business')
 
 
+# Used only by manage_calendar's move_to_next_available action (see /chat) -
+# Ashanti asking to move something "to the next available opening" used to
+# mean trusting the model itself to work out a literal start/end datetime
+# from the text calendar summary in her prompt, with nothing to actually
+# check it against - which is exactly how a request like that once produced
+# an event with its end before its start, and a few minutes long instead of
+# its real duration. This does what every other scheduling path in this
+# file already does instead: real interval math over the actual calendar,
+# business hours only, first slot that fits wins, scanning forward day by
+# day from `search_from` (clamped to now if it's already past). The model's
+# only job becomes resolving words like "next week" into that starting
+# point - straightforward for it - not the slot-finding itself.
+def _find_next_available_event_slot(events, exclude_event_id, search_from, duration, max_days=60):
+    now = now_local()
+    if search_from < now:
+        search_from = now
+    day = search_from.date()
+    for _ in range(max_days):
+        day_iso = day.isoformat()
+        day_events = [
+            e for e in events if e['id'] != exclude_event_id and e.get('status') != 'cancelled'
+            and not e.get('allDay') and (e.get('start') or '').startswith(day_iso)
+        ]
+        for s, en in compute_free_slots(day_events, day, now):
+            if day == search_from.date() and s < search_from:
+                s = search_from
+            if en - s >= duration:
+                return (s, s + duration)
+        day = day + timedelta(days=1)
+    return None
+
+
 # For a personal to-do (see /todos/bulk-schedule) - only the day's blocks
 # marked Personal in the Availability template.
 def compute_personal_free_slots(day_events, day, now):
@@ -5442,14 +5474,56 @@ def chat():
                             events = load_calendar_events()
                             ev = next((e for e in events if e['id'] == block_input.get('event_id')), None)
                             if ev:
+                                try:
+                                    orig_start = datetime.fromisoformat(ev['start']) if ev.get('start') else None
+                                    orig_end = datetime.fromisoformat(ev['end']) if ev.get('end') else None
+                                    orig_duration = (orig_end - orig_start) if (orig_start and orig_end) else None
+                                except (ValueError, TypeError):
+                                    orig_duration = None
                                 for field in ('title', 'description', 'location', 'start', 'end'):
                                     if block_input.get(field):
                                         ev[field] = str(block_input[field]).strip()
                                 if 'all_day' in block_input:
                                     ev['allDay'] = bool(block_input['all_day'])
+                                # Belt-and-suspenders against a model-supplied
+                                # start/end landing end-before-start (or some
+                                # other nonsense) - falls back to the event's
+                                # own duration from before this update rather
+                                # than writing an invalid range.
+                                if not ev.get('allDay'):
+                                    try:
+                                        new_start = datetime.fromisoformat(ev['start'])
+                                        new_end = datetime.fromisoformat(ev['end']) if ev.get('end') else None
+                                        if not new_end or new_end <= new_start:
+                                            ev['end'] = (new_start + (orig_duration or timedelta(minutes=30))).isoformat()
+                                    except (ValueError, TypeError):
+                                        pass
                                 ev['updatedAt'] = now_local().isoformat()
                                 save_calendar_events(events)
                                 calendar_update = {'action': 'update', 'event': ev}
+                        elif action == 'move_to_next_available':
+                            events = load_calendar_events()
+                            ev = next((e for e in events if e['id'] == block_input.get('event_id')), None)
+                            if ev and not ev.get('allDay'):
+                                try:
+                                    orig_start = datetime.fromisoformat(ev['start'])
+                                    orig_end = datetime.fromisoformat(ev['end']) if ev.get('end') else orig_start + timedelta(minutes=30)
+                                    duration = orig_end - orig_start
+                                except (ValueError, KeyError, TypeError):
+                                    duration = timedelta(minutes=30)
+                                after_raw = str(block_input.get('after', '')).strip()
+                                try:
+                                    search_from = datetime.fromisoformat(after_raw) if after_raw else now_local()
+                                except ValueError:
+                                    search_from = now_local()
+                                slot = _find_next_available_event_slot(events, ev['id'], search_from, duration)
+                                if slot:
+                                    slot_start, slot_end = slot
+                                    ev['start'] = slot_start.isoformat()
+                                    ev['end'] = slot_end.isoformat()
+                                    ev['updatedAt'] = now_local().isoformat()
+                                    save_calendar_events(events)
+                                    calendar_update = {'action': 'update', 'event': ev}
                         elif action == 'delete':
                             events = load_calendar_events()
                             ev = next((e for e in events if e['id'] == block_input.get('event_id')), None)
@@ -5551,28 +5625,44 @@ REFER_TEAMMATE_TOOL = {
 MANAGE_CALENDAR_TOOL = {
     "name": "manage_calendar",
     "description": (
-        "Create, update, or delete an event on Francis's Offload calendar. Only call this once Francis has "
+        "Create, update, move, or delete an event on Francis's Offload calendar. Only call this once Francis has "
         "actually confirmed the event or change - not while still discussing options or times. Use "
-        "action=\"create\" for a new event (needs title and start), \"update\" to change an existing one "
-        "(needs event_id, from the CALENDAR context above, plus whichever fields changed), or \"delete\" to "
-        "remove one (needs event_id)."
+        "action=\"create\" for a new event (needs title and start), \"update\" to change an existing one to a "
+        "SPECIFIC time Francis actually named (needs event_id plus whichever fields changed), "
+        "\"move_to_next_available\" when Francis instead just wants it moved to the next open opening "
+        "(optionally \"sometime next week\" or similar - he isn't naming an exact time), or \"delete\" to "
+        "remove one (needs event_id). For move_to_next_available, do NOT compute the start/end time yourself - "
+        "you have no way to know what's actually free, and guessing produces exactly the kind of broken event "
+        "(end before start, wrong duration) this action exists to avoid. Just resolve whatever Francis said "
+        "about timing (\"next week\", \"after Friday\", or nothing at all) into the `after` field and let the "
+        "server find the real opening."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["create", "update", "delete"]},
+            "action": {"type": "string", "enum": ["create", "update", "move_to_next_available", "delete"]},
             "event_id": {
                 "type": "string",
-                "description": "Required for update/delete - the event's id from the CALENDAR context above."
+                "description": "Required for update/move_to_next_available/delete - the event's id from the CALENDAR context above."
             },
             "title": {"type": "string"},
             "start": {
                 "type": "string",
-                "description": "ISO datetime like \"2026-09-22T14:00:00\", or just a date \"2026-09-22\" for an all-day event."
+                "description": "action=\"update\" only. ISO datetime like \"2026-09-22T14:00:00\", or just a date \"2026-09-22\" for an all-day event."
             },
             "end": {
                 "type": "string",
-                "description": "Same format as start. Defaults to start if omitted."
+                "description": "action=\"update\" only. Same format as start. Defaults to start if omitted."
+            },
+            "after": {
+                "type": "string",
+                "description": (
+                    "action=\"move_to_next_available\" only. ISO date/datetime to start searching from - "
+                    "e.g. next Monday's date for \"move it to next week\", or omit entirely for \"as soon as "
+                    "possible\"/no timing mentioned. The server finds the actual first open business-hours slot "
+                    "at or after this point long enough for the event's own existing duration - never pass a "
+                    "guessed end time or duration here."
+                )
             },
             "all_day": {"type": "boolean"},
             "location": {"type": "string"},
