@@ -17489,14 +17489,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             let curDateKey = dateKey;
             let curMinutes = rawMinutes;
 
-            for (let hop = 0; hop < 2; hop++) {
-                // A whole past date (e.g. dragging onto a day in a week
-                // navigated back to) collapses onto today - the same clock
-                // time, re-evaluated against today's business hours and the
-                // "not before now" clamp just below, rather than being
-                // allowed to sit somewhere already gone by.
-                if (curDateKey < todayKey) curDateKey = todayKey;
+            // Never into the past - this popup only schedules what's still
+            // ahead, unlike the real Calendar page (which allows a past
+            // entry to log something already done). Deliberately a flat
+            // rejection, not a clamp/redirect like the business-hours-
+            // exceeded case below - the card can be dragged freely anywhere,
+            // including back over a past date or time, and the live preview
+            // (bulkScheduleUpdateDragPreview) shows it hovering exactly
+            // there, same as hovering over something else already occupying
+            // a slot; it's just invalid to actually drop, not relocated out
+            // from under the pointer.
+            if (dateKey < todayKey) return null;
 
+            for (let hop = 0; hop < 2; hop++) {
                 const dow = new Date(`${curDateKey}T00:00:00`).getDay();
                 const businessRange = calendarBusinessRangeForDow(dow);
                 if (!businessRange) {
@@ -17508,25 +17513,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 }
 
                 curMinutes = Math.max(businessRange[0], Math.min(businessRange[1], curMinutes));
-
-                // Never into the past - this popup only schedules what's
-                // still ahead, unlike the real Calendar page (which allows a
-                // past entry to log something already done). "Now" is
-                // rounded up to the nearest slot, same granularity the grid
-                // itself snaps to.
                 if (curDateKey === todayKey) {
                     const now = new Date();
-                    const nowMinutes = Math.ceil((now.getHours() * 60 + now.getMinutes()) / CALENDAR_SLOT_MINUTES) * CALENDAR_SLOT_MINUTES;
-                    curMinutes = Math.max(curMinutes, nowMinutes);
-                    if (curMinutes >= businessRange[1]) {
-                        // The rest of today's business hours are already
-                        // behind us - nothing left to land on today.
-                        const next = calendarNextBusinessDay(curDateKey);
-                        if (!next) return null;
-                        curDateKey = next.dateKey;
-                        curMinutes = next.range[0];
-                        continue;
-                    }
+                    if (curMinutes < now.getHours() * 60 + now.getMinutes()) return null;
                 }
 
                 let lunchShift = null;
