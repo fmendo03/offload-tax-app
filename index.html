@@ -17459,30 +17459,38 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // own drag - 4h+ cards only, midnight-bounded), this applies to
         // every duration and is business-hours-aware, matching how
         // compute_free_slots in app.py already scopes automatic scheduling
-        // to business blocks only. Splitting itself only ever kicks in for
-        // a card 2h+ long (MIN_SPLIT_DURATION) - anything shorter either
-        // fits as one piece (lunch shifts instead) or doesn't land there at
-        // all (reverts/pushes wholly to the next business day), no matter
-        // where it's hovered.
+        // to business blocks only. A manual drag can split a card of any
+        // length into pieces of any length (down to a sliver on either
+        // side) - unlike Ashanti's own automatic placement
+        // (try_split_around_lunch in app.py), which requires at least an
+        // hour on each side of its own splits. Francis can see exactly
+        // where it's landing as he drags it, so there's no need to protect
+        // him from a short piece the way the algorithm (placing things
+        // unsupervised) has to.
         //
         // Returns null when no valid placement exists at all (lunch can't
-        // move and the card is too short to split around it, or it simply
-        // doesn't fit in one business day even split) - the caller's job
-        // is to leave things exactly as they were rather than drop the
-        // card somewhere that overlaps lunch.
+        // move and splitting around it would need a zero-or-negative-length
+        // piece, or the card simply doesn't fit in one business day even
+        // split) - the caller's job is to leave things exactly as they
+        // were rather than drop the card somewhere that overlaps lunch.
         //
         // Otherwise returns { parts: [{dateKey, minutes, durationMinutes},
         // ...], lunchShift: {dateKey, startMin, endMin} | null }. parts has
         // two entries only when split around lunch or across a
         // business-day boundary.
         function computeBulkSchedulePlacement(dateKey, rawMinutes, durationMin, excludeTodoId) {
-            const MIN_PART = 60;
-            const MIN_SPLIT_DURATION = 120;
-            const canSplit = durationMin >= MIN_SPLIT_DURATION;
+            const todayKey = calendarDateKey(new Date());
             let curDateKey = dateKey;
             let curMinutes = rawMinutes;
 
             for (let hop = 0; hop < 2; hop++) {
+                // A whole past date (e.g. dragging onto a day in a week
+                // navigated back to) collapses onto today - the same clock
+                // time, re-evaluated against today's business hours and the
+                // "not before now" clamp just below, rather than being
+                // allowed to sit somewhere already gone by.
+                if (curDateKey < todayKey) curDateKey = todayKey;
+
                 const dow = new Date(`${curDateKey}T00:00:00`).getDay();
                 const businessRange = calendarBusinessRangeForDow(dow);
                 if (!businessRange) {
@@ -17494,55 +17502,98 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 }
 
                 curMinutes = Math.max(businessRange[0], Math.min(businessRange[1], curMinutes));
+
+                // Never into the past - this popup only schedules what's
+                // still ahead, unlike the real Calendar page (which allows a
+                // past entry to log something already done). "Now" is
+                // rounded up to the nearest slot, same granularity the grid
+                // itself snaps to.
+                if (curDateKey === todayKey) {
+                    const now = new Date();
+                    const nowMinutes = Math.ceil((now.getHours() * 60 + now.getMinutes()) / CALENDAR_SLOT_MINUTES) * CALENDAR_SLOT_MINUTES;
+                    curMinutes = Math.max(curMinutes, nowMinutes);
+                    if (curMinutes >= businessRange[1]) {
+                        // The rest of today's business hours are already
+                        // behind us - nothing left to land on today.
+                        const next = calendarNextBusinessDay(curDateKey);
+                        if (!next) return null;
+                        curDateKey = next.dateKey;
+                        curMinutes = next.range[0];
+                        continue;
+                    }
+                }
+
                 let lunchShift = null;
                 const lunchRange = calendarLunchRangeForDay(curDateKey);
                 const end = curMinutes + durationMin;
+                let candidate;
 
                 if (lunchRange && curMinutes < lunchRange[1] && end > lunchRange[0]) {
                     const shift = bulkScheduleTryShiftLunch(curDateKey, curMinutes, end, excludeTodoId);
                     if (shift) {
                         lunchShift = { dateKey: curDateKey, startMin: shift.startMin, endMin: shift.endMin };
+                        candidate = { parts: [{ dateKey: curDateKey, minutes: curMinutes, durationMinutes: durationMin }], lunchShift };
                     } else {
                         const piece1Dur = lunchRange[0] - curMinutes;
                         const piece2Dur = end - lunchRange[1];
-                        if (canSplit && piece1Dur >= MIN_PART && piece2Dur >= MIN_PART && lunchRange[1] + piece2Dur <= businessRange[1]) {
-                            return {
+                        if (piece1Dur > 0 && piece2Dur > 0 && lunchRange[1] + piece2Dur <= businessRange[1]) {
+                            candidate = {
                                 parts: [
                                     { dateKey: curDateKey, minutes: curMinutes, durationMinutes: piece1Dur },
                                     { dateKey: curDateKey, minutes: lunchRange[1], durationMinutes: piece2Dur }
                                 ],
                                 lunchShift: null
                             };
+                        } else {
+                            return null; // can't clear lunch, can't split around it either (would need a zero/negative piece) - revert
                         }
-                        return null; // can't clear lunch, can't (or isn't long enough to) split around it either - revert
                     }
                 }
 
-                if (end > businessRange[1]) {
+                if (!candidate && end > businessRange[1]) {
                     const piece1Dur = businessRange[1] - curMinutes;
                     const piece2Dur = durationMin - piece1Dur;
                     const next = calendarNextBusinessDay(curDateKey);
-                    if (canSplit && piece1Dur >= MIN_PART && piece2Dur >= MIN_PART && next) {
-                        return {
+                    if (piece1Dur > 0 && piece2Dur > 0 && next) {
+                        candidate = {
                             parts: [
                                 { dateKey: curDateKey, minutes: curMinutes, durationMinutes: piece1Dur },
                                 { dateKey: next.dateKey, minutes: next.range[0], durationMinutes: piece2Dur }
                             ],
                             lunchShift
                         };
+                    } else if (!next) {
+                        return null;
+                    } else {
+                        // Not enough room today either way (a split sliver
+                        // isn't worth it) - push the whole card onto the
+                        // next business day instead, discarding any lunch
+                        // shift we were about to make today since the card
+                        // won't be here to need it.
+                        curDateKey = next.dateKey;
+                        curMinutes = next.range[0];
+                        continue;
                     }
-                    if (!next) return null;
-                    // Not enough room today either way (a split sliver
-                    // isn't worth it) - push the whole card onto the next
-                    // business day instead, discarding any lunch shift we
-                    // were about to make today since the card won't be here
-                    // to need it.
-                    curDateKey = next.dateKey;
-                    curMinutes = next.range[0];
-                    continue;
                 }
 
-                return { parts: [{ dateKey: curDateKey, minutes: curMinutes, durationMinutes: durationMin }], lunchShift };
+                if (!candidate) {
+                    candidate = { parts: [{ dateKey: curDateKey, minutes: curMinutes, durationMinutes: durationMin }], lunchShift };
+                }
+
+                // Never lands on top of anything else already on the
+                // calendar (a real event, or another staged placement) -
+                // lunch is the one thing this function will actively move
+                // or split around; everything else just blocks the spot
+                // outright, same as the "snap back to where it was" bug
+                // report asked for.
+                for (const part of candidate.parts) {
+                    const partEnd = part.minutes + part.durationMinutes;
+                    const busy = bulkScheduleCollectBusyRanges(part.dateKey, excludeTodoId);
+                    if (busy.some(([s, e]) => bulkScheduleRangesOverlap(part.minutes, partEnd, s, e))) {
+                        return null;
+                    }
+                }
+                return candidate;
             }
             return null;
         }
