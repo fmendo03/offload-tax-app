@@ -7080,7 +7080,7 @@
         // { agent: [{ id, kind: 'discussion'|'todo', sourceId, title, details, addedAt }] } -
         // a lightweight reference, not a real file or a task to complete: dropped into an
         // agent's Workspace the moment a Discussion Topic or To-Do is sent to them (see
-        // discussTopicWithAgent/discussTodoWithAshanti), so the context stays visible and
+        // discussTopicWithAgent), so the context stays visible and
         // clickable there for as long as it's relevant. Removing one only unlinks it from
         // the workspace - the actual topic/to-do on its own page is untouched.
         let workspaceItems = {};
@@ -7379,7 +7379,7 @@ function removeWorkspaceItemCore(agent, itemId) {
     if (currentWorkspacePreview && currentWorkspacePreview.agent === agent && currentWorkspacePreview.itemId === itemId) {
         clearWorkspacePreview();
     }
-    // The reply banner (see discussTopicWithAgent/discussTodoWithAshanti) is
+    // The reply banner (see discussTopicWithAgent) is
     // tied to whichever item it was attached from - if that item just went
     // away, the quote referencing it doesn't make sense to keep showing.
     if (attachedReplyQuote && attachedReplyQuote.agent === agent && attachedReplyQuote.itemId === itemId) {
@@ -9185,7 +9185,7 @@ function renderWorkspaceTasks(agent) {
     }
 
     // To-Dos and Discussion Topics sent over for discussion (see
-    // discussTopicWithAgent/discussTodoWithAshanti) are both lightweight
+    // discussTopicWithAgent) are both lightweight
     // references dropped in for a chat-based discussion, as opposed to
     // actual work (Project/Solo Tasks below) - but they're otherwise
     // unrelated, so each gets its own collapsible group.
@@ -9553,7 +9553,7 @@ function buildWorkspaceFileRow(agent, file) {
 }
 
 // A Discussion Topic or To-Do sent over to this agent (see
-// discussTopicWithAgent/discussTodoWithAshanti) - not a real file, just a
+// discussTopicWithAgent) - not a real file, just a
 // reference card. Click the row (or its Preview button) to show its details
 // in the Workspace preview panel below; Remove only unlinks it here, the
 // actual topic/to-do is untouched.
@@ -11296,7 +11296,6 @@ function openSpecificDateSchedulingModal() {
     const prefill = agent ? pendingChatCalendarPrefill[agent] : null;
     if (agent) {
         delete pendingChatCalendarPrefill[agent];
-        delete activeScheduleTodo[agent];
     }
     clearAttachedReply();
     showCalendarPage();
@@ -11818,15 +11817,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // refreshes the page quietly if it's already open, without yanking
         // Francis out of the conversation for something less eventful.
         if (data.calendar_update && data.calendar_update.action === 'create') {
-            // If this event is the one Francis was scheduling a to-do for
-            // (see discussTodoWithAshanti/activeScheduleTodo), link the two
-            // so the to-do shows "Scheduled" and its button points here -
-            // done regardless of whether the To-Do page happens to be open.
-            if (activeScheduleTodo[agent]) {
-                const scheduledTodoId = activeScheduleTodo[agent];
-                delete activeScheduleTodo[agent];
-                updateTodoItem(scheduledTodoId, { calendar_event_id: data.calendar_update.event.id });
-            }
             setTimeout(showCalendarPage, 900);
         } else if (data.calendar_update && document.getElementById('calendar-view').style.display !== 'none') {
             loadCalendarData();
@@ -11934,7 +11924,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 clearAttachedReply();
             }
             if (quoteAgent && activeDiscussTask[quoteAgent]) delete activeDiscussTask[quoteAgent];
-            if (quoteAgent && activeScheduleTodo[quoteAgent]) delete activeScheduleTodo[quoteAgent];
         }
 
         document.addEventListener('mouseup', (e) => {
@@ -14899,7 +14888,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (event && event.attachments) calendarModalAttachments.push(...event.attachments);
             refreshCalendarModalAttachments();
 
-            // A to-do scheduled onto the calendar (see discussTodoWithAshanti)
+            // A to-do scheduled onto the calendar
             // can be marked complete right from its own event, not just from
             // the To-Do page - completing it here cascades the same way
             // (crossed off/moved to Completed there, pruned out of whichever
@@ -15741,10 +15730,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             discussTopicCalendarWithAshanti(topic, category, minutes);
         }
 
-        // Same reply-quote + Workspace Item mechanic as discussTodoWithAshanti,
-        // but sourced from a Discussion Topic and always routed to Ashanti
-        // specifically (not category.agent) since she's the one who manages
-        // the calendar.
+        // Same reply-quote + Workspace Item mechanic as discussTopicWithAgent,
+        // but always routed to Ashanti specifically (not category.agent)
+        // since she's the one who manages the calendar.
         function discussTopicCalendarWithAshanti(topic, category, estimatedMinutes) {
             selectAgent('ashanti');
             const points = (topic.details || '').split('\n').map(l => l.trim()).filter(Boolean);
@@ -16546,50 +16534,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return row;
         }
 
-        // chatAgent -> todoId - the to-do currently being scheduled via
-        // "Add to Calendar" (see discussTodoWithAshanti). Once Ashanti
-        // actually creates the calendar event for it (calendar_update in
-        // runOneOnOneAgentTurn), that event's id gets saved back onto the
-        // to-do itself so its status can show "Scheduled" and the button can
-        // link straight to it - see todoStatusLabels/renderTodosPreviewPane.
-        let activeScheduleTodo = {};
-
         // chatAgent -> {title, description, todoId?} - set alongside the
-        // attached reply quote whenever a To-Do or Discussion Topic is
-        // handed to Ashanti to schedule, so that if Francis taps the
-        // "Specific date" quick-reply chip instead of typing a day, the
-        // Calendar's Add Event modal can open already filled in with the
-        // same title/details he'd otherwise have had to retype - see
-        // openSpecificDateSchedulingModal. todoId (to-dos only) carries
-        // through to calendarModalLinkedTodoId so saving the event links
-        // back onto the to-do exactly like the chat-driven path does.
+        // attached reply quote whenever a Discussion Topic is handed to
+        // Ashanti to schedule, so that if Francis taps the "Specific date"
+        // quick-reply chip instead of typing a day, the Calendar's Add Event
+        // modal can open already filled in with the same title/details he'd
+        // otherwise have had to retype - see openSpecificDateSchedulingModal.
+        // todoId exists in the shape for a to-do-linked event (see
+        // calendarModalLinkedTodoId) but nothing currently populates it here -
+        // the To-Do page's own "Add to Calendar" goes through the
+        // bulk-schedule popup instead (see openBulkScheduleModalForTodoIds),
+        // not a chat round-trip.
         let pendingChatCalendarPrefill = {};
-
-        // Same reply-quote mechanic as Discussion Topics/Calendar's Ask
-        // Ashanti - the to-do (title + its details, so she has enough to
-        // actually schedule it) rides along as an attached quote rather than
-        // typed text. If no timing is given, she's instructed (see the
-        // Ashanti-only system prompt addition in app.py) to ask which of
-        // Today/Tomorrow/This week/Next week/Specific date via quick-reply
-        // chips before calling manage_calendar.
-        function discussTodoWithAshanti(todo) {
-            selectAgent('ashanti');
-            const points = (todo.details || '').split('\n').map(l => l.trim()).filter(Boolean);
-            const durationLine = todo.estimatedMinutes ? `Estimated time: ${formatTodoDuration(todo.estimatedMinutes)}` : '';
-            const bodyLines = [...points, durationLine].filter(Boolean);
-            const quoteText = bodyLines.length ? `${todo.title}\n${bodyLines.map(p => `- ${p}`).join('\n')}` : todo.title;
-            const itemDetails = [todo.details || '', durationLine].filter(Boolean).join('\n');
-            const item = upsertWorkspaceItem('ashanti', 'todo', todo.id, todo.title, itemDetails);
-            renderWorkspaceTasks('ashanti');
-            showWorkspaceItemPreview('ashanti', item.id);
-            activeScheduleTodo['ashanti'] = todo.id;
-            pendingChatCalendarPrefill['ashanti'] = { title: todo.title, description: itemDetails, todoId: todo.id };
-            attachedReplyQuote = { speaker: 'To-Do (add to calendar)', text: quoteText, agent: 'ashanti', itemId: item.id };
-            replyPreviewSpeaker.textContent = attachedReplyQuote.speaker;
-            replyPreviewText.textContent = attachedReplyQuote.text;
-            replyPreviewBanner.style.display = 'flex';
-            inputBox.focus();
-        }
 
         // Three independent axes, not one status: Scheduled/Not Scheduled says
         // whether it's on the calendar at all, Completed says whether it's
