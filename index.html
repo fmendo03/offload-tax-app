@@ -1948,6 +1948,7 @@
 
         .settings-tabs {
             display: flex;
+            align-items: center;
             gap: 4px;
             padding: 0 28px;
             border-bottom: 1px solid #eee;
@@ -2874,6 +2875,26 @@
             border-radius: 2px;
             margin-right: 8px;
             flex-shrink: 0;
+        }
+
+        .todo-template-delete-btn {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: #b3261e;
+            font-size: 13px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .todo-template-delete-btn:hover {
+            background: #fbeaea;
         }
 
         /* Compact header - a small circular portrait rather than the full
@@ -6139,31 +6160,6 @@
         <div class="page-view" id="calendar-view" style="display: none;">
             <div class="page-view-header"><h1>Calendar</h1><div class="agent-quickbar" id="calendar-agent-quickbar"></div></div>
             <div class="calendar-layout">
-                <div class="calendar-sync-bar">
-                    <div class="calendar-sync-toggle">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="calendar-import-toggle">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <div class="calendar-sync-label">
-                            <strong>Sync external calendar &rarr; Offload</strong>
-                            <div class="calendar-sync-sub">Paste your calendar's private ICS feed URL, then turn this on to pull its events in.</div>
-                            <input type="text" class="calendar-sync-input" id="calendar-import-url" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
-                            <div class="calendar-sync-status" id="calendar-import-status"></div>
-                        </div>
-                    </div>
-                    <div class="calendar-sync-toggle">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="calendar-export-toggle">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <div class="calendar-sync-label">
-                            <strong>Sync Offload &rarr; external calendar</strong>
-                            <div class="calendar-sync-sub">Turn this on, then subscribe to this feed URL from your other calendar app.</div>
-                            <div class="calendar-sync-status" id="calendar-export-status"></div>
-                        </div>
-                    </div>
-                </div>
                 <div class="calendar-main">
                     <div class="calendar-main-header">
                         <div class="calendar-week-nav">
@@ -6257,6 +6253,12 @@
                     </div>
                     <div class="topics-new-bar">
                         <div class="topics-new-field">
+                            <label for="todos-new-template-select">Start from a template</label>
+                            <select id="todos-new-template-select">
+                                <option value="">Use a template…</option>
+                            </select>
+                        </div>
+                        <div class="topics-new-field">
                             <label for="todos-new-title">Title <span class="required-asterisk">*</span></label>
                             <input type="text" id="todos-new-title" placeholder="To-Do title">
                         </div>
@@ -6282,9 +6284,9 @@
                         <div class="topics-new-field">
                             <label for="todos-new-priority">Priority</label>
                             <select id="todos-new-priority">
-                                <option value="high">High - must get done</option>
-                                <option value="medium" selected>Medium - should get done</option>
-                                <option value="low">Low - hope to get done</option>
+                                <option value="high" style="background-color: #ffebee; color: #d32f2f;">High - must get done</option>
+                                <option value="medium" selected style="background-color: #fff3e0; color: #f57c00;">Medium - should get done</option>
+                                <option value="low" style="background-color: #fffde7; color: #fbc02d;">Low - hope to get done</option>
                             </select>
                         </div>
                         <div class="topics-new-field">
@@ -6414,6 +6416,7 @@
                 <button type="button" class="settings-tab-btn" data-tab="agents">Agents</button>
                 <button type="button" class="settings-tab-btn" data-tab="todos">To-Dos</button>
                 <button type="button" class="settings-tab-btn active" data-tab="calendar">Calendar</button>
+                <button type="button" class="task-action-btn solid-complete" id="settings-global-save-btn" style="display: none; margin-left: auto; padding: 6px 18px; flex-shrink: 0;">Save</button>
             </div>
             <div class="settings-body">
                 <div class="settings-tab-panel" id="settings-tab-agents">
@@ -6428,10 +6431,85 @@
                             events. Priority shows separately, as the color of the card's left edge.
                         </p>
                         <div class="todos-color-swatches" id="todo-settings-color-swatches"></div>
-                        <button type="button" class="task-action-btn solid-complete" id="todo-settings-save-btn" style="margin-top: 14px;">Save</button>
+                    </div>
+                    <div class="settings-section">
+                        <h2>To-Do Templates</h2>
+                        <p class="settings-section-desc">
+                            Save a reusable starting point - title, details, estimated time,
+                            priority - for a kind of to-do you add often. Picking one on the
+                            To-Do page fills in the form for you to review before adding it; it
+                            never adds a to-do by itself.
+                        </p>
+                        <div id="todo-templates-list"></div>
+                        <div class="topics-new-field">
+                            <label for="todo-template-new-title">Title</label>
+                            <input type="text" id="todo-template-new-title" placeholder="Template name">
+                        </div>
+                        <div class="topics-new-field">
+                            <label for="todo-template-new-details">Details</label>
+                            <textarea id="todo-template-new-details" rows="3" placeholder="What needs to get done? (one point per line)"></textarea>
+                        </div>
+                        <div class="topics-new-field">
+                            <label for="todo-template-new-duration">Estimated Time</label>
+                            <select id="todo-template-new-duration">
+                                <option value="">Select...</option>
+                                <option value="15">15 minutes</option>
+                                <option value="30">30 minutes</option>
+                                <option value="45">45 minutes</option>
+                                <option value="60">1 hour</option>
+                                <option value="90">1.5 hours</option>
+                                <option value="120">2 hours</option>
+                                <option value="180">3 hours</option>
+                                <option value="240">Half day (4 hours)</option>
+                                <option value="480">Full day (8 hours)</option>
+                            </select>
+                        </div>
+                        <div class="topics-new-field">
+                            <label for="todo-template-new-priority">Priority</label>
+                            <select id="todo-template-new-priority">
+                                <option value="high" style="background-color: #ffebee; color: #d32f2f;">High - must get done</option>
+                                <option value="medium" selected style="background-color: #fff3e0; color: #f57c00;">Medium - should get done</option>
+                                <option value="low" style="background-color: #fffde7; color: #fbc02d;">Low - hope to get done</option>
+                            </select>
+                        </div>
+                        <div class="topics-new-field">
+                            <label class="todos-personal-checkbox-label">
+                                <input type="checkbox" id="todo-template-new-personal">
+                                Personal (only ever scheduled outside business hours)
+                            </label>
+                        </div>
+                        <button type="button" class="task-action-btn solid-complete" id="todo-template-new-btn">Add Template</button>
                     </div>
                 </div>
                 <div class="settings-tab-panel active" id="settings-tab-calendar">
+                <div class="settings-section">
+                    <h2>External Calendar Sync</h2>
+                    <div class="calendar-sync-bar">
+                        <div class="calendar-sync-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="calendar-import-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div class="calendar-sync-label">
+                                <strong>Sync external calendar &rarr; Offload</strong>
+                                <div class="calendar-sync-sub">Paste your calendar's private ICS feed URL, then turn this on to pull its events in.</div>
+                                <input type="text" class="calendar-sync-input" id="calendar-import-url" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics">
+                                <div class="calendar-sync-status" id="calendar-import-status"></div>
+                            </div>
+                        </div>
+                        <div class="calendar-sync-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="calendar-export-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div class="calendar-sync-label">
+                                <strong>Sync Offload &rarr; external calendar</strong>
+                                <div class="calendar-sync-sub">Turn this on, then subscribe to this feed URL from your other calendar app.</div>
+                                <div class="calendar-sync-status" id="calendar-export-status"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="settings-section">
                     <h2>Availability</h2>
                     <p class="settings-section-desc">
@@ -6489,7 +6567,6 @@
                             <select id="lunch-settings-flex-after"></select>
                         </div>
                         <div class="lunch-settings-summary" id="lunch-settings-summary"></div>
-                        <button type="button" class="task-action-btn solid-complete" id="lunch-settings-save-btn">Save Lunch Settings</button>
                     </div>
                 </div>
                 </div>
@@ -13744,7 +13821,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 btn.className = 'todos-weekday-toggle';
                 btn.textContent = letter;
                 btn.dataset.day = i;
-                btn.addEventListener('click', () => { btn.classList.toggle('active'); updateLunchSettingsSummary(); });
+                btn.addEventListener('click', () => { btn.classList.toggle('active'); updateLunchSettingsSummary(); markSettingsDirty(); });
                 daysEl.appendChild(btn);
             });
 
@@ -13759,9 +13836,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
 
             ['lunch-settings-start', 'lunch-settings-length', 'lunch-settings-flex-before', 'lunch-settings-flex-after'].forEach(id => {
-                document.getElementById(id).addEventListener('change', updateLunchSettingsSummary);
+                document.getElementById(id).addEventListener('change', () => { updateLunchSettingsSummary(); markSettingsDirty(); });
             });
-            document.getElementById('lunch-settings-save-btn').addEventListener('click', saveLunchSettingsForm);
         }
 
         // Cached copy of the lunch settings (days/startTime/lengthMinutes/
@@ -13817,11 +13893,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             summaryEl.textContent = `On ${dayNames}: lunch will always be ${formatTodoDuration(length)} long and fall between ${fmt(windowStart)} and ${fmt(windowEnd)}.`;
         }
 
+        // No longer owns its own button/loading state - called from the
+        // single global Settings Save button (see saveAllSettingsChanges),
+        // which covers every tab's pending changes at once. Returns whether
+        // it actually succeeded, so the caller can decide whether to keep
+        // the Save button up (something failed) or clear it.
         async function saveLunchSettingsForm() {
             const days = Array.from(document.querySelectorAll('#lunch-settings-days .active')).map(b => parseInt(b.dataset.day, 10));
-            const btn = document.getElementById('lunch-settings-save-btn');
-            btn.disabled = true;
-            btn.textContent = 'Saving…';
             try {
                 const response = await fetch('/calendar/lunch-settings', {
                     method: 'POST',
@@ -13839,15 +13917,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     await loadLunchSettingsData();
                     await loadCalendarData();
                     if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
-                } else {
-                    alert(data.error || 'Could not save lunch settings - try again.');
+                    return true;
                 }
+                alert(data.error || 'Could not save lunch settings - try again.');
+                return false;
             } catch (error) {
                 console.error('Failed to save lunch settings:', error);
                 alert('Could not save lunch settings - check the app is running and try again.');
+                return false;
             }
-            btn.disabled = false;
-            btn.textContent = 'Save Lunch Settings';
         }
 
         // --- Availability grid drag-select (Settings page) -----------------
@@ -14070,6 +14148,40 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function showSettingsTab(tab) {
             document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
             document.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-tab-${tab}`));
+        }
+
+        // --- Global Settings Save -------------------------------------------
+        // One Save button, pinned to the right of the tab row, covering
+        // every tab's pending changes at once rather than each section
+        // having its own (Lunch and the Personal To-Do Color picker used
+        // to). Deliberately NOT wired to the Availability grid (its
+        // Blackout/Business/Personal toolbar already commits each change
+        // the moment it's made - that's the whole point of a drag-select
+        // interaction) or the external calendar sync toggles (flipping
+        // those has a real, immediate side effect - starting/stopping a
+        // live sync - that shouldn't sit waiting on an unrelated field
+        // elsewhere in Settings to be "saved"). Templates also keep their
+        // own immediate Add/Save/Delete - they're list actions, not a form
+        // field, the same way adding a to-do itself isn't held up by this.
+        function markSettingsDirty() {
+            document.getElementById('settings-global-save-btn').style.display = '';
+        }
+
+        function clearSettingsDirty() {
+            document.getElementById('settings-global-save-btn').style.display = 'none';
+        }
+
+        async function saveAllSettingsChanges() {
+            const btn = document.getElementById('settings-global-save-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            const results = await Promise.all([saveLunchSettingsForm(), saveTodoSettingsForm()]);
+            btn.disabled = false;
+            btn.textContent = 'Save';
+            // Only clears (hides) the button once everything actually
+            // succeeded - if something failed, its own alert already said
+            // so, and the button stays up so nothing is silently lost.
+            if (results.every(Boolean)) clearSettingsDirty();
         }
 
         // Single click on an existing event just selects it (a highlighted
@@ -15868,6 +15980,23 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // as a small swatch in its To-Do list row (see buildTodoItemEl).
         const TODO_PRIORITY_COLOR = { high: '#d32f2f', medium: '#f57c00', low: '#fbc02d' };
         const TODO_PRIORITY_LABEL = { high: 'High priority', medium: 'Medium priority', low: 'Low priority' };
+        // A true left-border "bar" isn't reliably rendered on a native
+        // <option> across browsers - background-color and text color are,
+        // so that's what a priority <select>'s own options use instead
+        // (see the static #todos-new-priority markup and
+        // applyTodoPriorityOptionStyle below) - same red/orange/yellow
+        // coding, just as a tint rather than a bar.
+        const TODO_PRIORITY_OPTION_STYLE = {
+            high: { background: '#ffebee', color: '#d32f2f' },
+            medium: { background: '#fff3e0', color: '#f57c00' },
+            low: { background: '#fffde7', color: '#fbc02d' }
+        };
+
+        function applyTodoPriorityOptionStyle(optionEl, priority) {
+            const style = TODO_PRIORITY_OPTION_STYLE[priority] || TODO_PRIORITY_OPTION_STYLE.medium;
+            optionEl.style.backgroundColor = style.background;
+            optionEl.style.color = style.color;
+        }
 
         // One global color (see the Settings > To-Dos tab, initTodoSettingsUi)
         // for every personal to-do's calendar card - not a per-to-do choice.
@@ -15909,9 +16038,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         // Built once at init (same pattern as initLunchSettingsUi) - one
         // swatch per TODO_COLOR_PALETTE entry in the Settings > To-Dos tab.
-        // Clicking just marks a selection locally; Save is what actually
-        // persists it (see saveTodoSettingsForm) and re-renders the
-        // calendar with the new color.
+        // Clicking just marks a selection locally and flags the page dirty -
+        // the single global Settings Save button (see
+        // saveAllSettingsChanges) is what actually persists it.
         function initTodoSettingsUi() {
             const container = document.getElementById('todo-settings-color-swatches');
             TODO_COLOR_PALETTE.forEach(({ name, hex }) => {
@@ -15924,11 +16053,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 swatch.addEventListener('click', () => {
                     document.querySelectorAll('#todo-settings-color-swatches .todos-color-swatch')
                         .forEach(el => el.classList.toggle('selected', el === swatch));
+                    markSettingsDirty();
                 });
                 container.appendChild(swatch);
             });
             updateTodoSettingsSwatchSelection();
-            document.getElementById('todo-settings-save-btn').addEventListener('click', saveTodoSettingsForm);
+            document.getElementById('todo-template-new-btn').addEventListener('click', submitNewTodoTemplate);
+            document.getElementById('todos-new-template-select').addEventListener('change', (e) => applyTodoTemplate(e.target.value));
         }
 
         function updateTodoSettingsSwatchSelection() {
@@ -15937,12 +16068,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
         }
 
+        // No longer owns its own button/loading state - see
+        // saveLunchSettingsForm's comment, same reasoning. A no-op (true)
+        // if nothing's actually selected, so saveAllSettingsChanges doesn't
+        // treat an untouched color picker as a failure.
         async function saveTodoSettingsForm() {
             const selected = document.querySelector('#todo-settings-color-swatches .todos-color-swatch.selected');
-            if (!selected) return;
-            const btn = document.getElementById('todo-settings-save-btn');
-            btn.disabled = true;
-            btn.textContent = 'Saving…';
+            if (!selected) return true;
             try {
                 const response = await fetch('/todos/settings', {
                     method: 'POST',
@@ -15952,15 +16084,300 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const data = await response.json();
                 if (data.success) {
                     await loadTodoSettingsData();
-                } else {
-                    alert(data.error || 'Could not save that color - try again.');
+                    return true;
                 }
+                alert(data.error || 'Could not save that color - try again.');
+                return false;
             } catch (error) {
                 console.error('Failed to save to-do settings:', error);
                 alert('Could not save that color - check the app is running and try again.');
+                return false;
+            }
+        }
+
+        // --- To-Do templates (Settings > To-Dos) ----------------------------
+        // A reusable starting point for the Add To-Do form, not a to-do
+        // itself - see the "Use a template" select on the To-Do page
+        // (populateTodoTemplateSelect/applyTodoTemplate).
+        let todoTemplates = [];
+
+        async function loadTodoTemplatesData() {
+            try {
+                const response = await fetch('/todos/templates');
+                const data = await response.json();
+                if (!data.success) return;
+                todoTemplates = data.templates;
+                renderTodoTemplatesList();
+                populateTodoTemplateSelect();
+            } catch (error) {
+                console.error('Failed to load to-do templates:', error);
+            }
+        }
+
+        // Which template (if any) is mid-edit in the Settings list - its row
+        // swaps for an inline form, same pattern as editingTodoId on the
+        // To-Do page itself.
+        let editingTodoTemplateId = null;
+
+        function renderTodoTemplatesList() {
+            const container = document.getElementById('todo-templates-list');
+            container.innerHTML = '';
+            todoTemplates.forEach(template => {
+                container.appendChild(
+                    editingTodoTemplateId === template.id
+                        ? buildTodoTemplateEditRow(template)
+                        : buildTodoTemplateRow(template)
+                );
+            });
+        }
+
+        function buildTodoTemplateRow(template) {
+            const row = document.createElement('div');
+            row.className = 'topics-item';
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '8px';
+
+            const priorityBar = document.createElement('span');
+            priorityBar.className = 'todo-priority-badge';
+            priorityBar.style.background = TODO_PRIORITY_COLOR[template.priority] || TODO_PRIORITY_COLOR.medium;
+            priorityBar.title = TODO_PRIORITY_LABEL[template.priority] || TODO_PRIORITY_LABEL.medium;
+            row.appendChild(priorityBar);
+
+            const titleEl = document.createElement('span');
+            titleEl.textContent = template.title;
+            titleEl.style.flex = '1';
+            titleEl.style.overflow = 'hidden';
+            titleEl.style.textOverflow = 'ellipsis';
+            titleEl.style.whiteSpace = 'nowrap';
+            row.appendChild(titleEl);
+
+            if (template.estimatedMinutes) {
+                const duration = document.createElement('span');
+                duration.className = 'todo-scheduled-when';
+                duration.textContent = formatTodoDuration(template.estimatedMinutes);
+                row.appendChild(duration);
+            }
+
+            const actions = document.createElement('span');
+            actions.style.display = 'flex';
+            actions.style.gap = '6px';
+            actions.style.flexShrink = '0';
+
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'topics-preview-edit-btn';
+            editBtn.textContent = '✎ Edit';
+            editBtn.addEventListener('click', () => { editingTodoTemplateId = template.id; renderTodoTemplatesList(); });
+            actions.appendChild(editBtn);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'todo-template-delete-btn';
+            deleteBtn.textContent = '✕';
+            deleteBtn.title = 'Delete this template';
+            deleteBtn.addEventListener('click', () => deleteTodoTemplate(template.id));
+            actions.appendChild(deleteBtn);
+
+            row.appendChild(actions);
+            return row;
+        }
+
+        function buildTodoTemplateEditRow(template) {
+            const wrap = document.createElement('div');
+            wrap.className = 'topics-item';
+
+            const titleInput = document.createElement('input');
+            titleInput.type = 'text';
+            titleInput.className = 'topics-preview-edit-title';
+            titleInput.value = template.title;
+            wrap.appendChild(titleInput);
+
+            const detailsTextarea = document.createElement('textarea');
+            detailsTextarea.className = 'topics-preview-edit-details';
+            detailsTextarea.rows = 3;
+            detailsTextarea.value = template.details || '';
+            wrap.appendChild(detailsTextarea);
+
+            const fieldsRow = document.createElement('div');
+            fieldsRow.style.display = 'flex';
+            fieldsRow.style.gap = '14px';
+            fieldsRow.style.alignItems = 'center';
+            fieldsRow.style.margin = '8px 0';
+
+            const durationSelect = document.createElement('select');
+            [15, 30, 45, 60, 90, 120, 180, 240, 480].forEach(m => {
+                durationSelect.appendChild(new Option(formatTodoDuration(m), m, false, template.estimatedMinutes === m));
+            });
+            fieldsRow.appendChild(durationSelect);
+
+            const prioritySelect = document.createElement('select');
+            ['high', 'medium', 'low'].forEach(p => {
+                const opt = new Option(TODO_PRIORITY_LABEL[p], p, false, (template.priority || 'medium') === p);
+                applyTodoPriorityOptionStyle(opt, p);
+                prioritySelect.appendChild(opt);
+            });
+            fieldsRow.appendChild(prioritySelect);
+
+            const personalLabel = document.createElement('label');
+            personalLabel.className = 'todos-personal-checkbox-label';
+            const personalCheckbox = document.createElement('input');
+            personalCheckbox.type = 'checkbox';
+            personalCheckbox.checked = !!template.personal;
+            personalLabel.appendChild(personalCheckbox);
+            personalLabel.appendChild(document.createTextNode('Personal'));
+            fieldsRow.appendChild(personalLabel);
+
+            wrap.appendChild(fieldsRow);
+
+            const actions = document.createElement('div');
+            actions.className = 'topics-preview-actions';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.className = 'task-action-btn solid-complete';
+            saveBtn.textContent = 'Save';
+            saveBtn.addEventListener('click', async () => {
+                const newTitle = titleInput.value.trim();
+                if (!newTitle) {
+                    alert('Please name the template.');
+                    return;
+                }
+                editingTodoTemplateId = null;
+                await updateTodoTemplate(template.id, {
+                    title: newTitle,
+                    details: detailsTextarea.value.trim(),
+                    estimated_minutes: parseInt(durationSelect.value, 10) || 0,
+                    priority: prioritySelect.value,
+                    personal: personalCheckbox.checked
+                });
+            });
+            actions.appendChild(saveBtn);
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'task-action-btn';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.addEventListener('click', () => { editingTodoTemplateId = null; renderTodoTemplatesList(); });
+            actions.appendChild(cancelBtn);
+
+            wrap.appendChild(actions);
+            return wrap;
+        }
+
+        async function updateTodoTemplate(id, payload) {
+            try {
+                const response = await fetch(`/todos/templates/${id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    todoTemplates = data.templates;
+                    renderTodoTemplatesList();
+                    populateTodoTemplateSelect();
+                } else {
+                    alert(data.error || 'Could not save that template - try again.');
+                }
+            } catch (error) {
+                console.error('Failed to update to-do template:', error);
+                alert('Could not save that template - check the app is running and try again.');
+            }
+        }
+
+        async function deleteTodoTemplate(id) {
+            if (!confirm('Delete this template? This only removes the template, not any to-dos already made from it.')) return;
+            try {
+                const response = await fetch(`/todos/templates/${id}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    todoTemplates = data.templates;
+                    renderTodoTemplatesList();
+                    populateTodoTemplateSelect();
+                } else {
+                    alert(data.error || 'Could not delete that template - try again.');
+                }
+            } catch (error) {
+                console.error('Failed to delete to-do template:', error);
+                alert('Could not delete that template - check the app is running and try again.');
+            }
+        }
+
+        async function submitNewTodoTemplate() {
+            const titleInput = document.getElementById('todo-template-new-title');
+            const detailsInput = document.getElementById('todo-template-new-details');
+            const durationInput = document.getElementById('todo-template-new-duration');
+            const priorityInput = document.getElementById('todo-template-new-priority');
+            const personalInput = document.getElementById('todo-template-new-personal');
+            const title = titleInput.value.trim();
+            if (!title) {
+                alert('Please name the template.');
+                return;
+            }
+            const btn = document.getElementById('todo-template-new-btn');
+            btn.disabled = true;
+            btn.textContent = 'Adding…';
+            try {
+                const response = await fetch('/todos/templates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title, details: detailsInput.value.trim(),
+                        estimated_minutes: parseInt(durationInput.value, 10) || 0,
+                        priority: priorityInput.value, personal: personalInput.checked
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    todoTemplates = data.templates;
+                    renderTodoTemplatesList();
+                    populateTodoTemplateSelect();
+                    titleInput.value = '';
+                    detailsInput.value = '';
+                    durationInput.value = '';
+                    priorityInput.value = 'medium';
+                    personalInput.checked = false;
+                } else {
+                    alert(data.error || 'Could not add that template - try again.');
+                }
+            } catch (error) {
+                console.error('Failed to add to-do template:', error);
+                alert('Could not add that template - check the app is running and try again.');
             }
             btn.disabled = false;
-            btn.textContent = 'Save';
+            btn.textContent = 'Add Template';
+        }
+
+        // "Use a template" select on the To-Do page - rebuilt whenever
+        // templates change (add/edit/delete in Settings) so it's never
+        // showing a stale list.
+        function populateTodoTemplateSelect() {
+            const select = document.getElementById('todos-new-template-select');
+            if (!select) return;
+            const current = select.value;
+            select.innerHTML = '';
+            select.appendChild(new Option('Use a template…', ''));
+            todoTemplates.forEach(t => select.appendChild(new Option(t.title, t.id)));
+            if (todoTemplates.some(t => t.id === current)) select.value = current;
+        }
+
+        // Fills in the Add To-Do form from the chosen template - Francis
+        // still has to review and click Add To-Do himself, this never
+        // submits anything on its own. Resets the select back to its
+        // placeholder right after, so picking the same template again later
+        // still fires a change event.
+        function applyTodoTemplate(templateId) {
+            const template = todoTemplates.find(t => t.id === templateId);
+            const select = document.getElementById('todos-new-template-select');
+            if (!template) { select.value = ''; return; }
+            document.getElementById('todos-new-title').value = template.title;
+            document.getElementById('todos-new-details').value = template.details || '';
+            document.getElementById('todos-new-duration').value = template.estimatedMinutes || '';
+            document.getElementById('todos-new-priority').value = template.priority || 'medium';
+            document.getElementById('todos-new-personal').checked = !!template.personal;
+            select.value = '';
         }
 
         async function loadTodosData() {
@@ -16290,7 +16707,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
                 const prioritySelect = document.createElement('select');
                 ['high', 'medium', 'low'].forEach(p => {
-                    prioritySelect.appendChild(new Option(TODO_PRIORITY_LABEL[p], p, false, (todo.priority || 'medium') === p));
+                    const opt = new Option(TODO_PRIORITY_LABEL[p], p, false, (todo.priority || 'medium') === p);
+                    applyTodoPriorityOptionStyle(opt, p);
+                    prioritySelect.appendChild(opt);
                 });
                 editFieldsRow.appendChild(prioritySelect);
 
@@ -16423,7 +16842,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             } else {
                 calendarBtn.className = 'pane-toolbar-btn';
                 calendarBtn.textContent = '\u{1F4C5} Add to Calendar';
-                calendarBtn.addEventListener('click', () => discussTodoWithAshanti(todo));
+                // Same "Schedule with Ashanti" popup the To-Do page's bulk
+                // toolbar opens, just pre-selected to this one to-do -
+                // Francis sees exactly where it'll land (and can drag it
+                // himself) before anything's actually saved, instead of a
+                // back-and-forth chat exchange to pin down a time.
+                calendarBtn.addEventListener('click', () => openBulkScheduleModalForTodoIds([todo.id]));
             }
             actions.appendChild(calendarBtn);
 
@@ -19323,6 +19747,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.querySelectorAll('.settings-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => showSettingsTab(btn.dataset.tab));
         });
+        document.getElementById('settings-global-save-btn').addEventListener('click', saveAllSettingsChanges);
         document.querySelectorAll('.availability-toolbar-btn').forEach(btn => {
             btn.addEventListener('click', () => applyAvailabilitySelection(btn.dataset.type));
         });
@@ -19509,6 +19934,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // personal to-do's calendar card ever renders, even if Settings
             // > To-Dos is never opened this session.
             loadTodoSettingsData();
+            // Eager, one-time load so the To-Do page's "Use a template"
+            // select is already populated the first time it's opened.
+            loadTodoTemplatesData();
             // Eager, one-time load (not the Calendar page's own 15s poll) so
             // calendarEvents is populated app-wide - the To-Do page's "Scheduled"
             // status badge needs it even if Calendar itself is never opened.

@@ -3112,6 +3112,15 @@ todos_lock = threading.Lock()
 TODO_SERIES_FILE = _data_path('todo_series.json')
 todo_series_lock = threading.Lock()
 
+# A reusable starting point for a new to-do (see Settings > To-Dos, and the
+# "Use a template" picker on the To-Do page) - just the fields a fresh to-do
+# itself needs (title/details/estimated time/priority/personal), nothing
+# about scheduling. Picking one only ever fills in the Add To-Do form for
+# Francis to review/adjust before submitting - it never creates a to-do by
+# itself.
+TODO_TEMPLATES_FILE = _data_path('todo_templates.json')
+todo_templates_lock = threading.Lock()
+
 
 def load_todos():
     if os.path.exists(TODOS_FILE):
@@ -3181,6 +3190,23 @@ def load_todo_series():
 
 def save_todo_series(data):
     with open(TODO_SERIES_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+def load_todo_templates():
+    if os.path.exists(TODO_TEMPLATES_FILE):
+        try:
+            with open(TODO_TEMPLATES_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    return []
+
+
+def save_todo_templates(data):
+    with open(TODO_TEMPLATES_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
 
@@ -3620,6 +3646,93 @@ def todos_series_delete(series_id):
         return jsonify({'success': True, 'todos': load_todos(), 'removedTodoIds': removed_todo_ids})
     except Exception as e:
         print(f"Todo series delete error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/todos/templates', methods=['GET'])
+def todo_templates_list():
+    return jsonify({'success': True, 'templates': load_todo_templates()})
+
+
+@app.route('/todos/templates', methods=['POST'])
+def todo_templates_create():
+    try:
+        data = request.json or {}
+        title = str(data.get('title', '')).strip()
+        details = str(data.get('details', '') or '').strip()
+        try:
+            estimated_minutes = int(data.get('estimated_minutes'))
+        except (TypeError, ValueError):
+            estimated_minutes = 0
+        if not title:
+            return jsonify({'success': False, 'error': 'Please name the template.'}), 400
+        priority = str(data.get('priority') or 'medium').strip().lower()
+        if priority not in ('high', 'medium', 'low'):
+            priority = 'medium'
+        template = {
+            'id': uuid.uuid4().hex,
+            'title': title,
+            'details': details,
+            'estimatedMinutes': estimated_minutes if estimated_minutes > 0 else 0,
+            'priority': priority,
+            'personal': bool(data.get('personal')),
+            'createdAt': now_local().isoformat()
+        }
+        with todo_templates_lock:
+            templates = load_todo_templates()
+            templates.append(template)
+            save_todo_templates(templates)
+        return jsonify({'success': True, 'templates': templates})
+    except Exception as e:
+        print(f"Todo template create error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/todos/templates/<template_id>', methods=['POST'])
+def todo_templates_update(template_id):
+    try:
+        data = request.json or {}
+        with todo_templates_lock:
+            templates = load_todo_templates()
+            template = next((t for t in templates if t['id'] == template_id), None)
+            if not template:
+                return jsonify({'success': False, 'error': 'Template not found'}), 404
+            if 'title' in data:
+                new_title = str(data['title'] or '').strip()
+                if new_title:
+                    template['title'] = new_title
+            if 'details' in data:
+                template['details'] = str(data['details'] or '').strip()
+            if 'estimated_minutes' in data:
+                try:
+                    template['estimatedMinutes'] = max(0, int(data['estimated_minutes']))
+                except (TypeError, ValueError):
+                    pass
+            if 'priority' in data:
+                new_priority = str(data['priority'] or '').strip().lower()
+                if new_priority in ('high', 'medium', 'low'):
+                    template['priority'] = new_priority
+            if 'personal' in data:
+                template['personal'] = bool(data['personal'])
+            save_todo_templates(templates)
+        return jsonify({'success': True, 'templates': templates})
+    except Exception as e:
+        print(f"Todo template update error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/todos/templates/<template_id>', methods=['DELETE'])
+def todo_templates_delete(template_id):
+    try:
+        with todo_templates_lock:
+            templates = load_todo_templates()
+            if not any(t['id'] == template_id for t in templates):
+                return jsonify({'success': False, 'error': 'Template not found'}), 404
+            templates = [t for t in templates if t['id'] != template_id]
+            save_todo_templates(templates)
+        return jsonify({'success': True, 'templates': templates})
+    except Exception as e:
+        print(f"Todo template delete error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

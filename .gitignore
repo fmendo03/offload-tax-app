@@ -230,6 +230,7 @@ calendar_settings.json
 availability_settings.json
 lunch_settings.json
 todo_settings.json
+todo_templates.json
 calendar_checkin_status.json
 todo_checkin_status.json
 discussion_topics.json
