@@ -2713,6 +2713,46 @@
             gap: 8px;
         }
 
+        .todos-new-bar-toggle-btn {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-top: 1px solid #e6e6e6;
+            background: white;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1a3a8a;
+            cursor: pointer;
+        }
+
+        .todos-new-bar-toggle-btn:hover {
+            background: #f0f2f8;
+        }
+
+        #todos-new-bar-toggle-arrow {
+            display: inline-block;
+            transition: transform 0.2s ease;
+        }
+
+        .todos-new-bar-collapse {
+            overflow: hidden;
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            transition: max-height 0.25s ease;
+        }
+
+        .todos-new-bar-collapse.expanded {
+            max-height: 2000px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+        }
+
         .topics-new-bar input:not([type="checkbox"]),
         .topics-new-bar textarea,
         .topics-new-bar select {
@@ -6251,7 +6291,7 @@
                             <div class="topics-discussed-list" id="todos-completed-list" style="display:none;"></div>
                         </div>
                     </div>
-                    <div class="topics-new-bar">
+                    <div class="topics-new-bar todos-new-bar-collapse" id="todos-new-bar-collapse">
                         <div class="topics-new-field">
                             <label for="todos-new-template-select">Start from a template</label>
                             <select id="todos-new-template-select">
@@ -6352,6 +6392,10 @@
                         </div>
                         <button type="button" class="task-action-btn solid-complete" id="todos-new-btn">Add To-Do</button>
                     </div>
+                    <button type="button" class="todos-new-bar-toggle-btn" id="todos-new-bar-toggle-btn">
+                        <span id="todos-new-bar-toggle-arrow">&#9650;</span>
+                        <span>New To-Do</span>
+                    </button>
                 </div>
                 <div class="preview-pane">
                     <div class="split-pane-header">
@@ -19689,6 +19733,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         initTodoSettingsUi();
 
         document.getElementById('todos-nav-btn').addEventListener('click', showTodosPage);
+        document.getElementById('todos-new-bar-toggle-btn').addEventListener('click', () => {
+            const collapse = document.getElementById('todos-new-bar-collapse');
+            const expanded = collapse.classList.toggle('expanded');
+            document.getElementById('todos-new-bar-toggle-arrow').innerHTML = expanded ? '&#9660;' : '&#9650;';
+        });
         document.getElementById('todos-new-btn').addEventListener('click', submitNewTodo);
         document.getElementById('todos-new-title').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitNewTodo();
