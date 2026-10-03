@@ -2713,6 +2713,12 @@
             gap: 8px;
         }
 
+        /* The Add To-Do modal's own Date/Start time fields drive a repeating
+           to-do's first occurrence, so the panel's Starts/At row is redundant. */
+        #cal-todo-recurrence-options .todos-recurrence-start-row {
+            display: none;
+        }
+
         .todo-scheduled-times {
             margin: 12px 0;
             display: flex;
@@ -6255,7 +6261,7 @@
                         </div>
                         <div class="calendar-main-header-actions">
                             <button type="button" class="pane-toolbar-btn" id="calendar-ask-ashanti-btn">&#128172; Ask Ashanti</button>
-                            <button type="button" class="task-action-btn solid-complete" id="calendar-add-event-btn">+ Add Event</button>
+                            <button type="button" class="task-action-btn solid-complete" id="calendar-add-event-btn">+ Add To-Do</button>
                         </div>
                     </div>
                     <div class="calendar-week-days-header" id="calendar-week-days-header"></div>
@@ -6341,6 +6347,9 @@
                         <span>New To-Do</span>
                     </button>
                     <div class="topics-new-bar todos-new-bar-collapse" id="todos-new-bar-collapse">
+                        <!-- Cloned at init into the Calendar's Add To-Do modal (ids
+                             todos-new-* -> cal-todo-*), so both forms always match. -->
+                        <div id="todos-new-form-fields" style="display: contents;">
                         <div class="topics-new-field">
                             <label for="todos-new-template-select">Start from a template</label>
                             <select id="todos-new-template-select">
@@ -6419,7 +6428,7 @@
                                 <select id="todos-new-recurrence-month"></select>
                                 <input type="number" id="todos-new-recurrence-day" min="1" max="31" value="1">
                             </div>
-                            <div class="todos-recurrence-row">
+                            <div class="todos-recurrence-row todos-recurrence-start-row">
                                 <label>Starts</label>
                                 <input type="date" id="todos-new-recurrence-start">
                                 <label>At</label>
@@ -6438,6 +6447,7 @@
                             <label>Attachments</label>
                             <div id="todos-new-attachments-zone"></div>
                             <div class="item-attachment-chip-list" id="todos-new-attachments-list"></div>
+                        </div>
                         </div>
                         <button type="button" class="task-action-btn solid-complete" id="todos-new-btn">Add To-Do</button>
                     </div>
@@ -6711,10 +6721,37 @@
         </div>
     </div>
 
+    <!-- Calendar "Add To-Do" modal - the To-Do page's own New To-Do form (its
+         fields are cloned in at init, see initCalendarTodoModal) plus a date and
+         time, so what gets created is a real to-do that's scheduled onto the
+         calendar right away. Editing an existing card still uses the modal below. -->
+    <div id="calendar-todo-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 12px; padding: 26px; max-width: 460px; width: 90%; max-height: 85vh; overflow-y: auto;">
+            <h3 style="margin: 0 0 14px;">Add To-Do</h3>
+            <div class="topics-new-bar" style="border-top: 0; padding: 0;">
+                <div style="display: flex; gap: 10px;">
+                    <div class="topics-new-field" style="flex: 1;">
+                        <label for="cal-todo-date">Date <span class="required-asterisk">*</span></label>
+                        <input type="date" id="cal-todo-date">
+                    </div>
+                    <div class="topics-new-field" style="flex: 1;">
+                        <label for="cal-todo-start-time">Start time <span class="required-asterisk">*</span></label>
+                        <input type="time" id="cal-todo-start-time">
+                    </div>
+                </div>
+                <div id="cal-todo-form-fields" style="display: contents;"></div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px;">
+                <button id="cal-todo-cancel-btn" type="button" style="padding: 10px 16px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                <button id="cal-todo-save-btn" type="button" style="padding: 10px 16px; background: #1a3a8a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Add To-Do</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Calendar Event Modal -->
     <div id="calendar-event-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
         <div style="background: white; border-radius: 12px; padding: 26px; max-width: 440px; width: 90%; max-height: 85vh; overflow-y: auto;">
-            <h3 id="calendar-event-modal-title" style="margin: 0 0 6px;">Add Event</h3>
+            <h3 id="calendar-event-modal-title" style="margin: 0 0 6px;">Edit Event</h3>
             <p id="calendar-event-readonly-notice" style="display:none; margin: 0 0 16px; font-size: 12px; color: #777; background: #f6f6f6; border-radius: 6px; padding: 8px 10px;">
                 &#128260; Synced from your external calendar - imported exactly as-is, so it can't be edited here. Delete just this event below if you want it gone locally.
             </p>
@@ -11360,7 +11397,7 @@ function renderQuickRepliesHtml(options) {
 // Event delegation: quick-reply chips are recreated on every render, so bind once.
 // "Specific date" is handled entirely client-side rather than sent as a chat
 // reply - see openSpecificDateSchedulingModal - since a specific date/time is
-// exactly what the Calendar's own Add Event form already collects, and
+// exactly what the Calendar's own Add To-Do form already collects, and
 // there's no reason to make Francis type it out for Ashanti to parse back
 // into the same fields.
 messagesContainer.addEventListener('click', (e) => {
@@ -11374,12 +11411,10 @@ messagesContainer.addEventListener('click', (e) => {
     sendMessage();
 });
 
-// Jumps straight to the Calendar page and opens a blank Add Event modal
-// pre-filled with whatever To-Do/Discussion Topic Ashanti was just asked to
+// Jumps straight to the Calendar page and opens the Add To-Do modal
+// pre-filled with whatever Discussion Topic Ashanti was just asked to
 // schedule (see pendingChatCalendarPrefill) - Francis only has to fill in
-// the date/time and save. Clears the now-unneeded reply-quote banner and
-// hands the to-do link (if any) to the modal via calendarModalLinkedTodoId
-// so saving still marks that to-do "Scheduled", exactly like the chat path.
+// the date/time and save. Clears the now-unneeded reply-quote banner.
 function openSpecificDateSchedulingModal() {
     const agent = currentAgent;
     const prefill = agent ? pendingChatCalendarPrefill[agent] : null;
@@ -11388,12 +11423,7 @@ function openSpecificDateSchedulingModal() {
     }
     clearAttachedReply();
     showCalendarPage();
-    openEventModal(null);
-    if (prefill) {
-        document.getElementById('calendar-event-title').value = prefill.title || '';
-        document.getElementById('calendar-event-description').value = prefill.description || '';
-        if (prefill.todoId) calendarModalLinkedTodoId = prefill.todoId;
-    }
+    openCalendarTodoModal(prefill ? { title: prefill.title, details: prefill.description } : {});
 }
 
 // Click a quote chip to toggle between truncated and fully expanded - same
@@ -13469,12 +13499,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let calendarSettings = { importUrl: '', importEnabled: false, exportEnabled: false, exportUrl: null };
         let calendarPollInterval = null;
         let calendarEditingEventId = null;
-        // Set only by openSpecificDateSchedulingModal, for a new event opened
-        // from the "Specific date" quick-reply chip that's tied to a to-do -
-        // saveEventModal links the freshly-created event's id back onto that
-        // to-do afterward, same as the chat-driven manage_calendar path does.
-        let calendarModalLinkedTodoId = null;
-        // Attachments currently on the event being added/edited in the modal
+        // Attachments currently on the event being edited in the modal
         // - populated from event.attachments on open, submitted as part of
         // the save payload. See buildAttachmentDropzone/renderAttachmentChips.
         let calendarModalAttachments = [];
@@ -13771,7 +13796,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 // A plain click just marks a single slot (so it's clear what
                 // you're about to add before committing to it); clicking and
                 // dragging marks a range spanning multiple slots the same
-                // way. Double click is what actually opens the Add Event
+                // way. Double click is what actually opens the Add To-Do
                 // modal, pre-filled with whatever's currently marked.
                 col.addEventListener('mousedown', (evt) => {
                     if (evt.target !== col) return; // let event blocks handle their own mousedown
@@ -13797,11 +13822,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         : null;
                     clearCalendarSlotHighlight();
                     if (range) {
-                        openEventModal(null, { dateKey: key, hour: range.startHour, minute: range.startMinute, endHour: range.endHour, endMinute: range.endMinute });
+                        openCalendarTodoModal({ dateKey: key, hour: range.startHour, minute: range.startMinute, endHour: range.endHour, endMinute: range.endMinute });
                     } else {
                         const rect = col.getBoundingClientRect();
                         const totalMinutes = Math.max(0, Math.round((evt.clientY - rect.top) / CALENDAR_PX_PER_HOUR * 60 / CALENDAR_SLOT_MINUTES) * CALENDAR_SLOT_MINUTES);
-                        openEventModal(null, { dateKey: key, hour: Math.min(23, Math.floor(totalMinutes / 60)), minute: totalMinutes % 60 });
+                        openCalendarTodoModal({ dateKey: key, hour: Math.min(23, Math.floor(totalMinutes / 60)), minute: totalMinutes % 60 });
                     }
                 });
 
@@ -13814,7 +13839,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Slot selection on the week grid - purely visual, no modal. A plain
         // click marks a single slot; clicking and dragging marks a range
         // spanning multiple slots. Cleared on the next selection elsewhere,
-        // on double-click (which opens Add Event instead), or implicitly
+        // on double-click (which opens Add To-Do instead), or implicitly
         // whenever the grid gets rebuilt (poll refresh, week nav) since that
         // wipes the columns.
         let calendarHighlightedSlotEl = null;
@@ -14012,7 +14037,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // of functions rather than generalized - this drags a day-of-week
         // template range, not a specific date, and ends in a
         // Blackout/Business/Personal choice (see the selection toolbar)
-        // instead of opening the Add Event modal.
+        // instead of opening the Add To-Do modal.
         const AVAILABILITY_DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
         let availabilityHighlightedSlotEl = null;
@@ -14930,37 +14955,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('calendar-event-end-time-row').style.display = allDay ? 'none' : 'block';
         }
 
-        // prefill (only used for a new event) - {dateKey, hour, minute} from
-        // clicking an empty grid slot, so the modal opens already set to
-        // roughly where the user clicked instead of always defaulting to now.
-        function openEventModal(event, prefill) {
-            calendarEditingEventId = event ? event.id : null;
-            calendarModalLinkedTodoId = null;
-            document.getElementById('calendar-event-modal-title').textContent = event ? 'Edit Event' : 'Add Event';
-            document.getElementById('calendar-event-title').value = event ? event.title : '';
-            document.getElementById('calendar-event-location').value = event ? (event.location || '') : '';
-            document.getElementById('calendar-event-description').value = event ? (event.description || '') : '';
-            const allDay = event ? !!event.allDay : false;
+        // Edits an existing card - new ones are added through the Add To-Do
+        // modal (see openCalendarTodoModal).
+        function openEventModal(event) {
+            calendarEditingEventId = event.id;
+            document.getElementById('calendar-event-modal-title').textContent = 'Edit Event';
+            document.getElementById('calendar-event-title').value = event.title;
+            document.getElementById('calendar-event-location').value = event.location || '';
+            document.getElementById('calendar-event-description').value = event.description || '';
+            const allDay = !!event.allDay;
             document.getElementById('calendar-event-allday').checked = allDay;
 
-            let start;
-            if (event && event.start) {
-                start = new Date(event.start);
-            } else if (prefill) {
-                start = new Date(`${prefill.dateKey}T00:00:00`);
-                start.setHours(prefill.hour, prefill.minute, 0, 0);
-            } else {
-                start = new Date();
-            }
-            let end;
-            if (event && event.end) {
-                end = new Date(event.end);
-            } else if (prefill && prefill.endHour != null) {
-                end = new Date(`${prefill.dateKey}T00:00:00`);
-                end.setHours(prefill.endHour, prefill.endMinute, 0, 0);
-            } else {
-                end = new Date(start.getTime() + 60 * 60 * 1000);
-            }
+            const start = new Date(event.start);
+            const end = new Date(event.end);
             document.getElementById('calendar-event-start-date').value = toDateInputValue(start);
             document.getElementById('calendar-event-end-date').value = toDateInputValue(end);
             document.getElementById('calendar-event-start-time').value = toTimeInputValue(start);
@@ -15201,18 +15208,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 }
                 const data = await updateCalendarEvent(calendarEditingEventId, payload);
                 if (!data.success) { alert(data.error || 'Could not save event.'); return; }
-            } else {
-                const data = await createCalendarEvent(payload);
-                if (!data.success) { alert(data.error || 'Could not create event.'); return; }
-                loadCalendarData();
-                // Manually scheduling a to-do's "Specific date" quick-reply
-                // (see openSpecificDateSchedulingModal) needs the same
-                // calendarEventId link the chat-driven path sets, so the
-                // to-do shows "Scheduled" and its button points here.
-                if (calendarModalLinkedTodoId) {
-                    updateTodoItem(calendarModalLinkedTodoId, { calendar_event_id: data.event.id });
-                    calendarModalLinkedTodoId = null;
-                }
             }
             closeEventModal();
         }
@@ -16451,13 +16446,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // templates change (add/edit/delete in Settings) so it's never
         // showing a stale list.
         function populateTodoTemplateSelect() {
-            const select = document.getElementById('todos-new-template-select');
-            if (!select) return;
-            const current = select.value;
-            select.innerHTML = '';
-            select.appendChild(new Option('Use a template…', ''));
-            todoTemplates.forEach(t => select.appendChild(new Option(t.title, t.id)));
-            if (todoTemplates.some(t => t.id === current)) select.value = current;
+            ['todos-new', 'cal-todo'].forEach(prefix => {
+                const select = todoFormEl(prefix, 'template-select');
+                if (!select) return;
+                const current = select.value;
+                select.innerHTML = '';
+                select.appendChild(new Option('Use a template…', ''));
+                todoTemplates.forEach(t => select.appendChild(new Option(t.title, t.id)));
+                if (todoTemplates.some(t => t.id === current)) select.value = current;
+            });
         }
 
         // Fills in the Add To-Do form from the chosen template - Francis
@@ -16465,16 +16462,30 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // submits anything on its own. Resets the select back to its
         // placeholder right after, so picking the same template again later
         // still fires a change event.
-        function applyTodoTemplate(templateId) {
+        function applyTodoTemplate(templateId, prefix = 'todos-new') {
             const template = todoTemplates.find(t => t.id === templateId);
-            const select = document.getElementById('todos-new-template-select');
+            const select = todoFormEl(prefix, 'template-select');
             if (!template) { select.value = ''; return; }
-            document.getElementById('todos-new-title').value = template.title;
-            document.getElementById('todos-new-details').value = template.details || '';
-            document.getElementById('todos-new-duration').value = template.estimatedMinutes || '';
-            document.getElementById('todos-new-priority').value = template.priority || 'medium';
-            document.getElementById('todos-new-personal').checked = !!template.personal;
+            todoFormEl(prefix, 'title').value = template.title;
+            todoFormEl(prefix, 'details').value = template.details || '';
+            setCalendarTodoDuration(prefix, template.estimatedMinutes || '');
+            todoFormEl(prefix, 'priority').value = template.priority || 'medium';
+            todoFormEl(prefix, 'personal').checked = !!template.personal;
             select.value = '';
+        }
+
+        // Sets the Estimated Time select, adding a one-off option first when
+        // the value isn't one of the stock choices (e.g. a 75-minute slot
+        // dragged out on the Calendar) so it still displays and submits.
+        function setCalendarTodoDuration(prefix, minutes) {
+            const select = todoFormEl(prefix, 'duration');
+            select.querySelectorAll('option[data-custom]').forEach(o => o.remove());
+            if (minutes && !Array.from(select.options).some(o => o.value === String(minutes))) {
+                const opt = new Option(formatTodoDuration(minutes), String(minutes));
+                opt.dataset.custom = '1';
+                select.appendChild(opt);
+            }
+            select.value = minutes ? String(minutes) : '';
         }
 
         async function loadTodosData() {
@@ -16643,17 +16654,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return row;
         }
 
-        // chatAgent -> {title, description, todoId?} - set alongside the
-        // attached reply quote whenever a Discussion Topic is handed to
-        // Ashanti to schedule, so that if Francis taps the "Specific date"
-        // quick-reply chip instead of typing a day, the Calendar's Add Event
-        // modal can open already filled in with the same title/details he'd
-        // otherwise have had to retype - see openSpecificDateSchedulingModal.
-        // todoId exists in the shape for a to-do-linked event (see
-        // calendarModalLinkedTodoId) but nothing currently populates it here -
-        // the To-Do page's own "Add to Calendar" goes through the
-        // bulk-schedule popup instead (see openBulkScheduleModalForTodoIds),
-        // not a chat round-trip.
+        // chatAgent -> {title, description} - set alongside the attached
+        // reply quote whenever a Discussion Topic is handed to Ashanti to
+        // schedule, so that if Francis taps the "Specific date" quick-reply
+        // chip instead of typing a day, the Calendar's Add To-Do modal can
+        // open already filled in with the same title/details he'd otherwise
+        // have had to retype - see openSpecificDateSchedulingModal.
         let pendingChatCalendarPrefill = {};
 
         // Three independent axes, not one status: Scheduled/Not Scheduled says
@@ -17142,6 +17148,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderAttachmentChips(document.getElementById('todos-new-attachments-list'), newTodoAttachments, refreshNewTodoAttachments);
         }
 
+        // Same, for the Calendar's Add To-Do modal (see initCalendarTodoModal).
+        let calendarTodoAttachments = [];
+
+        function refreshCalendarTodoAttachments() {
+            renderAttachmentChips(document.getElementById('cal-todo-attachments-list'), calendarTodoAttachments, refreshCalendarTodoAttachments);
+        }
+
+        // The To-Do page's New To-Do form and the Calendar's Add To-Do modal
+        // share one markup, differing only by id prefix: 'todos-new' or
+        // 'cal-todo'. These helpers take that prefix.
+        const todoFormEl = (prefix, name) => document.getElementById(`${prefix}-${name}`);
+
         // Sunday=0 - same convention as the Availability template's days and
         // the backend's _day_of_week_sunday0, so a weekday index picked here
         // means the same thing everywhere it's read.
@@ -17150,8 +17168,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Builds the weekday-toggle row and month <select> once at page
         // init - the Repeat dropdown's change handler (below) just
         // shows/hides which row is relevant, it never rebuilds these.
-        function initNewTodoRecurrenceUi() {
-            const weekdaysEl = document.getElementById('todos-new-recurrence-weekdays');
+        function initNewTodoRecurrenceUi(prefix = 'todos-new') {
+            const weekdaysEl = todoFormEl(prefix, 'recurrence-weekdays');
             RECURRENCE_WEEKDAY_LETTERS.forEach((letter, i) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
@@ -17162,16 +17180,16 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 weekdaysEl.appendChild(btn);
             });
 
-            const monthSelect = document.getElementById('todos-new-recurrence-month');
+            const monthSelect = todoFormEl(prefix, 'recurrence-month');
             ['January', 'February', 'March', 'April', 'May', 'June', 'July',
              'August', 'September', 'October', 'November', 'December'].forEach((name, i) => {
                 monthSelect.appendChild(new Option(name, i + 1));
             });
 
-            document.getElementById('todos-new-repeat').addEventListener('change', updateNewTodoRecurrenceVisibility);
-            document.getElementById('todos-new-recurrence-end-type').addEventListener('change', () => {
-                document.getElementById('todos-new-recurrence-end-date').style.display =
-                    document.getElementById('todos-new-recurrence-end-type').value === 'on' ? '' : 'none';
+            todoFormEl(prefix, 'repeat').addEventListener('change', () => updateNewTodoRecurrenceVisibility(prefix));
+            todoFormEl(prefix, 'recurrence-end-type').addEventListener('change', () => {
+                todoFormEl(prefix, 'recurrence-end-date').style.display =
+                    todoFormEl(prefix, 'recurrence-end-type').value === 'on' ? '' : 'none';
             });
         }
 
@@ -17182,51 +17200,54 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // shares) and fills in a sensible default the first time each
         // becomes relevant, without clobbering anything Francis already
         // picked if he switches frequency and back.
-        function updateNewTodoRecurrenceVisibility() {
-            const freq = document.getElementById('todos-new-repeat').value;
-            const panel = document.getElementById('todos-new-recurrence-options');
+        function updateNewTodoRecurrenceVisibility(prefix = 'todos-new') {
+            const freq = todoFormEl(prefix, 'repeat').value;
+            const panel = todoFormEl(prefix, 'recurrence-options');
             panel.style.display = freq ? 'flex' : 'none';
             if (!freq) return;
 
-            document.getElementById('todos-new-recurrence-weekday-row').style.display = freq === 'weekly' ? 'flex' : 'none';
-            document.getElementById('todos-new-recurrence-monthday-row').style.display = freq === 'monthly' ? 'flex' : 'none';
-            document.getElementById('todos-new-recurrence-yearly-row').style.display = freq === 'yearly' ? 'flex' : 'none';
-            document.getElementById('todos-new-recurrence-interval-unit').textContent =
+            todoFormEl(prefix, 'recurrence-weekday-row').style.display = freq === 'weekly' ? 'flex' : 'none';
+            todoFormEl(prefix, 'recurrence-monthday-row').style.display = freq === 'monthly' ? 'flex' : 'none';
+            todoFormEl(prefix, 'recurrence-yearly-row').style.display = freq === 'yearly' ? 'flex' : 'none';
+            todoFormEl(prefix, 'recurrence-interval-unit').textContent =
                 { daily: 'day(s)', weekly: 'week(s)', monthly: 'month(s)', yearly: 'year(s)' }[freq];
 
-            const today = new Date();
-            const startInput = document.getElementById('todos-new-recurrence-start');
+            // The Calendar modal's own Date is the natural default weekday/day
+            // to repeat on, not whatever today happens to be.
+            const modalDate = prefix === 'cal-todo' ? document.getElementById('cal-todo-date').value : '';
+            const today = modalDate ? new Date(`${modalDate}T00:00:00`) : new Date();
+            const startInput = todoFormEl(prefix, 'recurrence-start');
             if (!startInput.value) startInput.value = toDateInputValue(today);
 
-            const weekdaysEl = document.getElementById('todos-new-recurrence-weekdays');
+            const weekdaysEl = todoFormEl(prefix, 'recurrence-weekdays');
             if (freq === 'weekly' && !weekdaysEl.querySelector('.active')) {
                 const btn = weekdaysEl.querySelector(`[data-day="${today.getDay()}"]`);
                 if (btn) btn.classList.add('active');
             }
-            const monthdayInput = document.getElementById('todos-new-recurrence-monthday');
+            const monthdayInput = todoFormEl(prefix, 'recurrence-monthday');
             if (freq === 'monthly' && !monthdayInput.value) monthdayInput.value = today.getDate();
-            const monthSelect = document.getElementById('todos-new-recurrence-month');
-            const dayInput = document.getElementById('todos-new-recurrence-day');
+            const monthSelect = todoFormEl(prefix, 'recurrence-month');
+            const dayInput = todoFormEl(prefix, 'recurrence-day');
             if (freq === 'yearly' && !monthSelect.value) {
                 monthSelect.value = String(today.getMonth() + 1);
                 dayInput.value = today.getDate();
             }
         }
 
-        function resetNewTodoRecurrenceUi() {
-            document.getElementById('todos-new-repeat').value = '';
-            document.getElementById('todos-new-recurrence-interval').value = '1';
-            document.getElementById('todos-new-recurrence-weekdays').querySelectorAll('.active')
+        function resetNewTodoRecurrenceUi(prefix = 'todos-new') {
+            todoFormEl(prefix, 'repeat').value = '';
+            todoFormEl(prefix, 'recurrence-interval').value = '1';
+            todoFormEl(prefix, 'recurrence-weekdays').querySelectorAll('.active')
                 .forEach(b => b.classList.remove('active'));
-            document.getElementById('todos-new-recurrence-monthday').value = '';
-            document.getElementById('todos-new-recurrence-month').value = '';
-            document.getElementById('todos-new-recurrence-day').value = '';
-            document.getElementById('todos-new-recurrence-start').value = '';
-            document.getElementById('todos-new-recurrence-time').value = '09:00';
-            document.getElementById('todos-new-recurrence-end-type').value = 'never';
-            document.getElementById('todos-new-recurrence-end-date').value = '';
-            document.getElementById('todos-new-recurrence-end-date').style.display = 'none';
-            document.getElementById('todos-new-recurrence-options').style.display = 'none';
+            todoFormEl(prefix, 'recurrence-monthday').value = '';
+            todoFormEl(prefix, 'recurrence-month').value = '';
+            todoFormEl(prefix, 'recurrence-day').value = '';
+            todoFormEl(prefix, 'recurrence-start').value = '';
+            todoFormEl(prefix, 'recurrence-time').value = '09:00';
+            todoFormEl(prefix, 'recurrence-end-type').value = 'never';
+            todoFormEl(prefix, 'recurrence-end-date').value = '';
+            todoFormEl(prefix, 'recurrence-end-date').style.display = 'none';
+            todoFormEl(prefix, 'recurrence-options').style.display = 'none';
         }
 
         // Reads the recurrence panel into the shape /todos/series expects
@@ -17234,22 +17255,22 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // dropdown is set to something other than "Does not repeat".
         // Returns null (after alerting) if the form is missing something
         // required, same pattern as submitNewTodo's own title/details check.
-        function readNewTodoRecurrenceForm() {
-            const freq = document.getElementById('todos-new-repeat').value;
-            const startDate = document.getElementById('todos-new-recurrence-start').value;
-            const time = document.getElementById('todos-new-recurrence-time').value;
+        function readNewTodoRecurrenceForm(prefix = 'todos-new') {
+            const freq = todoFormEl(prefix, 'repeat').value;
+            const startDate = todoFormEl(prefix, 'recurrence-start').value;
+            const time = todoFormEl(prefix, 'recurrence-time').value;
             if (!startDate || !time) {
                 alert('Please choose a start date and time for the repeating to-do.');
                 return null;
             }
             const recurrence = {
-                freq, interval: parseInt(document.getElementById('todos-new-recurrence-interval').value, 10) || 1,
+                freq, interval: parseInt(todoFormEl(prefix, 'recurrence-interval').value, 10) || 1,
                 start_date: startDate, time,
-                end_date: document.getElementById('todos-new-recurrence-end-type').value === 'on'
-                    ? (document.getElementById('todos-new-recurrence-end-date').value || null) : null
+                end_date: todoFormEl(prefix, 'recurrence-end-type').value === 'on'
+                    ? (todoFormEl(prefix, 'recurrence-end-date').value || null) : null
             };
             if (freq === 'weekly') {
-                const byWeekday = Array.from(document.querySelectorAll('#todos-new-recurrence-weekdays .active'))
+                const byWeekday = Array.from(todoFormEl(prefix, 'recurrence-weekdays').querySelectorAll('.active'))
                     .map(b => parseInt(b.dataset.day, 10));
                 if (!byWeekday.length) {
                     alert('Please choose at least one day of the week.');
@@ -17257,10 +17278,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 }
                 recurrence.by_weekday = byWeekday;
             } else if (freq === 'monthly') {
-                recurrence.by_monthday = parseInt(document.getElementById('todos-new-recurrence-monthday').value, 10) || 1;
+                recurrence.by_monthday = parseInt(todoFormEl(prefix, 'recurrence-monthday').value, 10) || 1;
             } else if (freq === 'yearly') {
-                recurrence.month = parseInt(document.getElementById('todos-new-recurrence-month').value, 10) || 1;
-                recurrence.day = parseInt(document.getElementById('todos-new-recurrence-day').value, 10) || 1;
+                recurrence.month = parseInt(todoFormEl(prefix, 'recurrence-month').value, 10) || 1;
+                recurrence.day = parseInt(todoFormEl(prefix, 'recurrence-day').value, 10) || 1;
             }
             return recurrence;
         }
@@ -17326,6 +17347,137 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             btn.disabled = false;
             btn.textContent = 'Add To-Do';
             titleInput.focus();
+        }
+
+        // The Calendar's Add To-Do modal reuses the To-Do page's New To-Do
+        // fields (same markup, ids cal-todo-*), so it must run before
+        // anything populates the originals (weekday toggles, attachment
+        // dropzone) or those would get cloned along with the markup.
+        function initCalendarTodoModal() {
+            const source = document.getElementById('todos-new-form-fields');
+            document.getElementById('cal-todo-form-fields').innerHTML = source.innerHTML.replace(/todos-new-/g, 'cal-todo-');
+            document.getElementById('cal-todo-attachments-zone')
+                .appendChild(buildAttachmentDropzone(calendarTodoAttachments, refreshCalendarTodoAttachments));
+            initNewTodoRecurrenceUi('cal-todo');
+            todoFormEl('cal-todo', 'template-select').addEventListener('change', (e) => applyTodoTemplate(e.target.value, 'cal-todo'));
+            document.getElementById('cal-todo-save-btn').addEventListener('click', submitCalendarTodo);
+            document.getElementById('cal-todo-cancel-btn').addEventListener('click', closeCalendarTodoModal);
+            document.getElementById('calendar-todo-modal').addEventListener('click', (e) => {
+                if (e.target.id === 'calendar-todo-modal') closeCalendarTodoModal();
+            });
+        }
+
+        // prefill: {dateKey, hour, minute, endHour, endMinute} from a marked
+        // slot range or a double-click on the grid, and/or {title, details}
+        // from a Discussion Topic handed to Ashanti - anything omitted falls
+        // back to now (rounded up to the next quarter hour) and 1 hour.
+        function openCalendarTodoModal(prefill = {}) {
+            const p = 'cal-todo';
+            todoFormEl(p, 'title').value = prefill.title || '';
+            todoFormEl(p, 'details').value = prefill.details || '';
+            todoFormEl(p, 'priority').value = 'medium';
+            todoFormEl(p, 'personal').checked = false;
+            resetNewTodoRecurrenceUi(p);
+            calendarTodoAttachments.length = 0;
+            refreshCalendarTodoAttachments();
+
+            let start;
+            if (prefill.dateKey) {
+                start = new Date(`${prefill.dateKey}T00:00:00`);
+                start.setHours(prefill.hour || 0, prefill.minute || 0, 0, 0);
+            } else {
+                start = new Date();
+                start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
+            }
+            let minutes = 60;
+            if (prefill.endHour != null) {
+                minutes = (prefill.endHour * 60 + prefill.endMinute) - (prefill.hour * 60 + prefill.minute);
+                if (!(minutes > 0)) minutes = 60;
+            }
+            setCalendarTodoDuration(p, minutes);
+            document.getElementById('cal-todo-date').value = toDateInputValue(start);
+            document.getElementById('cal-todo-start-time').value = toTimeInputValue(start);
+
+            document.getElementById('calendar-todo-modal').style.display = 'flex';
+            todoFormEl(p, 'title').focus();
+        }
+
+        function closeCalendarTodoModal() {
+            document.getElementById('calendar-todo-modal').style.display = 'none';
+        }
+
+        // Creates the to-do exactly as the To-Do page's form would, then puts
+        // it on the calendar at the chosen time - so it shows up on the
+        // To-Do page as Scheduled. A repeating one goes through the series
+        // route instead, which places every occurrence itself (the Date and
+        // Start time here become its first occurrence).
+        async function submitCalendarTodo() {
+            const p = 'cal-todo';
+            const title = todoFormEl(p, 'title').value.trim();
+            const details = todoFormEl(p, 'details').value.trim();
+            const estimatedMinutes = parseInt(todoFormEl(p, 'duration').value, 10);
+            const date = document.getElementById('cal-todo-date').value;
+            const time = document.getElementById('cal-todo-start-time').value;
+            if (!title || !details || !estimatedMinutes) {
+                alert('Please fill in the title, details, and estimated time.');
+                return;
+            }
+            if (!date || !time) {
+                alert('Please choose a date and start time.');
+                return;
+            }
+            let recurrence = null;
+            if (todoFormEl(p, 'repeat').value) {
+                todoFormEl(p, 'recurrence-start').value = date;
+                todoFormEl(p, 'recurrence-time').value = time;
+                recurrence = readNewTodoRecurrenceForm(p);
+                if (!recurrence) return;
+            }
+            const btn = document.getElementById('cal-todo-save-btn');
+            btn.disabled = true;
+            btn.textContent = 'Adding…';
+            try {
+                const response = await fetch(recurrence ? '/todos/series' : '/todos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title, details, estimated_minutes: estimatedMinutes, attachments: calendarTodoAttachments,
+                        priority: todoFormEl(p, 'priority').value, personal: todoFormEl(p, 'personal').checked,
+                        ...(recurrence ? { recurrence } : {})
+                    })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    alert(data.error || 'Could not add that to-do - try again.');
+                } else {
+                    todosList = data.todos;
+                    if (!recurrence) {
+                        const start = new Date(`${date}T${time}:00`);
+                        const end = new Date(start.getTime() + estimatedMinutes * 60000);
+                        const eventData = await createCalendarEvent({
+                            title, start: calendarToLocalISO(start), end: calendarToLocalISO(end),
+                            allDay: false, location: '', description: details, attachments: []
+                        });
+                        if (eventData.success) {
+                            // The calendar has to know about the new event
+                            // before the to-do can render as Scheduled.
+                            await loadCalendarData();
+                            await updateTodoItem(data.todo_id, { calendar_event_id: eventData.event.id });
+                        } else {
+                            alert(`"${title}" was added to your To-Do list, but couldn't be put on the calendar - ${eventData.error || 'try scheduling it from the To-Do page.'}`);
+                        }
+                        selectedTodoId = data.todo_id;
+                    }
+                    closeCalendarTodoModal();
+                    await loadCalendarData();
+                    renderTodosPage();
+                }
+            } catch (error) {
+                console.error('Failed to add to-do from the calendar:', error);
+                alert('Could not add that to-do - check the app is running and try again.');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Add To-Do';
         }
 
         // "Schedule Selected with Ashanti" - opens the period picker
@@ -18926,8 +19078,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             saveBtn.textContent = 'Scheduling…';
             try {
                 // Manual placements commit first, exactly where Francis put
-                // them - same create-and-link pattern saveEventModal's
-                // create path already uses for a todo-linked event. Once
+                // them - same create-and-link pattern submitCalendarTodo
+                // uses for a todo-linked event. Once
                 // they're real, saved events, the algorithm re-run below
                 // (which reads the live calendar fresh) naturally avoids
                 // them too - no extra hint needed.
@@ -19776,7 +19928,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('knowledgebase-nav-btn').addEventListener('click', showKnowledgeBasePage);
         document.getElementById('calendar-nav-btn').addEventListener('click', showCalendarPage);
 
-        document.getElementById('calendar-add-event-btn').addEventListener('click', () => openEventModal(null));
+        document.getElementById('calendar-add-event-btn').addEventListener('click', () => openCalendarTodoModal());
         document.getElementById('calendar-ask-ashanti-btn').addEventListener('click', openAshantiMiniChat);
         document.getElementById('ashanti-mini-chat-close-btn').addEventListener('click', closeAshantiMiniChat);
         document.getElementById('ashanti-mini-chat-send-btn').addEventListener('click', sendAshantiMiniChatMessage);
@@ -19832,6 +19984,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (e.key === 'Enter') submitNewTopic();
         });
 
+        initCalendarTodoModal();
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
         initNewTodoRecurrenceUi();
         initLunchSettingsUi();
