@@ -7907,6 +7907,19 @@
             return el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'search');
         }
 
+        // Everything said so far in this session, rebuilt from the full
+        // results list each time and joined with single spaces - the
+        // recognizer hands back each pause as its own chunk, and doesn't
+        // reliably put a space between them ("hey Lana" + "what's the plan").
+        function joinSpeechResults(results) {
+            const parts = [];
+            for (let i = 0; i < results.length; i++) {
+                const chunk = results[i][0].transcript.trim();
+                if (chunk) parts.push(chunk);
+            }
+            return parts.join(' ');
+        }
+
         function positionVoiceBtn() {
             const el = voice.target;
             if (!voice.btn || !el) return;
@@ -7956,16 +7969,8 @@
             rec.interimResults = true;
             rec.lang = navigator.language || 'en-US';
             rec.onresult = (e) => {
-                let interim = '';
-                for (let i = e.resultIndex; i < e.results.length; i++) {
-                    const chunk = e.results[i][0].transcript;
-                    if (e.results[i].isFinal) {
-                        voice.finalText += (voice.finalText && !/\s$/.test(voice.finalText) && !/^\s/.test(chunk) ? ' ' : '') + chunk.trim();
-                    } else {
-                        interim += chunk;
-                    }
-                }
-                writeVoiceText(interim ? (voice.finalText ? ' ' : '') + interim.trim() : '');
+                voice.finalText = joinSpeechResults(e.results);
+                writeVoiceText('');
             };
             rec.onerror = (e) => {
                 if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
@@ -8047,14 +8052,31 @@
         // The agent being addressed: the first one named at the very start
         // or after a "hey"/"ask"/"tell"-style lead-in, else the first
         // unambiguous name anywhere; Manny when nobody is named.
+        // Matches a spoken word to an agent. A name run into the next word
+        // ("lanawhat's" - the recognizer sometimes drops the space) still
+        // counts for the distinctive names; the short or common ones
+        // (Mark, Kat, Cat, Scott) only match as whole words.
+        const VOICE_GLUE_SAFE_NAMES = ['manny', 'sasha', 'tasha', 'techi', 'ashanti', 'lana'];
+
+        function matchVoiceAgentWord(word) {
+            const exact = Object.keys(VOICE_AGENT_ALIASES).find(a => VOICE_AGENT_ALIASES[a].includes(word));
+            if (exact) return { agent: exact, alias: word };
+            for (const agent of VOICE_GLUE_SAFE_NAMES) {
+                const alias = VOICE_AGENT_ALIASES[agent].find(al => al.length >= 4 && word.startsWith(al));
+                if (alias) return { agent, alias };
+            }
+            return null;
+        }
+
         function detectVoiceAgent(text) {
             const words = String(text || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
             let firstLoose = null;
             for (let i = 0; i < words.length; i++) {
                 const word = words[i].replace(/'s$/, '');
-                const agent = Object.keys(VOICE_AGENT_ALIASES).find(a => VOICE_AGENT_ALIASES[a].includes(word));
-                if (!agent) continue;
-                const ambiguous = VOICE_AMBIGUOUS_NAMES.has(word);
+                const found = matchVoiceAgentWord(word);
+                if (!found) continue;
+                const agent = found.agent;
+                const ambiguous = VOICE_AMBIGUOUS_NAMES.has(found.alias);
                 if (ambiguous && VOICE_NOT_A_NAME_AFTER.has(words[i + 1])) continue;
                 if (i <= 3 || VOICE_ADDRESS_LEADS.has(words[i - 1])) return agent;
                 if (!ambiguous && !firstLoose) firstLoose = agent;
@@ -8062,7 +8084,7 @@
             return firstLoose || 'manny';
         }
 
-        const va = { fab: null, panel: null, rec: null, listening: false, timer: null, base: '', finalText: '' };
+        const va = { fab: null, panel: null, rec: null, listening: false, timer: null, base: '' };
 
         function vaEl(id) { return document.getElementById(id); }
 
@@ -8101,22 +8123,12 @@
             vaCancelTimer();
             const ta = vaEl('va-text');
             va.base = ta.value && !/\s$/.test(ta.value) ? ta.value + ' ' : ta.value;
-            va.finalText = '';
             const rec = new (getSpeechRecognitionCtor())();
             rec.continuous = true;
             rec.interimResults = true;
             rec.lang = navigator.language || 'en-US';
             rec.onresult = (e) => {
-                let interim = '';
-                for (let i = e.resultIndex; i < e.results.length; i++) {
-                    const chunk = e.results[i][0].transcript;
-                    if (e.results[i].isFinal) {
-                        va.finalText += (va.finalText && !/\s$/.test(va.finalText) && !/^\s/.test(chunk) ? ' ' : '') + chunk.trim();
-                    } else {
-                        interim += chunk;
-                    }
-                }
-                ta.value = va.base + va.finalText + (interim ? (va.finalText ? ' ' : '') + interim.trim() : '');
+                ta.value = va.base + joinSpeechResults(e.results);
                 ta.scrollTop = ta.scrollHeight;
                 vaRefreshRecipient();
             };
