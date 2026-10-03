@@ -278,16 +278,26 @@
            page (Projects, To-Do, Calendar, Discussion Topics, Archive,
            Knowledge Base) without going back through the sidebar - sits
            inline next to the page's own heading. */
+        /* One row that shrinks its avatars to fit rather than wrapping - a
+           wrapped last avatar (the newest agent) just falls out of view
+           under the header on narrower windows. */
         .agent-quickbar {
             display: flex;
             gap: 8px;
             align-items: center;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+
+        .agent-quickbar-item {
+            flex: 0 1 68px;
+            min-width: 28px;
         }
 
         .agent-quickbar-avatar {
-            width: 64px;
-            height: 64px;
+            box-sizing: border-box;
+            width: 100%;
+            aspect-ratio: 1;
             border-radius: 50%;
             object-fit: cover;
             cursor: pointer;
@@ -4707,7 +4717,7 @@
         }
 
         .message.agent-lana {
-            border-left: 4px solid #c9bd8a;
+            border-left: 4px solid #8a7a45;
         }
 
         .quick-replies {
@@ -7147,7 +7157,8 @@
 
         // Lana's brand beige (#f5f5dc) is nearly white, so wherever an agent's
         // color is used as a border or accent against a light background
-        // (agentColors below) she gets a deeper tan of the same hue instead.
+        // (agentColors below, also the text/tag color on Meet The Team) she
+        // gets a deeper khaki of the same hue instead.
         const agentColors = {
             'manny': '#001a4d',
             'sasha': '#ff1493',
@@ -7157,7 +7168,7 @@
             'tasha': '#cc0000',
             'techi': '#00bfff',
             'ashanti': '#ffd700',
-            'lana': '#c9bd8a'
+            'lana': '#8a7a45'
         };
 
         const agentDetails = {
@@ -11055,6 +11066,10 @@ function capitalizeAgent(agent) {
     selectedCard.style.borderWidth = '3px';
 
     document.getElementById('agents-nav-btn').classList.add('active');
+
+    // Every send and render below assumes this exists - without it opening
+    // the agent throws and typing a message silently fails.
+    if (!chatHistory[agent]) chatHistory[agent] = [];
 
     currentAgent = agent;
     updateChatHeader(agent);

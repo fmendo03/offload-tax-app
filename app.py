@@ -1,3 +1,12 @@
+import sys
+
+# The Windows console defaults to a legacy code page that can't encode most
+# non-Latin scripts, so any print() of a Japanese/Chinese/Arabic/etc. chat
+# message (or an error quoting one) would raise and fail the whole request.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+
 from flask import Flask, request, jsonify, send_from_directory, Response, session
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
