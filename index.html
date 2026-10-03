@@ -2807,6 +2807,38 @@
             display: none;
         }
 
+        .calendar-split-part {
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            background: #f6f7fb;
+            border-radius: 8px;
+        }
+
+        .calendar-split-part-title {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 700;
+            color: #444;
+            margin-bottom: 8px;
+        }
+
+        .calendar-split-part-length {
+            font-weight: 600;
+            color: #888;
+        }
+
+        .calendar-split-part-fields {
+            display: flex;
+            gap: 8px;
+        }
+
+        .calendar-split-part-fields .calendar-form-row {
+            flex: 1;
+            min-width: 0;
+            margin-bottom: 0;
+        }
+
         .todo-scheduled-times {
             margin: 12px 0;
             display: flex;
@@ -4006,12 +4038,12 @@
 }
 
 /* Floating voice-message button (see the Voice assistant block in the
-   script) - sits just right of the 220px sidebar so it never covers the
-   chat's Send button or the toasts at bottom-right. */
+   script) - bottom-right, 76px up so it clears the chat's Send button;
+   toasts and the panel stack above it. */
 #voice-assistant-btn {
     position: fixed;
-    left: 240px;
-    bottom: 24px;
+    right: 24px;
+    bottom: 76px;
     width: 54px;
     height: 54px;
     align-items: center;
@@ -4038,10 +4070,10 @@
 
 #voice-assistant-panel {
     position: fixed;
-    left: 240px;
-    bottom: 90px;
+    right: 24px;
+    bottom: 142px;
     width: 340px;
-    max-width: calc(100vw - 260px);
+    max-width: calc(100vw - 48px);
     padding: 14px;
     background: white;
     border-radius: 12px;
@@ -4140,10 +4172,14 @@
     color: white;
 }
 
+body.va-open #notification-toasts {
+    bottom: 392px;
+}
+
 #notification-toasts {
     position: fixed;
     right: 20px;
-    bottom: 20px;
+    bottom: 142px;
     z-index: 1300;
     display: flex;
     flex-direction: column;
@@ -7143,6 +7179,7 @@
                 <label for="calendar-event-title">Title</label>
                 <input type="text" id="calendar-event-title" placeholder="e.g. Client call with Sasha">
             </div>
+            <div id="calendar-event-single-times">
             <div class="calendar-form-row calendar-form-checkbox">
                 <label><input type="checkbox" id="calendar-event-allday"> All day</label>
             </div>
@@ -7166,6 +7203,11 @@
                     <input type="time" id="calendar-event-end-time">
                 </div>
             </div>
+            </div>
+            <!-- A to-do split into two cards (around lunch, or past the end of
+                 the day): each part's own date/time, edited together here. Built
+                 by openEventModal. -->
+            <div id="calendar-event-split-parts" style="display: none;"></div>
             <div class="calendar-form-row">
                 <label for="calendar-event-location">Location</label>
                 <input type="text" id="calendar-event-location" placeholder="Optional">
@@ -8168,6 +8210,7 @@
             va.listening = false;
             va.fab.classList.remove('listening');
             va.panel.style.display = 'none';
+            document.body.classList.remove('va-open');
             vaEl('va-text').value = '';
             vaSetStatus('');
         }
@@ -8270,6 +8313,7 @@
             fab.addEventListener('click', () => {
                 if (panel.style.display === 'none') {
                     panel.style.display = 'block';
+                    document.body.classList.add('va-open');
                     vaRefreshRecipient();
                     vaStartListening();
                 } else if (va.listening) {
@@ -14481,6 +14525,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let calendarSettings = { importUrl: '', importEnabled: false, exportEnabled: false, exportUrl: null };
         let calendarPollInterval = null;
         let calendarEditingEventId = null;
+        // [part 1, part 2] when the card being edited is half of a split to-do
+        // (see openEventModal), else null.
+        let calendarEditingSplitParts = null;
         // Attachments currently on the event being edited in the modal
         // - populated from event.attachments on open, submitted as part of
         // the save payload. See buildAttachmentDropzone/renderAttachmentChips.
@@ -15975,9 +16022,75 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         // Edits an existing card - new ones are added through the Add To-Do
         // modal (see openCalendarTodoModal).
+        // Both halves of a to-do split in two (around lunch, or past the end
+        // of the day), whichever half is passed in: part 1 keeps the original
+        // id, part 2 points back at it via splitOf. Null for anything else,
+        // including a split whose other half has since been deleted.
+        function findSplitParts(event) {
+            if (!event.splitTotal) return null;
+            const first = event.splitOf ? calendarEvents.find(e => e.id === event.splitOf) : event;
+            if (!first) return null;
+            const second = calendarEvents.find(e => e.splitOf === first.id);
+            return second ? [first, second] : null;
+        }
+
+        function formatSplitPartLength(startEl, endEl) {
+            const minutes = (new Date(`2000-01-01T${endEl.value || '00:00'}:00`) - new Date(`2000-01-01T${startEl.value || '00:00'}:00`)) / 60000;
+            return minutes > 0 ? formatEstimatedMinutes(minutes) : '';
+        }
+
+        // Each part gets its own date and start/end time, so both can be
+        // moved from this one window instead of opening each half in turn.
+        function renderSplitPartsFields(parts) {
+            const container = document.getElementById('calendar-event-split-parts');
+            container.innerHTML = '';
+            parts.forEach((part, i) => {
+                const start = new Date(part.start);
+                const end = new Date(part.end);
+                const block = document.createElement('div');
+                block.className = 'calendar-split-part';
+                block.innerHTML = `
+                    <div class="calendar-split-part-title">
+                        <span>Part ${i + 1} of ${parts.length}</span>
+                        <span class="calendar-split-part-length" id="calendar-event-part-length-${i}"></span>
+                    </div>
+                    <div class="calendar-split-part-fields">
+                        <div class="calendar-form-row">
+                            <label for="calendar-event-part-date-${i}">Date</label>
+                            <input type="date" id="calendar-event-part-date-${i}">
+                        </div>
+                        <div class="calendar-form-row">
+                            <label for="calendar-event-part-start-${i}">Start</label>
+                            <input type="time" id="calendar-event-part-start-${i}">
+                        </div>
+                        <div class="calendar-form-row">
+                            <label for="calendar-event-part-end-${i}">End</label>
+                            <input type="time" id="calendar-event-part-end-${i}">
+                        </div>
+                    </div>`;
+                container.appendChild(block);
+                const dateEl = document.getElementById(`calendar-event-part-date-${i}`);
+                const startEl = document.getElementById(`calendar-event-part-start-${i}`);
+                const endEl = document.getElementById(`calendar-event-part-end-${i}`);
+                const lengthEl = document.getElementById(`calendar-event-part-length-${i}`);
+                dateEl.value = toDateInputValue(start);
+                startEl.value = toTimeInputValue(start);
+                endEl.value = toTimeInputValue(end);
+                const refreshLength = () => { lengthEl.textContent = formatSplitPartLength(startEl, endEl); };
+                startEl.addEventListener('input', refreshLength);
+                endEl.addEventListener('input', refreshLength);
+                refreshLength();
+            });
+        }
+
         function openEventModal(event) {
             calendarEditingEventId = event.id;
-            document.getElementById('calendar-event-modal-title').textContent = 'Edit Event';
+            calendarEditingSplitParts = findSplitParts(event);
+            document.getElementById('calendar-event-modal-title').textContent =
+                calendarEditingSplitParts ? `Edit Event (split into ${calendarEditingSplitParts.length} parts)` : 'Edit Event';
+            document.getElementById('calendar-event-single-times').style.display = calendarEditingSplitParts ? 'none' : '';
+            document.getElementById('calendar-event-split-parts').style.display = calendarEditingSplitParts ? 'block' : 'none';
+            if (calendarEditingSplitParts) renderSplitPartsFields(calendarEditingSplitParts);
             document.getElementById('calendar-event-title').value = event.title;
             document.getElementById('calendar-event-location').value = event.location || '';
             document.getElementById('calendar-event-description').value = event.description || '';
@@ -16045,6 +16158,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function closeEventModal() {
             document.getElementById('calendar-event-modal').style.display = 'none';
             calendarEditingEventId = null;
+            calendarEditingSplitParts = null;
         }
 
         // The to-do (if any) this calendar event was scheduled for - see
@@ -16160,9 +16274,35 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             closeEventModal();
         }
 
+        // Saves a split to-do's text once and each part's own date/time,
+        // so both halves move together from the one window.
+        async function saveSplitEventParts(title) {
+            const parts = calendarEditingSplitParts;
+            const description = document.getElementById('calendar-event-description').value.trim();
+            const location = document.getElementById('calendar-event-location').value.trim();
+            const payloads = [];
+            for (let i = 0; i < parts.length; i++) {
+                const date = document.getElementById(`calendar-event-part-date-${i}`).value;
+                const startTime = document.getElementById(`calendar-event-part-start-${i}`).value;
+                const endTime = document.getElementById(`calendar-event-part-end-${i}`).value;
+                if (!date || !startTime || !endTime) { alert(`Please fill in the date and both times for part ${i + 1}.`); return; }
+                if (endTime <= startTime) { alert(`Part ${i + 1} has to end after it starts.`); return; }
+                payloads.push({
+                    title, start: `${date}T${startTime}:00`, end: `${date}T${endTime}:00`,
+                    allDay: false, location, description, attachments: calendarModalAttachments
+                });
+            }
+            for (let i = 0; i < parts.length; i++) {
+                const data = await updateCalendarEvent(parts[i].id, payloads[i]);
+                if (!data.success) { alert(data.error || `Could not save part ${i + 1}.`); return; }
+            }
+            closeEventModal();
+        }
+
         async function saveEventModal() {
             const title = document.getElementById('calendar-event-title').value.trim();
             if (!title) { alert('Please enter a title.'); return; }
+            if (calendarEditingSplitParts) { await saveSplitEventParts(title); return; }
             const allDay = document.getElementById('calendar-event-allday').checked;
             const startDate = document.getElementById('calendar-event-start-date').value;
             const endDate = document.getElementById('calendar-event-end-date').value || startDate;
