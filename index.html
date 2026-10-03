@@ -3897,6 +3897,10 @@
 .agent-card[data-agent="ashanti"] {
     background: #ffd700;
 }
+
+.agent-card[data-agent="lana"] {
+    background: #f5f5dc;
+}
         .agent-avatar-wrap {
     position: relative;
     display: inline-block;
@@ -3989,6 +3993,11 @@
         .agent-card[data-agent="ashanti"] .agent-name,
         .agent-card[data-agent="ashanti"] .agent-role {
             color: #228b22; /* Mark's green, on Ashanti's gold */
+        }
+
+        .agent-card[data-agent="lana"] .agent-name,
+        .agent-card[data-agent="lana"] .agent-role {
+            color: #663399; /* Kat's purple (Luna's bandana), on Lana's beige */
         }
 
         .content-wrapper {
@@ -4695,6 +4704,10 @@
 
         .message.agent-ashanti {
             border-left: 4px solid #ffd700;
+        }
+
+        .message.agent-lana {
+            border-left: 4px solid #c9bd8a;
         }
 
         .quick-replies {
@@ -7118,7 +7131,7 @@
         }
 
         // Agent definitions
-        const agents = ['manny', 'sasha', 'mark', 'kat', 'scott', 'tasha', 'techi', 'ashanti'];
+        const agents = ['manny', 'sasha', 'mark', 'kat', 'scott', 'tasha', 'techi', 'ashanti', 'lana'];
 
         const agentInfo = {
             'manny': { name: 'Manny', role: 'Manager', color: '#001a4d' },
@@ -7128,9 +7141,13 @@
             'scott': { name: 'Scott', role: 'Recruiter', color: '#ff8c00' },
             'tasha': { name: 'Tasha', role: 'Tax Specialist', color: '#cc0000' },
             'techi': { name: 'Techi', role: 'Tech Guru', color: '#00bfff' },
-            'ashanti': { name: 'Ashanti', role: 'Assistant', color: '#ffd700' }
+            'ashanti': { name: 'Ashanti', role: 'Assistant', color: '#ffd700' },
+            'lana': { name: 'Lana', role: 'Language Specialist', color: '#f5f5dc' }
         };
 
+        // Lana's brand beige (#f5f5dc) is nearly white, so wherever an agent's
+        // color is used as a border or accent against a light background
+        // (agentColors below) she gets a deeper tan of the same hue instead.
         const agentColors = {
             'manny': '#001a4d',
             'sasha': '#ff1493',
@@ -7139,7 +7156,8 @@
             'scott': '#ff8c00',
             'tasha': '#cc0000',
             'techi': '#00bfff',
-            'ashanti': '#ffd700'
+            'ashanti': '#ffd700',
+            'lana': '#c9bd8a'
         };
 
         const agentDetails = {
@@ -7182,6 +7200,11 @@
                 description: "ASHANTI is your personal assistant and accountability partner. She maintains the master todo list across all agents, keeps you organized, schedules your calendar, and gently but persistently holds you accountable for progress on your goals. She's your support system.",
                 personality: ['Supportive', 'Organized', 'Empathetic', 'Helpful', 'Proactive', 'Gently Persistent', 'Warm', 'Detail-Oriented'],
                 expertise: ['Todo list management and organization', 'Calendar scheduling and time blocking', 'Task prioritization', 'Progress tracking', 'Accountability and commitment management', 'Workload balancing', 'Deadline management', 'Email drafting and communication support']
+            },
+            'lana': {
+                description: "LANA is your dedicated language learning partner. She builds personalized 90-day plans around the time you actually have, teaches one lesson at a time (and won't move on until you've truly got it), and is your conversation partner from beginner to advanced. She also translates any text into any language, with the cultural context a plain translation leaves out. Luna, her golden retriever, is her constant teaching sidekick.",
+                personality: ['Encouraging', 'Patient', 'Mastery-First', 'Enthusiastic', 'Perceptive', 'Respectful', 'Curious', 'Playful'],
+                expertise: ['Personalized 90-day learning plans', 'One-lesson-at-a-time teaching with mastery checks', 'Conversation practice, beginner to advanced', 'Thematic vocabulary and memory techniques', 'Grammar simplified with comparisons to English', 'Natural acquisition and immersion roleplay', 'Translation with cultural nuance, idioms, and slang', 'Etymology and the history of languages']
             }
         };
 
@@ -11057,7 +11080,8 @@ function capitalizeAgent(agent) {
             'scott': '#fff0e6',
             'tasha': '#ffe6e6',
             'techi': '#e6f7ff',
-            'ashanti': '#fffce6'
+            'ashanti': '#fffce6',
+            'lana': '#fbfbee'
         };
 
         // Darker banner color per agent
@@ -11069,7 +11093,8 @@ function capitalizeAgent(agent) {
             'scott': '#cc7000',
             'tasha': '#990000',
             'techi': '#0099cc',
-            'ashanti': '#b39700'
+            'ashanti': '#b39700',
+            'lana': '#8a7a45'
         };
 
         // Message bubble background per agent
@@ -11081,7 +11106,8 @@ function capitalizeAgent(agent) {
             'scott': '#ffccb3',
             'tasha': '#ffb3b3',
             'techi': '#b3e6ff',
-            'ashanti': '#ffe6b3'
+            'ashanti': '#ffe6b3',
+            'lana': '#ebe6c4'
         };
 
         function updateChatHeader(agent) {
