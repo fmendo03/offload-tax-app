@@ -1986,6 +1986,56 @@
             border-bottom-color: #667eea;
         }
 
+        /* One sub-tab per agent under Settings > Agents - a second, smaller
+           tier below the main tab row, so it's styled as pills instead of
+           another underlined row. Each takes its agent's own color. */
+        .settings-subtabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .settings-subtab-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 14px 5px 6px;
+            background: white;
+            border: 2px solid #e4e4e4;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #555;
+            cursor: pointer;
+        }
+
+        .settings-subtab-btn:hover {
+            border-color: var(--agent-color);
+        }
+
+        .settings-subtab-btn.active {
+            border-color: var(--agent-color);
+            background: var(--agent-pastel);
+            color: #222;
+        }
+
+        .settings-subtab-btn img {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #f2f2f2;
+        }
+
+        .settings-subtab-panel {
+            display: none;
+        }
+
+        .settings-subtab-panel.active {
+            display: block;
+        }
+
         .settings-tab-panel {
             display: none;
         }
@@ -6542,7 +6592,8 @@
             </div>
             <div class="settings-body">
                 <div class="settings-tab-panel" id="settings-tab-agents">
-                    <p class="settings-section-desc">Nothing here yet.</p>
+                    <div class="settings-subtabs" id="settings-agent-subtabs"></div>
+                    <div id="settings-agent-subpanels"></div>
                 </div>
                 <div class="settings-tab-panel" id="settings-tab-todos">
                     <div class="settings-section">
@@ -14294,6 +14345,41 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-tab-${tab}`));
         }
 
+        // One sub-tab (and panel) per agent under Settings > Agents, built
+        // from the same `agents` list as everything else so a newly added
+        // agent gets one automatically. Panels are blank placeholders for now.
+        function initAgentSettingsSubtabs() {
+            const tabs = document.getElementById('settings-agent-subtabs');
+            const panels = document.getElementById('settings-agent-subpanels');
+            agents.forEach(agent => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'settings-subtab-btn';
+                btn.dataset.agent = agent;
+                btn.style.setProperty('--agent-color', agentColors[agent]);
+                btn.style.setProperty('--agent-pastel', agentPastelColors[agent]);
+                const img = document.createElement('img');
+                img.src = `avatars/${agent}.png`;
+                img.alt = '';
+                btn.appendChild(img);
+                btn.appendChild(document.createTextNode(agentInfo[agent].name));
+                btn.addEventListener('click', () => showAgentSettingsSubtab(agent));
+                tabs.appendChild(btn);
+
+                const panel = document.createElement('div');
+                panel.className = 'settings-subtab-panel';
+                panel.id = `settings-agent-panel-${agent}`;
+                panel.innerHTML = '<p class="settings-section-desc">Nothing here yet.</p>';
+                panels.appendChild(panel);
+            });
+            showAgentSettingsSubtab(agents[0]);
+        }
+
+        function showAgentSettingsSubtab(agent) {
+            document.querySelectorAll('.settings-subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.agent === agent));
+            document.querySelectorAll('.settings-subtab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-agent-panel-${agent}`));
+        }
+
         // --- Global Settings Save -------------------------------------------
         // One Save button, pinned to the right of the tab row, covering
         // every tab's pending changes at once rather than each section
@@ -20025,6 +20111,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (e.key === 'Enter') submitNewTopic();
         });
 
+        initAgentSettingsSubtabs();
         initCalendarTodoModal();
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
         initNewTodoRecurrenceUi();
