@@ -3073,6 +3073,111 @@
             flex-shrink: 0;
         }
 
+        /* To-Do page: three-column board (Not Scheduled / Scheduled / Completed)
+           over a details panel. */
+        .todos-board {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .todos-kanban {
+            flex: 1 1 60%;
+            min-height: 0;
+            display: flex;
+            gap: 12px;
+            padding: 12px 16px;
+        }
+
+        .todos-kanban-col {
+            --col-color: #888;
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border: 1px solid #e3e3ea;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #todos-col-unscheduled { --col-color: #f57c00; }
+        #todos-col-scheduled { --col-color: #4a5bd6; }
+        #todos-col-completed { --col-color: #2e9d57; }
+
+        .todos-kanban-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #333;
+            background: #fafafa;
+            border-bottom: 3px solid var(--col-color);
+            flex-shrink: 0;
+        }
+
+        .todos-kanban-count {
+            min-width: 22px;
+            padding: 1px 8px;
+            border-radius: 999px;
+            background: var(--col-color);
+            color: white;
+            font-size: 11px;
+            text-align: center;
+            letter-spacing: 0;
+        }
+
+        .todos-kanban-col .topics-categories {
+            padding: 0;
+        }
+
+        .todos-kanban-col .topics-empty {
+            padding: 14px 4px;
+            text-align: center;
+        }
+
+        #todos-list-scroll {
+            min-height: 90px;
+        }
+
+        /* The New To-Do form lives inside the first column now, so it has
+           to be able to shrink to fit it (and scroll) rather than push the
+           column's own bottom out of view. */
+        #todos-col-unscheduled .todos-new-bar-collapse {
+            flex-shrink: 1;
+            min-height: 0;
+        }
+
+        .todos-details-pane {
+            flex: 0 0 36%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            border-top: 1px solid #e6e6e6;
+            background: white;
+        }
+
+        .todos-details-pane .split-pane-header {
+            padding-top: 10px;
+            padding-bottom: 10px;
+        }
+
+        /* A calendar card the To-Do page just jumped to - pulses a few times. */
+        .calendar-week-event.calendar-event-flash {
+            animation: calendar-event-flash 0.8s ease-in-out 3;
+            z-index: 6;
+        }
+
+        @keyframes calendar-event-flash {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); filter: none; }
+            50% { box-shadow: 0 0 0 5px rgba(255, 152, 0, 0.95), 0 0 24px 10px rgba(255, 152, 0, 0.75); filter: brightness(1.15); }
+        }
+
         .todos-bulk-toolbar {
             display: flex;
             align-items: center;
@@ -6762,28 +6867,24 @@ body.va-open #notification-toasts {
         <!-- To-Do Page -->
         <div class="page-view" id="todos-view" style="display: none;">
             <div class="page-view-header"><h1>To-Do</h1><div class="agent-quickbar" id="todos-agent-quickbar"></div></div>
-            <div class="topics-split">
-                <div class="topics-pane">
+            <div class="todos-board">
+            <div class="todos-kanban">
+                <!-- Not Scheduled: everything that isn't on the calendar yet (including
+                     anything that missed its day), plus the New To-Do form. -->
+                <div class="todos-kanban-col" id="todos-col-unscheduled">
+                    <div class="todos-kanban-head">
+                        <span>Not Scheduled</span><span class="todos-kanban-count" id="todos-count-unscheduled">0</span>
+                    </div>
                     <div class="todos-bulk-toolbar">
                         <label class="todos-bulk-select-all">
                             <input type="checkbox" id="todos-select-all-checkbox">
                             <span>Select All</span>
                         </label>
-                        <div style="display: flex; gap: 8px;">
-                            <button type="button" class="task-action-btn" id="todos-bulk-unschedule-btn" disabled>Unschedule Selected</button>
-                            <button type="button" class="task-action-btn solid-complete" id="todos-bulk-schedule-btn" disabled>Schedule Selected</button>
-                        </div>
+                        <button type="button" class="task-action-btn solid-complete" id="todos-bulk-schedule-btn" disabled>Schedule Selected</button>
                     </div>
                     <div class="split-pane-scroll" id="todos-list-scroll">
                         <div class="topics-categories" id="todos-active-list"></div>
-                        <div class="topics-empty" id="todos-empty" style="display:none;">Nothing on your to-do list yet - add one below to get started.</div>
-                        <div class="topics-discussed-section" id="todos-completed-section" style="display:none;">
-                            <div class="topics-discussed-header" id="todos-completed-toggle">
-                                <span class="topics-discussed-chevron" id="todos-completed-chevron">&#9656;</span>
-                                <span id="todos-completed-title">Completed</span>
-                            </div>
-                            <div class="topics-discussed-list" id="todos-completed-list" style="display:none;"></div>
-                        </div>
+                        <div class="topics-empty" id="todos-empty" style="display:none;">Nothing waiting to be scheduled - add a to-do below to get started.</div>
                     </div>
                     <button type="button" class="todos-new-bar-toggle-btn" id="todos-new-bar-toggle-btn">
                         <span id="todos-new-bar-toggle-arrow">&#9650;</span>
@@ -6895,15 +6996,43 @@ body.va-open #notification-toasts {
                         <button type="button" class="task-action-btn solid-complete" id="todos-new-btn">Add To-Do</button>
                     </div>
                 </div>
-                <div class="preview-pane">
-                    <div class="split-pane-header">
-                        <h2>To-Do Details</h2>
+                <!-- Scheduled: on the calendar. Double-click one to jump to its spot. -->
+                <div class="todos-kanban-col" id="todos-col-scheduled">
+                    <div class="todos-kanban-head">
+                        <span>Scheduled</span><span class="todos-kanban-count" id="todos-count-scheduled">0</span>
                     </div>
-                    <div class="split-pane-scroll" id="todos-preview-body">
-                        <div class="page-empty" id="todos-preview-empty">Select a to-do on the left to view its details here.</div>
-                        <div class="topics-preview-content" id="todos-preview-content" style="display:none;"></div>
+                    <div class="todos-bulk-toolbar">
+                        <label class="todos-bulk-select-all">
+                            <input type="checkbox" id="todos-select-all-scheduled">
+                            <span>Select All</span>
+                        </label>
+                        <button type="button" class="task-action-btn" id="todos-bulk-unschedule-btn" disabled>Unschedule Selected</button>
+                    </div>
+                    <div class="split-pane-scroll">
+                        <div class="topics-categories" id="todos-scheduled-list"></div>
+                        <div class="topics-empty" id="todos-scheduled-empty" style="display:none;">Nothing on the calendar yet.</div>
                     </div>
                 </div>
+                <!-- Completed: marked complete, wherever it was scheduled. -->
+                <div class="todos-kanban-col" id="todos-col-completed">
+                    <div class="todos-kanban-head">
+                        <span>Completed</span><span class="todos-kanban-count" id="todos-count-completed">0</span>
+                    </div>
+                    <div class="split-pane-scroll">
+                        <div class="topics-categories" id="todos-completed-list"></div>
+                        <div class="topics-empty" id="todos-completed-empty" style="display:none;">Nothing completed yet.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="todos-details-pane">
+                <div class="split-pane-header">
+                    <h2>To-Do Details</h2>
+                </div>
+                <div class="split-pane-scroll" id="todos-preview-body">
+                    <div class="page-empty" id="todos-preview-empty">Click a to-do above to see its details here.</div>
+                    <div class="topics-preview-content" id="todos-preview-content" style="display:none;"></div>
+                </div>
+            </div>
             </div>
         </div>
 
@@ -15934,6 +16063,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (startMin + durationMin > 24 * 60) durationMin = 24 * 60 - startMin;
 
             const block = document.createElement('div');
+            block.dataset.eventId = e.id;
             block.className = 'calendar-week-event'
                 + (e.status === 'done' ? ' done' : '')
                 + (e.source === 'external' ? ' external' : '')
@@ -16060,6 +16190,28 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             selectedCalendarEventId = eventId;
             showCalendarPage();
             setTimeout(() => scrollCalendarWeekToEvent(event), 150);
+            // Both halves of a split card flash together.
+            const ids = new Set([eventId]);
+            if (event.splitOf) ids.add(event.splitOf);
+            calendarEvents.filter(e => e.splitOf === eventId).forEach(e => ids.add(e.id));
+            setTimeout(() => flashCalendarEvents(ids, 0), 350);
+        }
+
+        // Pulses the given events' cards once they're on the grid (the page
+        // is still drawing the week right after a jump, so this retries).
+        function flashCalendarEvents(ids, attempt) {
+            const blocks = [];
+            ids.forEach(id => document.querySelectorAll(`.calendar-week-event[data-event-id="${id}"]`).forEach(b => blocks.push(b)));
+            if (!blocks.length) {
+                if (attempt < 10) setTimeout(() => flashCalendarEvents(ids, attempt + 1), 200);
+                return;
+            }
+            blocks.forEach(block => {
+                block.classList.remove('calendar-event-flash');
+                void block.offsetWidth;
+                block.classList.add('calendar-event-flash');
+                setTimeout(() => block.classList.remove('calendar-event-flash'), 2600);
+            });
         }
 
         async function createCalendarEvent(payload) {
@@ -17356,7 +17508,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Discussion Topics' Already Discussed.
         let todosList = [];
         let selectedTodoId = null;
-        let todosCompletedExpanded = false;
         // Multi-select for "Schedule Selected with Ashanti" (see
         // openBulkScheduleModal/saveBulkScheduleTodos) - pruned against
         // currently-live active todos on every render, same pattern as the
@@ -17817,48 +17968,43 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return event ? new Date(event.start).getTime() : Infinity;
         }
 
+        // Three columns, each a filter of the same list: Not Scheduled
+        // (anything not on the calendar, including a to-do that missed its
+        // day), Scheduled (on the calendar), Completed.
         function renderTodosPage() {
-            const activeContainer = document.getElementById('todos-active-list');
-            activeContainer.innerHTML = '';
-            const active = todosList.filter(t => !t.completed)
+            const unscheduled = todosList.filter(t => !t.completed && !isTodoScheduled(t));
+            const scheduled = todosList.filter(t => !t.completed && isTodoScheduled(t))
                 .sort((a, b) => todoScheduledSortKey(a) - todoScheduledSortKey(b));
             const completed = todosList.filter(t => t.completed)
                 .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
 
             // Prune stale ids (deleted/completed since selected) - same
             // pattern as the Projects page's selectedProjectIds.
-            const activeIds = new Set(active.map(t => t.id));
-            Array.from(selectedTodoIds).forEach(id => { if (!activeIds.has(id)) selectedTodoIds.delete(id); });
+            const openIds = new Set([...unscheduled, ...scheduled].map(t => t.id));
+            Array.from(selectedTodoIds).forEach(id => { if (!openIds.has(id)) selectedTodoIds.delete(id); });
 
-            document.getElementById('todos-empty').style.display = todosList.length ? 'none' : 'block';
-            active.forEach(todo => activeContainer.appendChild(buildTodoItemEl(todo)));
+            [
+                ['todos-active-list', 'todos-empty', 'todos-count-unscheduled', unscheduled],
+                ['todos-scheduled-list', 'todos-scheduled-empty', 'todos-count-scheduled', scheduled],
+                ['todos-completed-list', 'todos-completed-empty', 'todos-count-completed', completed]
+            ].forEach(([listId, emptyId, countId, list]) => {
+                const container = document.getElementById(listId);
+                container.innerHTML = '';
+                list.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
+                document.getElementById(emptyId).style.display = list.length ? 'none' : 'block';
+                document.getElementById(countId).textContent = list.length;
+            });
 
-            const completedSection = document.getElementById('todos-completed-section');
-            const completedList = document.getElementById('todos-completed-list');
-            const completedChevron = document.getElementById('todos-completed-chevron');
-            document.getElementById('todos-completed-title').textContent = `Completed (${completed.length})`;
-            completedSection.style.display = completed.length ? 'block' : 'none';
-            completedChevron.classList.toggle('expanded', todosCompletedExpanded);
-            completedList.style.display = todosCompletedExpanded ? 'block' : 'none';
-            completedList.innerHTML = '';
-            completed.forEach(todo => completedList.appendChild(buildTodoItemEl(todo)));
-
-            const selectAllCheckbox = document.getElementById('todos-select-all-checkbox');
-            if (selectAllCheckbox) {
-                selectAllCheckbox.checked = active.length > 0 && active.every(t => selectedTodoIds.has(t.id));
-                selectAllCheckbox.disabled = active.length === 0;
-            }
-            // The two bulk actions act on opposite subsets of the same
-            // selection - Schedule only makes sense for a selected to-do
-            // that isn't already on the calendar, Unschedule only for one
-            // that is - so each button enables independently based on
-            // whether its own subset is non-empty, not on the selection as
-            // a whole.
-            const selectedActive = Array.from(selectedTodoIds).map(id => todosList.find(t => t.id === id)).filter(Boolean);
-            const bulkBtn = document.getElementById('todos-bulk-schedule-btn');
-            if (bulkBtn) bulkBtn.disabled = !selectedActive.some(t => !isTodoScheduled(t));
-            const unscheduleBtn = document.getElementById('todos-bulk-unschedule-btn');
-            if (unscheduleBtn) unscheduleBtn.disabled = !selectedActive.some(t => isTodoScheduled(t));
+            [['todos-select-all-checkbox', unscheduled], ['todos-select-all-scheduled', scheduled]].forEach(([id, list]) => {
+                const checkbox = document.getElementById(id);
+                checkbox.checked = list.length > 0 && list.every(t => selectedTodoIds.has(t.id));
+                checkbox.disabled = list.length === 0;
+            });
+            // Schedule acts on the selected Not Scheduled to-dos, Unschedule
+            // on the selected Scheduled ones - each button enables on its
+            // own column's selection.
+            document.getElementById('todos-bulk-schedule-btn').disabled = !unscheduled.some(t => selectedTodoIds.has(t.id));
+            document.getElementById('todos-bulk-unschedule-btn').disabled = !scheduled.some(t => selectedTodoIds.has(t.id));
 
             renderTodosPreviewPane();
         }
@@ -17939,7 +18085,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             badges.style.display = 'flex';
             badges.style.gap = '4px';
             badges.style.flexShrink = '0';
-            todoStatusLabels(todo).forEach(status => {
+            // The column already says Scheduled / Not Scheduled / Completed,
+            // so the card only needs to flag Not Finished.
+            todoStatusLabels(todo).filter(status => status === 'Not Finished').forEach(status => {
                 const badge = document.createElement('span');
                 badge.className = 'todo-status-badge ' + todoStatusBadgeClass(status);
                 badge.textContent = status;
@@ -17948,6 +18096,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             row.appendChild(badges);
 
             row.addEventListener('click', () => { selectedTodoId = todo.id; renderTodosPage(); });
+            // Double-clicking a scheduled to-do takes you to its card on the
+            // Calendar, which flashes.
+            if (isTodoScheduled(todo) && !todo.completed) {
+                row.title = 'Double-click to see it on the calendar';
+                row.addEventListener('dblclick', () => goToCalendarEvent(todo.calendarEventId));
+            }
             return row;
         }
 
@@ -21299,10 +21453,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('todos-new-title').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitNewTodo();
         });
-        document.getElementById('todos-completed-toggle').addEventListener('click', () => {
-            todosCompletedExpanded = !todosCompletedExpanded;
-            renderTodosPage();
-        });
 
         document.getElementById('suggestions-nav-btn').addEventListener('click', showSuggestionsPage);
         document.getElementById('settings-nav-btn').addEventListener('click', showSettingsPage);
@@ -21406,11 +21556,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
         });
 
-        document.getElementById('todos-select-all-checkbox').addEventListener('change', (e) => {
-            const active = todosList.filter(t => !t.completed);
-            if (e.target.checked) active.forEach(t => selectedTodoIds.add(t.id));
-            else active.forEach(t => selectedTodoIds.delete(t.id));
-            renderTodosPage();
+        // Each column's "Select All" covers just that column.
+        [['todos-select-all-checkbox', t => !t.completed && !isTodoScheduled(t)],
+         ['todos-select-all-scheduled', t => !t.completed && isTodoScheduled(t)]].forEach(([id, inColumn]) => {
+            document.getElementById(id).addEventListener('change', (e) => {
+                const column = todosList.filter(inColumn);
+                if (e.target.checked) column.forEach(t => selectedTodoIds.add(t.id));
+                else column.forEach(t => selectedTodoIds.delete(t.id));
+                renderTodosPage();
+            });
         });
         document.getElementById('todos-bulk-schedule-btn').addEventListener('click', openBulkScheduleModal);
         document.getElementById('todos-bulk-unschedule-btn').addEventListener('click', runBulkUnscheduleTodos);
