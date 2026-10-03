@@ -3950,6 +3950,111 @@
     transform: scale(1.05);
 }
 
+/* An agent with something new for you pulses in their own color until
+   their chat is opened (see showAgentNotification). */
+.agent-card.flashing {
+    animation: agent-card-flash 1.1s ease-in-out infinite;
+}
+
+@keyframes agent-card-flash {
+    0%, 100% {
+        box-shadow: 0 0 0 0 transparent;
+        filter: none;
+    }
+    50% {
+        box-shadow: 0 0 26px 10px var(--flash-color);
+        filter: brightness(1.35) saturate(1.2);
+    }
+}
+
+#notification-toasts {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 1300;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+    pointer-events: none;
+}
+
+.notification-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 340px;
+    max-width: calc(100vw - 40px);
+    padding: 12px 14px;
+    background: white;
+    border-left: 5px solid var(--agent-color);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+    animation: notification-toast-in 0.3s ease-out;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.notification-toast:hover {
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.3);
+}
+
+.notification-toast.leaving {
+    opacity: 0;
+    transform: translateY(14px);
+}
+
+@keyframes notification-toast-in {
+    from { opacity: 0; transform: translateY(40px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.notification-toast-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #f2f2f2;
+    flex-shrink: 0;
+}
+
+.notification-toast-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-toast-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #222;
+}
+
+.notification-toast-text {
+    margin-top: 2px;
+    font-size: 12px;
+    color: #555;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.notification-toast-close {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    font-size: 18px;
+    line-height: 1;
+    color: #999;
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+.notification-toast-close:hover {
+    color: #333;
+}
+
 .agent-card.active {
     border-color: #333;
 }
@@ -6823,6 +6928,9 @@
         </div>
     </div>
 
+    <!-- New-notification toasts (see showAgentNotification) -->
+    <div id="notification-toasts"></div>
+
     <!-- Calendar "Add To-Do" modal - the To-Do page's own New To-Do form (its
          fields are cloned in at init, see initCalendarTodoModal) plus a date and
          time, so what gets created is a real to-do that's scheduled onto the
@@ -7422,6 +7530,7 @@
         }
 
         function updateAgentBadge(agent) {
+            detectNewNotifications(agent);
             const badge = document.getElementById(`badge-${agent}`);
             if (badge) {
                 const count = getUnreadCount(agent);
@@ -7444,6 +7553,177 @@
         function updateAllBadges() {
             agents.forEach(updateAgentBadge);
         }
+
+        // --- New-notification alerts ----------------------------------------
+        // Whenever something new lands for an agent - a message, a prompt
+        // (About You / firm question or suggestion), a check-in, a finished
+        // task - a bubble-pop sounds, a toast slides up bottom-right (click
+        // it to go there), and that agent's card on the Agents page flashes
+        // in their color until their chat is opened. Everything that can
+        // create one already ends in updateAgentBadge, so arrivals are
+        // detected there by comparing against the last snapshot, rather
+        // than adding a hook at every call site. Nothing fires for an agent
+        // whose chat is open (you're already looking at it), or for what was
+        // already waiting when the app loaded (see armNotifications).
+        let notificationsArmed = false;
+        const notifySnapshot = {};
+        const flashingAgents = new Set();
+        let notifyAudioCtx = null;
+
+        function pendingPromptTexts(agent) {
+            const texts = [];
+            [learnQuestionsData, personalQuestionsData].forEach(data => {
+                (data[agent] || []).forEach(item => { if (!item.answered) texts.push(item.question); });
+            });
+            [thoughtsData, personalThoughtsData].forEach(data => {
+                (data[agent] || []).forEach(idea => texts.push(idea));
+            });
+            return texts;
+        }
+
+        function snapshotNotifyState(agent) {
+            return {
+                unread: Math.max(0, countAgentMessages(agent) - (lastReadCounts[agent] || 0)),
+                prompts: pendingPromptTexts(agent),
+                calendarCheckin: countPendingCalendarCheckin(agent),
+                todoCheckin: countPendingTodoMorningCheckin(agent)
+            };
+        }
+
+        function armNotifications() {
+            agents.forEach(agent => { notifySnapshot[agent] = snapshotNotifyState(agent); });
+            notificationsArmed = true;
+        }
+
+        function isViewingAgentChat(agent) {
+            return currentAgent === agent && document.getElementById('content-wrapper').style.display !== 'none';
+        }
+
+        function notifyPreview(text, max = 110) {
+            const clean = String(text || '').replace(/[*_#>`]/g, '').replace(/\s+/g, ' ').trim();
+            return clean.length > max ? clean.slice(0, max - 1) + '…' : clean;
+        }
+
+        function detectNewNotifications(agent) {
+            if (!notificationsArmed) return;
+            const prev = notifySnapshot[agent];
+            const next = snapshotNotifyState(agent);
+            notifySnapshot[agent] = next;
+            if (!prev || isViewingAgentChat(agent)) return;
+
+            if (next.unread > prev.unread) {
+                const last = [...(chatHistory[agent] || [])].reverse().find(m => m.type === 'agent');
+                // A finished task already gets its own "Task complete"
+                // alert (see completeProjectTaskFromChat) - this is just
+                // the chat notice that accompanies it.
+                if (last && !/^I've completed the /.test(last.text || '')) {
+                    const label = last.projectProposal || last.taskProposal ? 'New proposal'
+                        : last.generatedFiles ? 'Sent you a file' : 'New unread message';
+                    showAgentNotification(agent, label, notifyPreview(last.text));
+                }
+            }
+            const newPrompts = next.prompts.filter(p => !prev.prompts.includes(p));
+            if (newPrompts.length) {
+                showAgentNotification(agent, 'New prompt', notifyPreview(newPrompts[0]));
+            }
+            if (next.calendarCheckin > prev.calendarCheckin && calendarCheckinData) {
+                showAgentNotification(agent, 'Checking in', notifyPreview(calendarCheckinData.message));
+            }
+            if (next.todoCheckin > prev.todoCheckin) {
+                showAgentNotification(agent, 'Checking in',
+                    `${next.todoCheckin} to-do${next.todoCheckin === 1 ? '' : 's'} didn't get finished - done, or reschedule?`);
+            }
+        }
+
+        // An agent finishing a task is the one event not visible in the
+        // counts above (Francis marking one complete himself is too), so it
+        // calls this directly.
+        function notifyTaskComplete(agent, taskName) {
+            if (!notificationsArmed || isViewingAgentChat(agent)) return;
+            showAgentNotification(agent, 'Task complete', notifyPreview(taskName));
+        }
+
+        function showAgentNotification(agent, label, text) {
+            flashingAgents.add(agent);
+            updateAgentFlash();
+            playBubblePop();
+
+            const container = document.getElementById('notification-toasts');
+            while (container.children.length >= 4) container.firstElementChild.remove();
+
+            const toast = document.createElement('div');
+            toast.className = 'notification-toast';
+            toast.style.setProperty('--agent-color', agentColors[agent]);
+            toast.innerHTML = `
+                <img class="notification-toast-avatar" src="avatars/${agent}.png" alt="">
+                <div class="notification-toast-body">
+                    <div class="notification-toast-title"></div>
+                    <div class="notification-toast-text"></div>
+                </div>
+                <button type="button" class="notification-toast-close" aria-label="Dismiss">&times;</button>`;
+            toast.querySelector('.notification-toast-title').textContent = `${agentInfo[agent].name}: ${label}`;
+            toast.querySelector('.notification-toast-text').textContent = text;
+
+            const dismiss = () => {
+                toast.classList.add('leaving');
+                setTimeout(() => toast.remove(), 250);
+            };
+            toast.addEventListener('click', (e) => {
+                if (e.target.closest('.notification-toast-close')) { dismiss(); return; }
+                dismiss();
+                selectAgent(agent);
+            });
+            container.appendChild(toast);
+            setTimeout(dismiss, 8000);
+        }
+
+        function updateAgentFlash() {
+            document.querySelectorAll('.agent-card').forEach(card => {
+                const agent = card.dataset.agent;
+                card.style.setProperty('--flash-color', agentColors[agent]);
+                card.classList.toggle('flashing', flashingAgents.has(agent));
+            });
+        }
+
+        // A soft rising "bubble pop", synthesized so there's no audio file to
+        // ship. Browsers keep audio locked until the page has been clicked
+        // or typed in once (see the unlock listeners below) - before that
+        // it's simply silent rather than an error.
+        function playBubblePop() {
+            try {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                if (!notifyAudioCtx) notifyAudioCtx = new Ctx();
+                const ctx = notifyAudioCtx;
+                if (ctx.state === 'suspended') ctx.resume();
+                const t = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(380, t);
+                osc.frequency.exponentialRampToValueAtTime(1100, t + 0.09);
+                gain.gain.setValueAtTime(0.0001, t);
+                gain.gain.exponentialRampToValueAtTime(0.35, t + 0.012);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.18);
+            } catch (e) {
+                // audio unavailable - the toast and flash still show
+            }
+        }
+
+        ['pointerdown', 'keydown'].forEach(evt => {
+            document.addEventListener(evt, () => {
+                try {
+                    const Ctx = window.AudioContext || window.webkitAudioContext;
+                    if (!Ctx) return;
+                    if (!notifyAudioCtx) notifyAudioCtx = new Ctx();
+                    if (notifyAudioCtx.state === 'suspended') notifyAudioCtx.resume();
+                } catch (e) { /* ignore */ }
+            }, { once: false, passive: true });
+        });
 
         function setMiniBadge(el, count) {
             if (!el) return;
@@ -10224,6 +10504,7 @@ function completeProjectTaskFromChat(agent, taskId, createdFiles) {
     task.completedAt = new Date();
     task.viewed = false;
     refreshTaskViewsForAgent(agent);
+    notifyTaskComplete(agent, task.name || task.task);
     return { completed: true };
 }
 
@@ -11078,6 +11359,7 @@ function capitalizeAgent(agent) {
                 card.addEventListener('click', () => selectAgent(agent));
                 agentsGrid.appendChild(card);
             });
+            updateAgentFlash();
         }
 
         // Small clickable avatar row for jumping straight into an agent's 1:1
@@ -11149,6 +11431,9 @@ function capitalizeAgent(agent) {
     // Every send and render below assumes this exists - without it opening
     // the agent throws and typing a message silently fails.
     if (!chatHistory[agent]) chatHistory[agent] = [];
+
+    flashingAgents.delete(agent);
+    updateAgentFlash();
 
     currentAgent = agent;
     updateChatHeader(agent);
@@ -20365,6 +20650,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // know each one's Scheduled/Completed status even if the To-Do page
             // itself is never opened this session.
             loadTodosData();
+            // Whatever is already waiting once the first loads settle is
+            // old news - only what arrives after this counts as new.
+            setTimeout(armNotifications, 5000);
         }
 
         let currentUser = null;
