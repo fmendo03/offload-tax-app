@@ -649,52 +649,56 @@ PERSONAL_QUESTION_BANKS = {
 }
 
 # Static placeholder idea banks for "Suggestions for You" - personal, not
-# business, suggestions - again grounded in that agent's own interests/expertise.
+# business, suggestions grounded in that agent's own interests/expertise. Like
+# IDEA_BANKS, each is a task the agent itself will go do (first person, a
+# document or researched list they can actually produce), never advice for
+# Francis to carry out on his own - accepting one creates a real Workspace
+# task assigned to that agent.
 PERSONAL_IDEA_BANKS = {
     'manny': [
-        "Might be worth blocking one real day off this month — even strategists need recovery time.",
-        "If you ever want a low-key hobby, chess apps are a great way to decompress between calls.",
-        "A short walk with your phone on silent could be a nice reset between meetings.",
+        "I'll draft a one-page plan for protecting one full day off each month, with a few ways to make it stick.",
+        "I'll put together a short list of low-pressure chess and strategy games you can play in ten-minute breaks.",
+        "I'll write up a simple phone-silent walk routine you can drop between meetings, with a few route ideas.",
     ],
     'sasha': [
-        "Following a few accounts outside your industry might help you unplug when you scroll.",
-        "A no-phone hour in the evening could do wonders — trust the social media person on this one.",
-        "If you want a low-effort hobby, a single low-maintenance plant is a nice place to start.",
+        "I'll put together a short list of accounts and creators outside your industry that are worth following to unplug.",
+        "I'll draft a simple evening no-phone routine you can try for a week, with a one-page tracker.",
+        "I'll research a few low-maintenance houseplants that suit a busy schedule and write up the care basics.",
     ],
     'mark': [
-        "A round of golf (or even mini golf) could be a good excuse to unplug for a few hours.",
-        "Networking events don't have to be work — one purely social one a month might be refreshing.",
-        "Even 20 minutes on a home project can feel like a genuine mental break from the practice.",
+        "I'll put together a short list of golf and mini-golf spots that make an easy half-day break.",
+        "I'll draft a plan for one purely social event a month - a few ideas and a simple way to pick between them.",
+        "I'll write up a list of quick 20-minute home projects you can knock out as a mental break from the practice.",
     ],
     'kat': [
-        "A few pages of fiction before bed instead of your phone might help you wind down better.",
-        "A short daily stretch or breathing practice could help take the edge off busy weeks.",
-        "Worth trying one home-cooked, screen-free meal a week — good for the nervous system.",
+        "I'll put together a short reading list of fiction picks for winding down before bed instead of scrolling.",
+        "I'll draft a five-minute stretch and breathing routine for the end of a busy day.",
+        "I'll write up three easy, screen-free dinner recipes with a simple plan for fitting one in each week.",
     ],
     'scott': [
-        "Even a 20-minute walk between calls can reset your energy more than a coffee does.",
-        "A recurring dinner or drinks with friends might be worth protecting on your calendar.",
-        "If you ever want to unwind, a true crime podcast on a walk is a nice combo — highly recommend.",
+        "I'll put together a list of 20-minute walk routes and a few podcast picks to pair with them.",
+        "I'll draft a recurring friends-dinner plan, with a few ways to protect it on your calendar.",
+        "I'll write up a short list of true crime podcasts to unwind with, with a one-line description of each.",
     ],
     'tasha': [
-        "A short hike or walk outside this weekend could be a good reset from screens.",
-        "A quick logic puzzle in the morning might be a nice, low-stakes way to start the day.",
-        "Even a small windowsill herb garden could be a nice low-effort hobby.",
+        "I'll research a few good short hikes and put together a one-page weekend guide.",
+        "I'll put together a week of quick logic puzzles to start your mornings, with the answers.",
+        "I'll write up a simple windowsill herb garden setup guide with a shopping list.",
     ],
     'techi': [
-        "A digital declutter — unused apps, notifications off — might lighten your mental load.",
-        "If you want a low-key hobby, a simple retro game or sci-fi show could be a fun escape.",
-        "Worth setting a hard stop time for checking work stuff on your phone at night.",
+        "I'll draft a digital declutter checklist - unused apps, notifications to turn off - you can finish in 30 minutes.",
+        "I'll put together a short list of sci-fi shows and retro games for a low-key escape.",
+        "I'll write up a simple hard-stop routine for checking work on your phone at night, with the settings to change.",
     ],
     'ashanti': [
-        "A five-minute nightly brain-dump journal could help you actually switch off from work.",
-        "Worth protecting one meal a day that's not eaten at your desk.",
-        "An audiobook during downtime could be a nice way to unwind without more screen time.",
+        "I'll put together a simple five-minute nightly brain-dump journal template you can print.",
+        "I'll draft a plan for protecting one meal a day away from your desk, with easy meal ideas.",
+        "I'll pull together a short list of audiobooks to unwind with, picked to fit your tastes.",
     ],
     'lana': [
-        "Ten minutes a day with a song in another language is a surprisingly easy way to start picking one up.",
-        "Try naming five things you see on a walk in a language you're curious about — Luna and I do it all the time.",
-        "Worth a thought: a children's book in a new language is one of the gentlest ways in.",
+        "I'll put together a short list of songs in another language, with a line-by-line meaning for one to start with.",
+        "I'll draft a simple name-five-things-on-a-walk language game, with a vocabulary list to match.",
+        "I'll write up a list of beginner children's books in a language you're curious about, and where to find them.",
     ],
 }
 

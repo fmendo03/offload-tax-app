@@ -13868,21 +13868,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             loadThoughtsSection();
         }
 
-        // Accepting a firm suggestion turns it into a real task: a single-task
-        // project (so it shows in Projects, same as a multi-agent proposal) with
-        // one task in that agent's own Workspace, sitting "not started" until
-        // Francis clicks Start.
-        async function acceptThought(agent, idea) {
-            try {
-                await fetch('/thoughts/accept', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ agent, idea })
-                });
-            } catch (error) {
-                console.error('Failed to accept thought:', error);
-            }
-
+        // Accepting any suggestion - for the firm or for you - turns it into a
+        // real task the agent will do: a single-task project (so it shows in
+        // Projects, same as a multi-agent proposal) with one task in that
+        // agent's own Workspace, sitting "not started" until Francis clicks
+        // Start.
+        function createTaskFromSuggestion(agent, idea) {
             const projectId = makeTaskId();
             const createdAt = new Date();
             const task = createProjectTaskEntry(agent, projectId, idea, idea, createdAt);
@@ -13901,11 +13892,26 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             displayProjectsList();
 
             selectAgent(agent);
+        }
+
+        async function acceptThought(agent, idea) {
+            try {
+                await fetch('/thoughts/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent, idea })
+                });
+            } catch (error) {
+                console.error('Failed to accept thought:', error);
+            }
+            createTaskFromSuggestion(agent, idea);
             loadThoughtsSection();
         }
 
         // Suggestions For You - personal (not business) suggestions, grounded in
-        // the agent's own interests/expertise. Mirrors "Suggestions For Your Firm".
+        // the agent's own interests/expertise. Mirrors "Suggestions For Your
+        // Firm": each is something the agent will do, and accepting it creates
+        // their task.
         let personalThoughtsData = {};
         let personalThoughtsIndex = 0;
 
@@ -14006,10 +14012,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             } catch (error) {
                 console.error('Failed to accept personal thought:', error);
             }
-
-            selectAgent(agent);
-            inputBox.value = `I want to try this: "${idea}". Let's talk about how I could actually work it in.`;
-            sendMessage();
+            createTaskFromSuggestion(agent, idea);
             loadPersonalThoughtsSection();
         }
 
