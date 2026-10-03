@@ -2014,6 +2014,34 @@
             border-color: var(--agent-color);
         }
 
+        /* Role tooltip - shown right away on hover, unlike a native title. */
+        .settings-subtab-btn {
+            position: relative;
+        }
+
+        .settings-subtab-btn::after {
+            content: attr(data-role);
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 4px 10px;
+            background: #333;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            border-radius: 6px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.12s ease;
+            z-index: 5;
+        }
+
+        .settings-subtab-btn:hover::after {
+            opacity: 1;
+        }
+
         .settings-subtab-btn.active {
             border-color: var(--agent-color);
             background: var(--agent-pastel);
@@ -14356,6 +14384,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 btn.type = 'button';
                 btn.className = 'settings-subtab-btn';
                 btn.dataset.agent = agent;
+                btn.dataset.role = agentInfo[agent].role;
                 btn.style.setProperty('--agent-color', agentColors[agent]);
                 btn.style.setProperty('--agent-pastel', agentPastelColors[agent]);
                 const img = document.createElement('img');
