@@ -4005,6 +4005,141 @@
     padding-right: 42px !important;
 }
 
+/* Floating voice-message button (see the Voice assistant block in the
+   script) - sits just right of the 220px sidebar so it never covers the
+   chat's Send button or the toasts at bottom-right. */
+#voice-assistant-btn {
+    position: fixed;
+    left: 240px;
+    bottom: 24px;
+    width: 54px;
+    height: 54px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #4a5bd6);
+    color: white;
+    cursor: pointer;
+    z-index: 1250;
+    box-shadow: 0 4px 14px rgba(74, 91, 214, 0.45);
+    transition: transform 0.15s ease;
+}
+
+#voice-assistant-btn:hover {
+    transform: scale(1.08);
+}
+
+#voice-assistant-btn.listening {
+    background: #e53935;
+    animation: voice-mic-pulse 1.2s ease-in-out infinite;
+}
+
+#voice-assistant-panel {
+    position: fixed;
+    left: 240px;
+    bottom: 90px;
+    width: 340px;
+    max-width: calc(100vw - 260px);
+    padding: 14px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28);
+    z-index: 1250;
+    animation: notification-toast-in 0.2s ease-out;
+}
+
+.va-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.va-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    line-height: 1;
+    color: #999;
+    cursor: pointer;
+}
+
+.va-to {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 8px;
+}
+
+.va-to img {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #f2f2f2;
+}
+
+.va-to b {
+    color: #222;
+}
+
+.va-hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: #999;
+}
+
+#va-text {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid #ccd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.va-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#va-status {
+    flex: 1;
+    font-size: 12px;
+    color: #777;
+}
+
+.va-cancel,
+.va-send {
+    padding: 7px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.va-cancel {
+    background: #e8e8e8;
+    color: #444;
+}
+
+.va-send {
+    background: #1a3a8a;
+    color: white;
+}
+
 #notification-toasts {
     position: fixed;
     right: 20px;
@@ -7883,6 +8018,209 @@
             });
             window.addEventListener('scroll', positionVoiceBtn, true);
             window.addEventListener('resize', positionVoiceBtn);
+        }
+
+        // --- Voice assistant ----------------------------------------------------
+        // A floating mic that stays on every page. Click it and a panel opens
+        // that types out what you say; name an agent in what you say ("Hey
+        // Ashanti, what's on my calendar tomorrow?") and the message is sent
+        // to that agent's chat, otherwise it goes to Manny. A few seconds
+        // after you stop talking (or when you click the mic again) it sends,
+        // unless you cancel or edit the text first.
+        const VOICE_AGENT_ALIASES = {
+            manny: ['manny', 'mannie', 'manni'],
+            sasha: ['sasha', 'sacha'],
+            mark: ['mark'],
+            kat: ['kat', 'cat', 'katt'],
+            scott: ['scott', 'scot'],
+            tasha: ['tasha', 'tosha', 'tashia'],
+            techi: ['techi', 'techy', 'tecky', 'tekki', 'tekky', 'teki'],
+            ashanti: ['ashanti', 'ashante', 'ashanty', 'shanti'],
+            lana: ['lana', 'lanna']
+        };
+        // Common words too, so they only count when clearly being addressed.
+        const VOICE_AMBIGUOUS_NAMES = new Set(['mark', 'cat']);
+        const VOICE_ADDRESS_LEADS = new Set(['hey', 'hi', 'hello', 'ok', 'okay', 'ask', 'tell', 'to', 'for', 'with', 'from', 'and']);
+        const VOICE_NOT_A_NAME_AFTER = new Set(['this', 'that', 'it', 'them', 'these', 'those', 'as', 'down', 'off', 'my', 'the', 'all', 'a']);
+        const VOICE_SEND_DELAY_MS = 1800;
+
+        // The agent being addressed: the first one named at the very start
+        // or after a "hey"/"ask"/"tell"-style lead-in, else the first
+        // unambiguous name anywhere; Manny when nobody is named.
+        function detectVoiceAgent(text) {
+            const words = String(text || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
+            let firstLoose = null;
+            for (let i = 0; i < words.length; i++) {
+                const word = words[i].replace(/'s$/, '');
+                const agent = Object.keys(VOICE_AGENT_ALIASES).find(a => VOICE_AGENT_ALIASES[a].includes(word));
+                if (!agent) continue;
+                const ambiguous = VOICE_AMBIGUOUS_NAMES.has(word);
+                if (ambiguous && VOICE_NOT_A_NAME_AFTER.has(words[i + 1])) continue;
+                if (i <= 3 || VOICE_ADDRESS_LEADS.has(words[i - 1])) return agent;
+                if (!ambiguous && !firstLoose) firstLoose = agent;
+            }
+            return firstLoose || 'manny';
+        }
+
+        const va = { fab: null, panel: null, rec: null, listening: false, timer: null, base: '', finalText: '' };
+
+        function vaEl(id) { return document.getElementById(id); }
+
+        function vaRefreshRecipient() {
+            const agent = detectVoiceAgent(vaEl('va-text').value);
+            vaEl('va-to-avatar').src = `avatars/${agent}.png`;
+            vaEl('va-to-name').textContent = agentInfo[agent].name;
+            vaEl('va-panel-sendbtn').dataset.agent = agent;
+            return agent;
+        }
+
+        function vaCancelTimer() {
+            if (va.timer) { clearTimeout(va.timer); va.timer = null; }
+        }
+
+        function vaSetStatus(text) { vaEl('va-status').textContent = text; }
+
+        function vaStopListening() {
+            if (va.rec) va.rec.stop();
+        }
+
+        function vaClose() {
+            vaCancelTimer();
+            if (va.rec) { va.rec.onend = null; va.rec.stop(); va.rec = null; }
+            va.listening = false;
+            va.fab.classList.remove('listening');
+            va.panel.style.display = 'none';
+            vaEl('va-text').value = '';
+            vaSetStatus('');
+        }
+
+        function vaStartListening() {
+            if (va.listening) return;
+            // Only one recognizer at a time - hand over from field dictation.
+            if (voice.listening) stopVoice();
+            vaCancelTimer();
+            const ta = vaEl('va-text');
+            va.base = ta.value && !/\s$/.test(ta.value) ? ta.value + ' ' : ta.value;
+            va.finalText = '';
+            const rec = new (getSpeechRecognitionCtor())();
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.lang = navigator.language || 'en-US';
+            rec.onresult = (e) => {
+                let interim = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const chunk = e.results[i][0].transcript;
+                    if (e.results[i].isFinal) {
+                        va.finalText += (va.finalText && !/\s$/.test(va.finalText) && !/^\s/.test(chunk) ? ' ' : '') + chunk.trim();
+                    } else {
+                        interim += chunk;
+                    }
+                }
+                ta.value = va.base + va.finalText + (interim ? (va.finalText ? ' ' : '') + interim.trim() : '');
+                ta.scrollTop = ta.scrollHeight;
+                vaRefreshRecipient();
+            };
+            rec.onerror = (e) => {
+                if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+                    alert('Microphone access is blocked. Allow the microphone for this site in your browser settings to use voice typing.');
+                } else if (e.error === 'network') {
+                    alert('Voice typing needs an internet connection.');
+                }
+            };
+            rec.onend = () => {
+                va.listening = false;
+                va.rec = null;
+                va.fab.classList.remove('listening');
+                if (ta.value.trim()) vaStartSendCountdown();
+                else vaSetStatus("Didn't catch that - tap the mic to try again.");
+            };
+            va.rec = rec;
+            va.listening = true;
+            va.fab.classList.add('listening');
+            vaSetStatus('Listening…');
+            try { rec.start(); } catch (err) { va.listening = false; va.fab.classList.remove('listening'); }
+        }
+
+        function vaStartSendCountdown() {
+            vaCancelTimer();
+            const agent = vaRefreshRecipient();
+            vaSetStatus(`Sending to ${agentInfo[agent].name}…`);
+            va.timer = setTimeout(vaSend, VOICE_SEND_DELAY_MS);
+        }
+
+        // Goes to the addressed agent's chat page and sends through the
+        // normal chat input, so it appears and gets answered like any
+        // typed message. If that chat is busy replying to something else,
+        // the text is simply left in its message box for you to send.
+        function vaSend() {
+            vaCancelTimer();
+            const text = vaEl('va-text').value.trim();
+            if (!text) { vaClose(); return; }
+            const agent = detectVoiceAgent(text);
+            vaClose();
+            selectAgent(agent);
+            inputBox.value = text;
+            autoGrowInputBox();
+            sendMessage();
+        }
+
+        function updateVoiceAssistantVisibility(locked) {
+            if (va.fab) va.fab.style.display = locked ? 'none' : 'flex';
+            if (locked && va.panel) vaClose();
+        }
+
+        if (getSpeechRecognitionCtor()) {
+            const fab = document.createElement('button');
+            fab.type = 'button';
+            fab.id = 'voice-assistant-btn';
+            fab.title = 'Talk to your team - say an agent\'s name, or it goes to Manny';
+            fab.setAttribute('aria-label', 'Voice message to an agent');
+            fab.style.display = 'none';
+            fab.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>';
+            document.body.appendChild(fab);
+            va.fab = fab;
+
+            const panel = document.createElement('div');
+            panel.id = 'voice-assistant-panel';
+            panel.style.display = 'none';
+            panel.innerHTML = `
+                <div class="va-head">
+                    <span>Voice message</span>
+                    <button type="button" class="va-close" aria-label="Close">&times;</button>
+                </div>
+                <div class="va-to">To: <img id="va-to-avatar" src="avatars/manny.png" alt=""><b id="va-to-name">Manny</b>
+                    <span class="va-hint">say a name to change</span></div>
+                <textarea id="va-text" data-no-voice rows="4" placeholder="Start talking…"></textarea>
+                <div class="va-actions">
+                    <span id="va-status"></span>
+                    <button type="button" class="va-cancel">Cancel</button>
+                    <button type="button" id="va-panel-sendbtn" class="va-send">Send</button>
+                </div>`;
+            document.body.appendChild(panel);
+            va.panel = panel;
+
+            fab.addEventListener('click', () => {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    vaRefreshRecipient();
+                    vaStartListening();
+                } else if (va.listening) {
+                    vaStopListening();
+                } else {
+                    vaStartListening();
+                }
+            });
+            panel.querySelector('.va-close').addEventListener('click', vaClose);
+            panel.querySelector('.va-cancel').addEventListener('click', vaClose);
+            vaEl('va-panel-sendbtn').addEventListener('click', () => { vaStopListening(); vaSend(); });
+            vaEl('va-text').addEventListener('input', () => {
+                // Typing or fixing something means you're not done yet.
+                if (!va.listening) { vaCancelTimer(); vaSetStatus(''); }
+                vaRefreshRecipient();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && panel.style.display !== 'none') vaClose();
+            });
         }
 
         ['pointerdown', 'keydown'].forEach(evt => {
@@ -20854,6 +21192,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('landing-cta-btn').style.display = locked ? 'none' : '';
             document.getElementById('landing-auth-actions').style.display = locked ? 'flex' : 'none';
             document.getElementById('home-back-btn').style.display = locked ? 'inline-block' : 'none';
+            updateVoiceAssistantVisibility(locked);
         }
 
         // One modal, four modes - reuses the same email/password/confirm
