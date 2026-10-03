@@ -12494,7 +12494,10 @@ messagesContainer.addEventListener('click', (e) => {
     if (!chip.classList.contains('expanded')) chip.scrollLeft = 0;
 });
 
-function displayMessages(agent) {
+// keepScroll: redraw in place without jumping to the bottom - used while
+// working through prompt cards (see recordPromptResponse).
+function displayMessages(agent, options) {
+    const previousScrollTop = messagesContainer.scrollTop;
     messagesContainer.innerHTML = '';
 
     chatHistory[agent].forEach((msg, msgIndex) => {
@@ -12544,7 +12547,7 @@ function displayMessages(agent) {
     });
 
     renderChatInsightCards();
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    messagesContainer.scrollTop = options && options.keepScroll ? previousScrollTop : messagesContainer.scrollHeight;
 }
 
 // Builds the "Speak to [Name]" button attached to a message where an agent
@@ -13486,6 +13489,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 renderChatInsightCards();
                 updateAllBadges();
                 if (currentAgent) updateChatPendingBadge(currentAgent);
+                scrollToBottomIfPromptsDone();
             } catch (error) {
                 console.error('Failed to load learn section:', error);
             }
@@ -13607,7 +13611,29 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (currentAgent) {
                 chatHistory[currentAgent].push(entry);
                 saveToLocalStorage(currentAgent);
-                displayMessages(currentAgent);
+                promptScrollPending = true;
+                displayMessages(currentAgent, { keepScroll: true });
+            }
+        }
+
+        // After answering, passing or accepting a prompt the chat stays where
+        // it is, so the next prompt card is right there - only once none are
+        // left does it drop to the bottom. (The cards update once their
+        // section reloads, so this is checked from each load*Section.)
+        let promptScrollPending = false;
+
+        function countPendingPromptItems() {
+            return getFlattenedLearnItems(learnQuestionsData).length
+                + getFlattenedPersonalItems(personalQuestionsData).length
+                + getFlattenedThoughtsItems(thoughtsData).length
+                + getFlattenedPersonalThoughtsItems(personalThoughtsData).length;
+        }
+
+        function scrollToBottomIfPromptsDone() {
+            if (!promptScrollPending) return;
+            promptScrollPending = false;
+            if (currentAgent && countPendingPromptItems() === 0) {
+                messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'smooth' });
             }
         }
 
@@ -13643,6 +13669,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 renderChatInsightCards();
                 updateAllBadges();
                 if (currentAgent) updateChatPendingBadge(currentAgent);
+                scrollToBottomIfPromptsDone();
             } catch (error) {
                 console.error('Failed to load personal section:', error);
             }
@@ -13751,6 +13778,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 renderChatInsightCards();
                 updateAllBadges();
                 if (currentAgent) updateChatPendingBadge(currentAgent);
+                scrollToBottomIfPromptsDone();
             } catch (error) {
                 console.error('Failed to load thoughts section:', error);
             }
@@ -13891,7 +13919,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             saveProjects();
             displayProjectsList();
 
-            selectAgent(agent);
+            // Re-selecting the agent you're already chatting with would redraw
+            // the whole chat and jump to the bottom.
+            if (currentAgent !== agent) selectAgent(agent);
+            promptScrollPending = true;
         }
 
         async function acceptThought(agent, idea) {
@@ -13924,6 +13955,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 renderChatInsightCards();
                 updateAllBadges();
                 if (currentAgent) updateChatPendingBadge(currentAgent);
+                scrollToBottomIfPromptsDone();
             } catch (error) {
                 console.error('Failed to load personal thoughts section:', error);
             }
