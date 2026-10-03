@@ -1032,6 +1032,34 @@
         }
 
         /* Small caption header above the chat, mirrors the Workspace pane's header */
+        .chat-header-bar.clickable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .chat-header-bar.clickable:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        #chat-pending-position {
+            margin-left: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: none;
+            letter-spacing: 0;
+            color: rgba(0, 0, 0, 0.45);
+        }
+
+        /* Pulses whatever the Chat header just jumped to. */
+        .insight-highlight {
+            animation: insight-highlight-pulse 1.6s ease-out;
+        }
+
+        @keyframes insight-highlight-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.9); outline: 3px solid rgba(102, 126, 234, 0.9); }
+            100% { box-shadow: 0 0 0 14px rgba(102, 126, 234, 0); outline: 3px solid rgba(102, 126, 234, 0); }
+        }
+
         .chat-header-bar {
             display: flex;
             align-items: center;
@@ -6389,7 +6417,7 @@ body.va-open #notification-toasts {
 
                 <!-- Main Chat Area -->
                 <div class="main-area">
-                    <div class="chat-header-bar">Chat <span class="mini-badge mini-badge-inline" id="chat-pending-badge"></span></div>
+                    <div class="chat-header-bar clickable" id="chat-pending-header" title="Click to jump to each notification, one after another">Chat <span class="mini-badge mini-badge-inline" id="chat-pending-badge"></span><span id="chat-pending-position"></span></div>
                     <div class="chat-content">
                         <div class="messages-area">
                             <div class="messages" id="messages"></div>
@@ -12055,6 +12083,8 @@ function capitalizeAgent(agent) {
 
     flashingAgents.delete(agent);
     updateAgentFlash();
+    delete chatNotificationCursor[agent];
+    document.getElementById('chat-pending-position').textContent = '';
 
     currentAgent = agent;
     updateChatHeader(agent);
@@ -13368,6 +13398,79 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const todoCheckinAnchor = resolveInsightCardAnchor('todoMorningCheckin', currentAgent === 'ashanti' && !!todoMorningCheckinData && todoMorningCheckinData.todos.length > 0);
             const todoCheckinCard = todoCheckinAnchor ? buildTodoMorningCheckinCard() : null;
             if (todoCheckinCard) insertCardAtAnchor(todoCheckinCard, todoCheckinAnchor);
+        }
+
+        // --- Jumping through the Chat header's notifications ----------------
+        // Clicking "Chat (8)" goes to the next of the things that count toward
+        // that 8 - each unanswered question and suggestion, the Ashanti
+        // check-ins, and each to-do on the to-do check-in - top to bottom as
+        // they sit in the conversation, wrapping around after the last. The
+        // prompt cards page through several items one at a time, so this also
+        // flips a card to the right one before pulsing it.
+        const chatNotificationCursor = {};
+
+        function getChatPendingItems(agent) {
+            const items = [];
+            const prompts = [
+                ['learn-message-card', 'learn', getFlattenedLearnItems(learnQuestionsData)],
+                ['personal-message-card', 'personal', getFlattenedPersonalItems(personalQuestionsData)],
+                ['thoughts-message-card', 'thoughts', getFlattenedThoughtsItems(thoughtsData)],
+                ['personal-thoughts-message-card', 'personalThoughts', getFlattenedPersonalThoughtsItems(personalThoughtsData)]
+            ];
+            prompts.forEach(([cardId, kind, list]) => list.forEach((_, index) => items.push({ cardId, kind, index })));
+            if (agent === 'ashanti' && calendarCheckinData) {
+                items.push({ cardId: 'calendar-checkin-card', kind: 'calendar' });
+            }
+            if (agent === 'ashanti' && todoMorningCheckinData) {
+                todoMorningCheckinData.todos.forEach(todo => items.push({ cardId: 'todo-morning-checkin-card', kind: 'todo', todoId: todo.id }));
+            }
+            return items;
+        }
+
+        function setPromptCardIndex(kind, index) {
+            if (kind === 'learn') learnIndex = index;
+            else if (kind === 'personal') personalIndex = index;
+            else if (kind === 'thoughts') thoughtsIndex = index;
+            else if (kind === 'personalThoughts') personalThoughtsIndex = index;
+        }
+
+        function pulseElement(el) {
+            el.classList.remove('insight-highlight');
+            void el.offsetWidth;
+            el.classList.add('insight-highlight');
+            setTimeout(() => el.classList.remove('insight-highlight'), 1700);
+        }
+
+        function jumpToNextChatNotification() {
+            const agent = currentAgent;
+            if (!agent) return;
+            const items = getChatPendingItems(agent);
+            const positionEl = document.getElementById('chat-pending-position');
+            if (!items.length) { positionEl.textContent = ''; return; }
+
+            // Top-to-bottom as they appear, keeping each card's own items in order.
+            const top = (item) => {
+                const card = document.getElementById(item.cardId);
+                return card ? card.offsetTop : Infinity;
+            };
+            const ordered = items.map((item, i) => ({ item, i })).sort((a, b) => top(a.item) - top(b.item) || a.i - b.i).map(x => x.item);
+
+            const cursor = ((chatNotificationCursor[agent] ?? -1) + 1) % ordered.length;
+            chatNotificationCursor[agent] = cursor;
+            const target = ordered[cursor];
+            positionEl.textContent = `${cursor + 1} of ${ordered.length}`;
+
+            if (target.index !== undefined) {
+                setPromptCardIndex(target.kind, target.index);
+                renderChatInsightCards();
+            }
+            const card = document.getElementById(target.cardId);
+            if (!card) return;
+            const focusEl = target.kind === 'todo'
+                ? (card.querySelector(`.todo-checkin-row[data-todo-id="${target.todoId}"]`) || card)
+                : card;
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            pulseElement(focusEl);
         }
 
         // Learn About Your Firm
@@ -16525,6 +16628,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             todoMorningCheckinData.todos.forEach(todo => {
                 const row = document.createElement('div');
                 row.className = 'todo-checkin-row';
+                row.dataset.todoId = todo.id;
 
                 const title = document.createElement('span');
                 title.className = 'todo-checkin-row-title';
@@ -21142,6 +21246,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (e.key === 'Enter') submitNewTopic();
         });
 
+        document.getElementById('chat-pending-header').addEventListener('click', jumpToNextChatNotification);
         initAgentSettingsSubtabs();
         initCalendarTodoModal();
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
