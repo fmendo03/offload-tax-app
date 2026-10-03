@@ -3967,6 +3967,44 @@
     }
 }
 
+/* Voice typing mic - one floating button that attaches to the focused text
+   field (see the Voice dictation block in the script). */
+#voice-mic-btn {
+    position: fixed;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #eef0fa;
+    color: #4a5bd6;
+    cursor: pointer;
+    z-index: 2000;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+#voice-mic-btn:hover {
+    background: #dde2f8;
+}
+
+#voice-mic-btn.listening {
+    background: #e53935;
+    color: white;
+    animation: voice-mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.55); }
+    50% { box-shadow: 0 0 0 8px rgba(229, 57, 53, 0); }
+}
+
+.voice-field {
+    padding-right: 42px !important;
+}
+
 #notification-toasts {
     position: fixed;
     right: 20px;
@@ -7712,6 +7750,139 @@
             } catch (e) {
                 // audio unavailable - the toast and flash still show
             }
+        }
+
+        // --- Voice dictation ---------------------------------------------------
+        // One floating mic that attaches to whichever text field is focused -
+        // the chat box, every form, inline edits, modals, including fields
+        // that are created later - instead of wiring a button into each one.
+        // Click it to speak into the field (words appear as you talk, at the
+        // cursor), click again to stop. Uses the browser's built-in speech
+        // recognition (Chrome, Edge, Safari), so it needs microphone
+        // permission and, in Chrome, an internet connection; in a browser
+        // without it the mic simply never appears. Dictates in the browser's
+        // own language.
+        const getSpeechRecognitionCtor = () => window.SpeechRecognition || window.webkitSpeechRecognition;
+        const voice = { btn: null, target: null, rec: null, listening: false, before: '', after: '', finalText: '' };
+
+        function isVoiceEligible(el) {
+            if (!el || el.disabled || el.readOnly) return false;
+            if (el.closest('#auth-modal, [data-no-voice]')) return false;
+            if (el.tagName === 'TEXTAREA') return true;
+            return el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'search');
+        }
+
+        function positionVoiceBtn() {
+            const el = voice.target;
+            if (!voice.btn || !el) return;
+            const r = el.getBoundingClientRect();
+            const visible = r.width > 40 && r.height > 10 && r.bottom > 0 && r.top < innerHeight;
+            if (!visible || !document.contains(el)) { hideVoiceBtn(); return; }
+            const size = 28;
+            const top = el.tagName === 'TEXTAREA'
+                ? Math.max(r.top + 6, 4)
+                : r.top + (r.height - size) / 2;
+            voice.btn.style.top = `${top}px`;
+            voice.btn.style.left = `${r.right - size - 8}px`;
+            voice.btn.style.display = 'flex';
+        }
+
+        function hideVoiceBtn() {
+            if (voice.listening) return;
+            if (voice.btn) voice.btn.style.display = 'none';
+            if (voice.target) voice.target.classList.remove('voice-field');
+            voice.target = null;
+        }
+
+        function writeVoiceText(interim) {
+            const el = voice.target;
+            if (!el || !document.contains(el)) { stopVoice(); return; }
+            const spoken = voice.finalText + (interim || '');
+            el.value = voice.before + spoken + voice.after;
+            const caret = (voice.before + spoken).length;
+            try { el.setSelectionRange(caret, caret); } catch (e) { /* not supported for this type */ }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            positionVoiceBtn();
+        }
+
+        function startVoice() {
+            const el = voice.target;
+            if (!el || voice.listening) return;
+            const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+            const end = el.selectionEnd != null ? el.selectionEnd : el.value.length;
+            const before = el.value.slice(0, start);
+            voice.before = before && !/\s$/.test(before) ? before + ' ' : before;
+            voice.after = el.value.slice(end);
+            if (voice.after && !/^\s/.test(voice.after)) voice.after = ' ' + voice.after;
+            voice.finalText = '';
+
+            const rec = new (getSpeechRecognitionCtor())();
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.lang = navigator.language || 'en-US';
+            rec.onresult = (e) => {
+                let interim = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const chunk = e.results[i][0].transcript;
+                    if (e.results[i].isFinal) {
+                        voice.finalText += (voice.finalText && !/\s$/.test(voice.finalText) && !/^\s/.test(chunk) ? ' ' : '') + chunk.trim();
+                    } else {
+                        interim += chunk;
+                    }
+                }
+                writeVoiceText(interim ? (voice.finalText ? ' ' : '') + interim.trim() : '');
+            };
+            rec.onerror = (e) => {
+                if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+                    alert('Microphone access is blocked. Allow the microphone for this site in your browser settings to use voice typing.');
+                } else if (e.error === 'network') {
+                    alert('Voice typing needs an internet connection.');
+                }
+            };
+            rec.onend = () => {
+                voice.listening = false;
+                voice.rec = null;
+                if (voice.btn) voice.btn.classList.remove('listening');
+                writeVoiceText('');
+                if (!isVoiceEligible(document.activeElement)) hideVoiceBtn();
+            };
+            voice.rec = rec;
+            voice.listening = true;
+            voice.btn.classList.add('listening');
+            try { rec.start(); } catch (err) { voice.listening = false; voice.btn.classList.remove('listening'); }
+        }
+
+        function stopVoice() {
+            if (voice.rec) voice.rec.stop();
+        }
+
+        if (getSpeechRecognitionCtor()) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = 'voice-mic-btn';
+            btn.title = 'Voice typing - click to start or stop';
+            btn.setAttribute('aria-label', 'Voice typing');
+            btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>';
+            // Keeps the focus (and caret) in the field being dictated into.
+            btn.addEventListener('mousedown', (e) => e.preventDefault());
+            btn.addEventListener('click', () => { voice.listening ? stopVoice() : startVoice(); });
+            document.body.appendChild(btn);
+            voice.btn = btn;
+
+            document.addEventListener('focusin', (e) => {
+                const el = e.target;
+                if (!isVoiceEligible(el)) return;
+                if (voice.listening && voice.target !== el) stopVoice();
+                if (voice.target && voice.target !== el) voice.target.classList.remove('voice-field');
+                voice.target = el;
+                el.classList.add('voice-field');
+                positionVoiceBtn();
+            });
+            document.addEventListener('focusout', () => {
+                setTimeout(() => { if (!voice.listening && !isVoiceEligible(document.activeElement)) hideVoiceBtn(); }, 150);
+            });
+            window.addEventListener('scroll', positionVoiceBtn, true);
+            window.addEventListener('resize', positionVoiceBtn);
         }
 
         ['pointerdown', 'keydown'].forEach(evt => {
