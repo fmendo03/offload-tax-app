@@ -8068,7 +8068,8 @@
             return null;
         }
 
-        function detectVoiceAgent(text) {
+        // The agent addressed by name in the text, or null.
+        function detectVoiceAgentByName(text) {
             const words = String(text || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
             let firstLoose = null;
             for (let i = 0; i < words.length; i++) {
@@ -8081,7 +8082,59 @@
                 if (i <= 3 || VOICE_ADDRESS_LEADS.has(words[i - 1])) return agent;
                 if (!ambiguous && !firstLoose) firstLoose = agent;
             }
-            return firstLoose || 'manny';
+            return firstLoose;
+        }
+
+        // When nobody is named, what the message is about decides - so
+        // "how's our marketing plan" reaches Mark and "can you reschedule my
+        // 2pm" reaches Ashanti. Each pattern is a word stem (so "market"
+        // covers marketing/marketers). Whoever matches the most wins; a tie
+        // across different agents, or no match at all, goes to Manny, who
+        // coordinates anything that spans people.
+        const VOICE_TOPIC_KEYWORDS = {
+            mark: ['market', 'sales', 'sell', 'selling', 'lead', 'leads', 'prospect', 'pipeline', 'outreach', 'cold email', 'cold call', 'pitch', 'conversion', 'referral', 'new clients', 'acquisition', 'funnel', 'campaign'],
+            kat: ['copy', 'copywrit', 'headline', 'tagline', 'slogan', 'brand voice', 'messaging', 'blog', 'newsletter', 'wording', 'rewrite', 'proofread', 'draft an email', 'press release'],
+            sasha: ['social media', 'instagram', 'tiktok', 'tik tok', 'facebook', 'twitter', 'linkedin', 'youtube', 'hashtag', 'caption', 'followers', 'viral', 'content calendar', 'reel'],
+            scott: ['hire', 'hiring', 'recruit', 'candidate', 'job description', 'job posting', 'interview', 'onboard', 'resume', 'staffing', 'employee', 'new hire', 'turnover'],
+            tasha: ['tax', 'irs', 'deduct', '1040', '1099', 'w-2', 'w2', 'depreciat', 'audit', 'capital gain', 'estimated payment', 'schedule c', 'schedule k', 'tax return', 'withholding', 'amend'],
+            techi: ['software', 'automat', 'integration', 'backup', 'cyber', 'password manager', 'laptop', 'computer', 'cloud', 'wifi', 'printer', 'server', 'tech stack', 'technology', 'app ', ' api', 'ai tool'],
+            ashanti: ['calendar', 'schedule', 'reschedul', 'meeting', 'appointment', 'remind', 'reminder', 'to-do', 'todo', 'task list', 'agenda', 'time block', 'availability', 'book a'],
+            lana: ['translate', 'translation', 'spanish', 'french', 'mandarin', 'chinese', 'japanese', 'german', 'italian', 'portuguese', 'vocabulary', 'grammar', 'pronounc', 'how do you say', 'language lesson', 'learn a language']
+        };
+
+        function detectVoiceTopic(text) {
+            const lower = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9' -]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+            const scores = {};
+            const hits = {};
+            for (const [agent, stems] of Object.entries(VOICE_TOPIC_KEYWORDS)) {
+                for (const stem of stems) {
+                    // Stems match at the start of a word, so "market" finds
+                    // "marketing" but not "supermarket".
+                    const needle = stem.startsWith(' ') ? stem : ' ' + stem;
+                    if (lower.includes(needle)) {
+                        scores[agent] = (scores[agent] || 0) + 1;
+                        if (!hits[agent]) hits[agent] = stem.trim();
+                    }
+                }
+            }
+            const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+            if (!ranked.length) return null;
+            if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return null;
+            return { agent: ranked[0][0], hit: hits[ranked[0][0]] };
+        }
+
+        // Who a message goes to, and why - an agent named in it first, then
+        // the topic, then Manny.
+        function routeVoiceMessage(text) {
+            const named = detectVoiceAgentByName(text);
+            if (named) return { agent: named, reason: 'name' };
+            const topic = detectVoiceTopic(text);
+            if (topic) return { agent: topic.agent, reason: 'topic', hit: topic.hit };
+            return { agent: 'manny', reason: 'default' };
+        }
+
+        function detectVoiceAgent(text) {
+            return routeVoiceMessage(text).agent;
         }
 
         const va = { fab: null, panel: null, rec: null, listening: false, timer: null, base: '' };
@@ -8089,7 +8142,10 @@
         function vaEl(id) { return document.getElementById(id); }
 
         function vaRefreshRecipient() {
-            const agent = detectVoiceAgent(vaEl('va-text').value);
+            const route = routeVoiceMessage(vaEl('va-text').value);
+            const agent = route.agent;
+            vaEl('va-hint').textContent = route.reason === 'topic' ? `matched "${route.hit}"`
+                : route.reason === 'name' ? 'by name' : 'say a name to change';
             vaEl('va-to-avatar').src = `avatars/${agent}.png`;
             vaEl('va-to-name').textContent = agentInfo[agent].name;
             vaEl('va-panel-sendbtn').dataset.agent = agent;
@@ -8201,7 +8257,7 @@
                     <button type="button" class="va-close" aria-label="Close">&times;</button>
                 </div>
                 <div class="va-to">To: <img id="va-to-avatar" src="avatars/manny.png" alt=""><b id="va-to-name">Manny</b>
-                    <span class="va-hint">say a name to change</span></div>
+                    <span class="va-hint" id="va-hint">say a name to change</span></div>
                 <textarea id="va-text" data-no-voice rows="4" placeholder="Start talking…"></textarea>
                 <div class="va-actions">
                     <span id="va-status"></span>
