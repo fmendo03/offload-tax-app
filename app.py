@@ -3134,23 +3134,40 @@ def load_todos():
     return []
 
 
-# A to-do scheduled onto the calendar whose day has fully passed (it's now a
-# later calendar date) without being marked completed reverts to "Not
-# Scheduled" and picks up a standing "Not Finished" flag - by design, this
-# doesn't fire until the scheduled day is actually over (not just once its
-# time slot ends), matching "not completed by 11:59:59pm". The calendar event
-# itself is left alone - it stays as a real record of what was planned that
-# day; only the to-do's own link and status change. Runs on every load
-# (called from load_todos, which every todos route goes through) rather than
-# needing a scheduler, so it's always current regardless of which route a
-# client happens to hit first. notFinished itself clears the moment the to-do
-# is completed or given a fresh calendar_event_id (see todos_update) - it
-# means "missed at least one window", not a permanent mark.
+# A to-do can be scheduled more than once: calendarEventIds is every calendar
+# event it has ever been scheduled onto (oldest first), and calendarEventId
+# stays as the most recent one - the one the rest of the app treats as "where
+# it currently is". Completing the to-do completes every one of those cards
+# at once, since completion lives on the to-do, not the events.
+def _normalize_todo_event_ids(todo):
+    ids = todo.get('calendarEventIds')
+    if not isinstance(ids, list):
+        ids = [todo['calendarEventId']] if todo.get('calendarEventId') else []
+        todo['calendarEventIds'] = ids
+    return ids
+
+
+# A to-do whose latest scheduled day has fully passed (it's now a later
+# calendar date) without being marked completed picks up a standing "Not
+# Finished" flag - by design, this doesn't fire until the scheduled day is
+# actually over (not just once its time slot ends), matching "not completed
+# by 11:59:59pm". Its calendar card stays right where it is as a record of
+# what was planned (and counts as one of the to-do's scheduled times - see
+# calendarEventIds); the to-do just needs scheduling again, which adds a new
+# card rather than replacing the old one. notFinished is derived from the
+# latest card: past -> true, today or later (e.g. rescheduled or dragged
+# forward) -> false. Runs on every load (called from load_todos, which every
+# todos route goes through) rather than needing a scheduler, so it's always
+# current regardless of which route a client happens to hit first.
 def _apply_todo_rollovers(todos):
     today = now_local().date()
     events_by_id = None
     changed = False
     for todo in todos:
+        had_ids = isinstance(todo.get('calendarEventIds'), list)
+        ids = _normalize_todo_event_ids(todo)
+        if not had_ids and ids:
+            changed = True
         if todo.get('completed') or not todo.get('calendarEventId'):
             continue
         if events_by_id is None:
@@ -3162,9 +3179,9 @@ def _apply_todo_rollovers(todos):
             event_date = datetime.fromisoformat(event.get('start') or '').date()
         except (ValueError, TypeError):
             continue
-        if event_date < today:
-            todo['calendarEventId'] = None
-            todo['notFinished'] = True
+        missed = event_date < today
+        if bool(todo.get('notFinished')) != missed:
+            todo['notFinished'] = missed
             changed = True
     if changed:
         save_todos(todos)
@@ -3361,7 +3378,7 @@ def _ensure_all_series_generated():
                     'id': uuid.uuid4().hex, 'userId': series['userId'], 'title': series['title'],
                     'details': series.get('details') or '', 'estimatedMinutes': series['estimatedMinutes'],
                     'completed': False, 'createdAt': now_iso, 'completedAt': None,
-                    'calendarEventId': event['id'], 'attachments': [],
+                    'calendarEventId': event['id'], 'calendarEventIds': [event['id']], 'attachments': [],
                     'priority': series['priority'], 'personal': series.get('personal', False),
                     'notFinished': False, 'seriesId': series['id'], 'occurrenceDate': occ_date.isoformat()
                 })
@@ -3410,6 +3427,7 @@ def todos_create():
                 'createdAt': now_local().isoformat(),
                 'completedAt': None,
                 'calendarEventId': None,
+                'calendarEventIds': [],
                 'attachments': data.get('attachments') or [],
                 # High: must land in the period it's scheduled for. Medium:
                 # should land there, but rolls to the next equivalent period
@@ -3472,17 +3490,23 @@ def todos_update(todo_id):
                     todo['priority'] = new_priority
             if 'personal' in data:
                 todo['personal'] = bool(data['personal'])
-            # Set once Ashanti actually creates the calendar event this to-do
-            # was scheduled for (see the calendar_update handling in
-            # runOneOnOneAgentTurn) - null explicitly clears it, e.g. if
-            # Francis wants to re-schedule it from scratch.
+            # A new id is another time this to-do is scheduled - it joins
+            # calendarEventIds (earlier cards, e.g. a missed one, stay) and
+            # becomes the current calendarEventId. null explicitly clears
+            # every scheduling, the start-from-scratch "Unschedule".
             if 'calendar_event_id' in data:
                 new_event_id = data['calendar_event_id'] or None
-                todo['calendarEventId'] = new_event_id
-                # A fresh scheduling attempt is a clean slate - notFinished
-                # only means "missed at least one scheduled window", not a
-                # permanent mark, so it clears the moment it's given another one.
+                ids = _normalize_todo_event_ids(todo)
                 if new_event_id:
+                    if new_event_id not in ids:
+                        ids.append(new_event_id)
+                    todo['calendarEventId'] = new_event_id
+                    # A fresh scheduling attempt resolves "Not Finished" -
+                    # it only means the latest card was missed.
+                    todo['notFinished'] = False
+                else:
+                    todo['calendarEventId'] = None
+                    todo['calendarEventIds'] = []
                     todo['notFinished'] = False
             save_todos(todos)
         return jsonify({'success': True, 'todos': todos})
@@ -3635,7 +3659,8 @@ def todos_series_delete(series_id):
                 ]
                 if to_remove:
                     removed_todo_ids = [t['id'] for t in to_remove]
-                    event_ids = {t['calendarEventId'] for t in to_remove if t.get('calendarEventId')}
+                    event_ids = {eid for t in to_remove for eid in _normalize_todo_event_ids(t)}
+                    event_ids |= {t['calendarEventId'] for t in to_remove if t.get('calendarEventId')}
                     todos = [t for t in todos if t['id'] not in removed_todo_ids]
                     working_events = [e for e in load_calendar_events() if e['id'] not in event_ids]
                     save_calendar_events(working_events)
@@ -4041,10 +4066,13 @@ def todos_bulk_schedule():
                 save_calendar_events([e for e in working_events if not e.get('_synthetic')])
                 for todo, parts, events in scheduled:
                     todo['calendarEventId'] = events[0]['id']
-                    # Same clean-slate rule as a manual reschedule (see
-                    # todos_update) - this writes calendarEventId directly rather
-                    # than going through that route, so it has to clear
-                    # notFinished itself too.
+                    # Same as a manual reschedule (see todos_update) - this
+                    # writes the link directly rather than going through
+                    # that route, so it has to join calendarEventIds and
+                    # clear notFinished itself too.
+                    ids = _normalize_todo_event_ids(todo)
+                    if events[0]['id'] not in ids:
+                        ids.append(events[0]['id'])
                     todo['notFinished'] = False
                 save_todos(todos)
 

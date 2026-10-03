@@ -2713,6 +2713,49 @@
             gap: 8px;
         }
 
+        .todo-scheduled-times {
+            margin: 12px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .todo-scheduled-times-heading {
+            font-size: 11px;
+            font-weight: 700;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .todo-scheduled-time-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 10px;
+            border: 1px solid #e0e3ee;
+            border-radius: 6px;
+            background: white;
+            font-size: 12px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .todo-scheduled-time-row:hover {
+            background: #f0f2f8;
+        }
+
+        .todo-scheduled-time-tag {
+            font-size: 10px;
+            font-weight: 700;
+            color: #777;
+        }
+
+        .todo-scheduled-time-tag.missed {
+            color: #c0392b;
+        }
+
         .todos-new-bar-toggle-btn {
             flex-shrink: 0;
             display: flex;
@@ -2722,16 +2765,15 @@
             width: 100%;
             padding: 10px;
             border: none;
-            border-top: 1px solid #e6e6e6;
-            background: white;
+            background: #1a3a8a;
             font-size: 13px;
             font-weight: 600;
-            color: #1a3a8a;
+            color: white;
             cursor: pointer;
         }
 
         .todos-new-bar-toggle-btn:hover {
-            background: #f0f2f8;
+            background: #152f70;
         }
 
         #todos-new-bar-toggle-arrow {
@@ -2744,11 +2786,13 @@
             max-height: 0;
             padding-top: 0;
             padding-bottom: 0;
+            border-top-width: 0;
             transition: max-height 0.25s ease;
         }
 
         .todos-new-bar-collapse.expanded {
-            max-height: 2000px;
+            max-height: 70vh;
+            overflow-y: auto;
             padding-top: 14px;
             padding-bottom: 14px;
         }
@@ -2947,6 +2991,7 @@
             padding: 18px 24px;
             border-bottom: 1px solid #eee;
             flex-shrink: 0;
+            background: #ffd700;
         }
 
         .bulk-schedule-header-avatar {
@@ -2961,7 +3006,7 @@
 
         .bulk-schedule-count {
             font-size: 13px;
-            color: #666;
+            color: #4d4100;
             margin-top: 2px;
         }
 
@@ -6277,7 +6322,7 @@
                         </label>
                         <div style="display: flex; gap: 8px;">
                             <button type="button" class="task-action-btn" id="todos-bulk-unschedule-btn" disabled>Unschedule Selected</button>
-                            <button type="button" class="task-action-btn solid-complete" id="todos-bulk-schedule-btn" disabled>Schedule Selected with Ashanti</button>
+                            <button type="button" class="task-action-btn solid-complete" id="todos-bulk-schedule-btn" disabled>Schedule Selected To-Do's</button>
                         </div>
                     </div>
                     <div class="split-pane-scroll" id="todos-list-scroll">
@@ -6291,6 +6336,10 @@
                             <div class="topics-discussed-list" id="todos-completed-list" style="display:none;"></div>
                         </div>
                     </div>
+                    <button type="button" class="todos-new-bar-toggle-btn" id="todos-new-bar-toggle-btn">
+                        <span id="todos-new-bar-toggle-arrow">&#9650;</span>
+                        <span>New To-Do</span>
+                    </button>
                     <div class="topics-new-bar todos-new-bar-collapse" id="todos-new-bar-collapse">
                         <div class="topics-new-field">
                             <label for="todos-new-template-select">Start from a template</label>
@@ -6392,10 +6441,6 @@
                         </div>
                         <button type="button" class="task-action-btn solid-complete" id="todos-new-btn">Add To-Do</button>
                     </div>
-                    <button type="button" class="todos-new-bar-toggle-btn" id="todos-new-bar-toggle-btn">
-                        <span id="todos-new-bar-toggle-arrow">&#9650;</span>
-                        <span>New To-Do</span>
-                    </button>
                 </div>
                 <div class="preview-pane">
                     <div class="split-pane-header">
@@ -6848,7 +6893,7 @@
             <div class="bulk-schedule-header">
                 <img class="bulk-schedule-header-avatar" src="avatars/ashanti.png" alt="Ashanti">
                 <div>
-                    <h3 style="margin: 0;">Schedule with Ashanti</h3>
+                    <h3 style="margin: 0;">Schedule To-Do's</h3>
                     <div id="bulk-schedule-count" class="bulk-schedule-count"></div>
                 </div>
             </div>
@@ -14854,9 +14899,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const linkedTodo = findTodoForCalendarEvent(id);
             if (!linkedTodo) return;
             try {
-                const partnerEvent = calendarEvents.find(e => e.splitOf === linkedTodo.calendarEventId);
-                const idsToDelete = [linkedTodo.calendarEventId, ...(partnerEvent ? [partnerEvent.id] : [])];
-                for (const eventId of idsToDelete) {
+                // Every scheduled time goes (missed ones included) - Unschedule
+                // means the whole to-do back to Not Scheduled from scratch.
+                for (const eventId of todoAllEventIds(linkedTodo)) {
                     const response = await fetch(`/calendar/events/${eventId}`, { method: 'DELETE' });
                     const data = await response.json();
                     if (!data.success) {
@@ -14985,14 +15030,34 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // writes its FIRST half to calendarEventId - the second half points
         // back at the first via splitOf, so it's found the same way any
         // other linked event is, just one hop further.
+        // A to-do can be scheduled more than once (see calendarEventIds in
+        // app.py) - every one of those cards links back to the same to-do.
+        function todoEventIds(todo) {
+            if (Array.isArray(todo.calendarEventIds)) return todo.calendarEventIds;
+            return todo.calendarEventId ? [todo.calendarEventId] : [];
+        }
+
         function findTodoForCalendarEvent(eventId) {
-            const direct = todosList.find(t => t.calendarEventId === eventId);
+            const direct = todosList.find(t => todoEventIds(t).includes(eventId));
             if (direct) return direct;
             const event = calendarEvents.find(e => e.id === eventId);
             if (event && event.splitOf) {
-                return todosList.find(t => t.calendarEventId === event.splitOf) || null;
+                return todosList.find(t => todoEventIds(t).includes(event.splitOf)) || null;
             }
             return null;
+        }
+
+        // Every calendar event for this to-do - each scheduled time plus
+        // any lunch-split second half - for removing them all together.
+        function todoAllEventIds(todo) {
+            const ids = [];
+            todoEventIds(todo).forEach(eid => {
+                if (!ids.includes(eid)) ids.push(eid);
+                calendarEvents.filter(e => e.splitOf === eid).forEach(p => {
+                    if (!ids.includes(p.id)) ids.push(p.id);
+                });
+            });
+            return ids;
         }
 
         function formatMinutesAsHHMM(minutes) {
@@ -16440,7 +16505,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // sorts after every scheduled one instead of landing in the middle
         // by coincidence of its (unrelated) id/creation order.
         function todoScheduledSortKey(todo) {
-            const event = todo.calendarEventId ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
+            const event = isTodoScheduled(todo) ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
             return event ? new Date(event.start).getTime() : Infinity;
         }
 
@@ -16553,7 +16618,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // Same date/time format as the preview pane's own "Scheduled:"
             // button, just inline in the row - lets the list be scanned for
             // when things actually land without opening each one.
-            const scheduledEvent = todo.calendarEventId ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
+            const scheduledEvent = isTodoScheduled(todo) ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
             if (scheduledEvent) {
                 const whenEl = document.createElement('span');
                 whenEl.className = 'todo-scheduled-when';
@@ -16609,8 +16674,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Schedule Selected bulk action (see renderTodosPage/
         // openBulkScheduleModal) and, conversely, IN reach of Unschedule
         // Selected (see runBulkUnscheduleTodos).
+        // A Not Finished to-do's latest card was missed (its day passed) - it
+        // keeps that card, but counts as Not Scheduled until it's scheduled
+        // again, which adds another card rather than replacing the old one.
         function isTodoScheduled(todo) {
-            return !!(todo.calendarEventId && calendarEvents.some(e => e.id === todo.calendarEventId));
+            return !todo.notFinished
+                && !!(todo.calendarEventId && calendarEvents.some(e => e.id === todo.calendarEventId));
         }
 
         function todoStatusLabels(todo) {
@@ -16816,6 +16885,41 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             contentEl.appendChild(buildAttachmentDropzone(todo.attachments, saveTodoAttachments));
             contentEl.appendChild(chipList);
 
+            // Every time this to-do has been scheduled - a missed card stays
+            // on the calendar and the to-do is scheduled again alongside it,
+            // so the history lives here rather than on separate to-dos.
+            const scheduledTimes = todoEventIds(todo)
+                .map(eid => calendarEvents.find(e => e.id === eid))
+                .filter(Boolean)
+                .sort((a, b) => new Date(a.start) - new Date(b.start));
+            if (scheduledTimes.length > 1 || (scheduledTimes.length && todo.notFinished)) {
+                const timesSection = document.createElement('div');
+                timesSection.className = 'todo-scheduled-times';
+                const timesHeading = document.createElement('div');
+                timesHeading.className = 'todo-scheduled-times-heading';
+                timesHeading.textContent = 'Scheduled times';
+                timesSection.appendChild(timesHeading);
+                const todayKey = calendarDateKey(new Date());
+                scheduledTimes.forEach(ev => {
+                    const rowBtn = document.createElement('button');
+                    rowBtn.type = 'button';
+                    rowBtn.className = 'todo-scheduled-time-row';
+                    const when = new Date(ev.start);
+                    const whenText = document.createElement('span');
+                    whenText.textContent = `${when.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${formatCalendarTime(ev.start)}`;
+                    rowBtn.appendChild(whenText);
+                    const tag = document.createElement('span');
+                    const missed = !todo.completed && calendarDateKey(when) < todayKey;
+                    tag.className = 'todo-scheduled-time-tag' + (missed ? ' missed' : '');
+                    tag.textContent = todo.completed ? 'Done' : (missed ? 'Missed' : 'Upcoming');
+                    rowBtn.appendChild(tag);
+                    rowBtn.title = 'View this on the Calendar';
+                    rowBtn.addEventListener('click', () => goToCalendarEvent(ev.id));
+                    timesSection.appendChild(rowBtn);
+                });
+                contentEl.appendChild(timesSection);
+            }
+
             const actions = document.createElement('div');
             actions.className = 'topics-preview-actions';
 
@@ -16828,7 +16932,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             const calendarBtn = document.createElement('button');
             calendarBtn.type = 'button';
-            const scheduledEvent = todo.calendarEventId ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
+            const scheduledEvent = isTodoScheduled(todo) ? calendarEvents.find(e => e.id === todo.calendarEventId) : null;
             if (scheduledEvent) {
                 // Already scheduled - this now just links to where it landed
                 // on the Calendar, it doesn't re-open the Add-to-Calendar
@@ -16841,7 +16945,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 calendarBtn.addEventListener('click', () => goToCalendarEvent(scheduledEvent.id));
             } else {
                 calendarBtn.className = 'pane-toolbar-btn';
-                calendarBtn.textContent = '\u{1F4C5} Add to Calendar';
+                calendarBtn.textContent = todo.notFinished ? '\u{1F4C5} Reschedule' : '\u{1F4C5} Add to Calendar';
                 // Same "Schedule with Ashanti" popup the To-Do page's bulk
                 // toolbar opens, just pre-selected to this one to-do -
                 // Francis sees exactly where it'll land (and can drag it
@@ -16932,12 +17036,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     // try_split_around_lunch in app.py) has a second half
                     // linked only via splitOf, not its own todo field - both
                     // still have to go together.
-                    if (todo && todo.calendarEventId) {
-                        const splitPartner = calendarEvents.find(e => e.splitOf === todo.calendarEventId);
-                        fetch(`/calendar/events/${todo.calendarEventId}`, { method: 'DELETE' })
-                            .then(() => splitPartner ? fetch(`/calendar/events/${splitPartner.id}`, { method: 'DELETE' }) : null)
-                            .then(() => loadCalendarData())
-                            .catch(() => {});
+                    if (todo) {
+                        const eventIds = todoAllEventIds(todo);
+                        if (eventIds.length) {
+                            Promise.all(eventIds.map(eid => fetch(`/calendar/events/${eid}`, { method: 'DELETE' })))
+                                .then(() => loadCalendarData())
+                                .catch(() => {});
+                        }
                     }
                     Object.keys(workspaceItems).forEach(agent => {
                         (workspaceItems[agent] || [])
