@@ -241,6 +241,9 @@ personal_knowledge_base.json
 thought_status.json
 personal_thought_status.json
 usage_log.jsonl
+breakroom_pool.json
+breakroom_scenes.json
+breakroom_prefs.json
 kb_merge_state.json
 attachments/
 

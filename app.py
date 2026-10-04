@@ -17,6 +17,7 @@ import base64
 import io
 import re
 import math
+import random
 import uuid
 import secrets
 import subprocess
@@ -468,6 +469,7 @@ usage_log_lock = threading.Lock()
 MODEL_PRICING = {
     'claude-sonnet-5': {'input': 2.00, 'output': 10.00, 'cache_write': 2.50, 'cache_read': 0.20},
     'claude-sonnet-5-5': {'input': 2.00, 'output': 10.00, 'cache_write': 2.50, 'cache_read': 0.20},
+    'claude-haiku-4-5-20251001': {'input': 1.00, 'output': 5.00, 'cache_write': 1.25, 'cache_read': 0.10},
 }
 WEB_SEARCH_COST_EACH = 0.01
 
@@ -4815,6 +4817,382 @@ def avatars(filename):
 @app.route('/backgrounds/<path:filename>')
 def backgrounds(filename):
     return send_from_directory('backgrounds', filename)
+
+# --- Break room ----------------------------------------------------------
+# The agents hanging out: a feed of short "scenes" (a few agents chatting about
+# one real, specific thing) for exposure to something new - nothing here is
+# work. Kept cheap on purpose: everything runs on Haiku; one web search pass
+# builds a pool of real current items each Wednesday (the first time the page
+# is opened on or after it), scenes are only written when the page is opened
+# (two per day, both in one call), and nothing runs on days it isn't opened.
+BREAKROOM_MODEL = 'claude-haiku-4-5-20251001'
+BREAKROOM_POOL_MODEL = CLAUDE_MODEL
+BREAKROOM_POOL_FILE = _data_path('breakroom_pool.json')
+BREAKROOM_SCENES_FILE = _data_path('breakroom_scenes.json')
+BREAKROOM_PREFS_FILE = _data_path('breakroom_prefs.json')
+BREAKROOM_SCENES_PER_DAY = 2
+BREAKROOM_CATEGORIES = ['Movies & TV', 'Music', 'Sports', 'Art', 'Food', 'Tech', 'Books', 'Games', 'Culture']
+breakroom_lock = threading.Lock()
+breakroom_job_running = False
+breakroom_last_error = None
+
+BREAKROOM_PERSONAS = {
+    'manny': "Manny: dry, strategic, a little competitive. Street photography, jazz vinyl and NYC live shows, sports (soccer, football, basketball, hockey, baseball), chess and strategy games; his Sunday cooking mostly fails.",
+    'sasha': "Sasha: trendy, quick, talks in memes. Thrifts and resells vintage fashion, tracks viral TikTok/Instagram trends and youth slang, 30+ named houseplants, sports, always mid-podcast.",
+    'mark': "Mark: confident, competitive, deal-minded. Golf (proud of his handicap), networking events, fantasy football and sports analytics, home improvement projects, mentors junior salespeople.",
+    'kat': "Kat: literary, thoughtful, quotes people and fact-checks the quote. Personal essays and fiction, theater, museums (reads every plaque), collects first-edition books, Vinyasa yoga, hand-lettering, nutrition.",
+    'scott': "Scott: warm, remembers everyone's details. Half-marathons, a home bar and cocktail tastings, a free career workshop for kids, true-crime podcasts, bar nights with friends.",
+    'tasha': "Tasha: precise, fact-checks everything, dry humor. Serious hiking (logs every trail), sudoku and logic puzzles, deep-dive documentaries, vegetable gardening, designing a tax-themed board game.",
+    'techi': "Techi: enthusiastic nerd who over-explains in jargon, then translates. Open-source projects, restoring retro computers, mechanical keyboards, collects action figures and Pokemon cards, sci-fi and conventions.",
+    'ashanti': "Ashanti: warm, organized, gently teasing. Bullet journaling, decluttering, meal prep and feeding people, audiobooks (self-help, biography), relationship psychology.",
+    'lana': "Lana: patient, delighted by words. Speaks 7 languages, lived in Spain, Mexico, Japan and France, reads books in their original languages, etymology, song lyrics in other languages, traditional recipes; her golden retriever Luna is always around."
+}
+
+
+def _bj_load(path, default):
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return default
+
+
+def _bj_save(path, data):
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+# The Wednesday that most recently happened (today, if today is Wednesday) -
+# a pool is "current" while it was built on or after this date.
+def breakroom_pool_week(today=None):
+    today = today or today_local()
+    return (today - timedelta(days=(today.weekday() - 2) % 7)).isoformat()
+
+
+def _breakroom_clean(text):
+    return re.sub(r'</?cite[^>]*>', '', str(text or '')).strip()
+
+
+def _breakroom_text(response):
+    return "".join(b.text for b in response.content if getattr(b, 'type', None) == 'text')
+
+
+# Models sometimes wrap the JSON in commentary or code fences (and the
+# commentary can contain brackets), so take the first "[" that starts a
+# parseable array of objects.
+def _breakroom_json(text, opener='[', closer=']'):
+    decoder = json.JSONDecoder()
+    pos = text.find('[')
+    while pos != -1:
+        try:
+            value, _ = decoder.raw_decode(text[pos:])
+            if isinstance(value, list) and value and all(isinstance(v, dict) for v in value):
+                return value
+        except ValueError:
+            pass
+        pos = text.find('[', pos + 1)
+    raise ValueError('The model did not return the expected JSON.')
+
+
+# A line or two about what Francis is into, so the pool leans toward it
+# without sending the whole knowledge base.
+def _breakroom_interest_hint():
+    parts = []
+    notes = (load_kb_notes().get('personal') or '').strip()
+    if notes:
+        parts.append(notes[:500])
+    answers = [e for entries in load_personal_knowledge_base().values() for e in entries]
+    answers.sort(key=lambda e: e.get('date', ''))
+    for e in answers[-6:]:
+        parts.append(f"{e.get('question', '')} -> {e.get('answer', '')}"[:160])
+    if not parts:
+        return ''
+    return "What Francis has said about himself (let a few items lean toward his tastes, but most should be new to him):\n" + "\n".join(parts)
+
+
+def build_breakroom_pool():
+    today = today_local()
+    prompt = (
+        f"Today is {today.isoformat()}. Find 10 specific, genuinely interesting things people are talking about, "
+        "or that were released or happened, roughly in the last three weeks. You have only 3 web searches, so make "
+        "each one a roundup that covers several categories at once, for example: (1) new movies, TV and streaming "
+        "releases, new albums and music news; (2) sports results, storylines and records this week; "
+        "(3) art, books, food, culture, tech gadgets, video games and odd viral stories. "
+        "Draw from different websites and give me 10 items, with variety across these categories: " + ", ".join(BREAKROOM_CATEGORIES) + ". "
+        "Pick things with substance - a particular film, album, match, exhibit, dish, gadget, book, game or odd "
+        "story - not generic trends.\n\n"
+        + _breakroom_interest_hint() + "\n\n"
+        "For each item give: category (exactly one of the list above - a science festival is not Food); title (the "
+        "specific thing, with names); facts (3 or 4 full-sentence facts, never fewer than 3 that appear in your search results - who "
+        "made it, what it is about, dates, numbers, scores, prices, a quote, what makes it unusual or "
+        "controversial; each fact must stand alone and say something a person would not already guess from the "
+        "title; never invent anything, and skip an item if you cannot find 3 real facts for it); source_name; "
+        "source_url (a real https URL from your search results, or an empty string).\n"
+        "Your final message must be ONLY a JSON array of objects with those keys. If some categories turned up "
+        "little, include fewer items rather than explaining - no commentary, no apologies, no text before or after "
+        "the JSON."
+    )
+    response = claude_create(
+        log_purpose='breakroom_pool',
+        model=BREAKROOM_POOL_MODEL,
+        max_tokens=5000,
+        messages=[{'role': 'user', 'content': prompt}],
+        tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}]
+    )
+    raw_items = _breakroom_json(_breakroom_text(response), '[', ']')
+    items = []
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        category = raw.get('category') if raw.get('category') in BREAKROOM_CATEGORIES else None
+        raw_facts = raw.get('facts') or []
+        if isinstance(raw_facts, str):
+            raw_facts = re.split(r'(?<=[.!?])\s+(?=[A-Z0-9"])', raw_facts)
+        facts = [f for f in (_breakroom_clean(f) for f in raw_facts if isinstance(f, str)) if len(f) > 25]
+        title = _breakroom_clean(raw.get('title'))
+        if not (category and title and len(facts) >= 3):
+            continue
+        url = str(raw.get('source_url') or '').strip()
+        items.append({
+            'id': uuid.uuid4().hex[:10], 'category': category, 'title': title, 'facts': facts[:4],
+            'sourceName': str(raw.get('source_name') or '').strip(),
+            'sourceUrl': url if url.startswith('https://') else '', 'usedOn': None
+        })
+    if len(items) < 4:
+        raise ValueError('The search turned up too few usable items.')
+    pool = {'week': breakroom_pool_week(today), 'builtOn': today.isoformat(), 'items': items}
+    _bj_save(BREAKROOM_POOL_FILE, pool)
+    return pool
+
+
+def _breakroom_pick_items(pool, count):
+    prefs = _bj_load(BREAKROOM_PREFS_FILE, {}).get('categories', {})
+    unused = [i for i in pool['items'] if not i.get('usedOn')]
+    # Skip a category once it has clearly been voted down, unless that's all that's left.
+    liked = [i for i in unused if prefs.get(i['category'], {}).get('down', 0) - prefs.get(i['category'], {}).get('up', 0) < 2]
+    candidates = liked or unused
+    candidates.sort(key=lambda i: -(prefs.get(i['category'], {}).get('up', 0) - prefs.get(i['category'], {}).get('down', 0)) + random.random())
+    picked, seen = [], set()
+    for item in candidates:
+        if item['category'] not in seen:
+            picked.append(item)
+            seen.add(item['category'])
+        if len(picked) == count:
+            return picked
+    for item in candidates:
+        if item not in picked:
+            picked.append(item)
+        if len(picked) == count:
+            break
+    return picked
+
+
+def generate_breakroom_scenes(count):
+    pool = _bj_load(BREAKROOM_POOL_FILE, None)
+    if not pool:
+        pool = build_breakroom_pool()
+    items = _breakroom_pick_items(pool, count)
+    if not items:
+        return []
+    recent = [s['topic'] for s in _bj_load(BREAKROOM_SCENES_FILE, [])[:12]]
+    personas = "\n".join(f"- {p}" for p in BREAKROOM_PERSONAS.values())
+    item_text = "\n\n".join(
+        f"ITEM {n + 1} (id {it['id']}, {it['category']}): {it['title']}\nFacts: " + " | ".join(it['facts'])
+        for n, it in enumerate(items)
+    )
+    prompt = (
+        "Write the break-room feed for a team of coworkers on a break. Nothing here is work - they're sharing "
+        "something they just came across. Write ONE scene per item below.\n\nThe team:\n" + personas + "\n\n"
+        "Items:\n" + item_text + "\n\n"
+        "Rules for every scene:\n"
+        "- 5 to 7 lines (fewer, down to 4, if the facts do not support more), spoken by 3 to 5 different agents. Pick the agents whose interests genuinely connect to "
+        "the item, plus one unexpected voice with a fresh angle.\n"
+        "- TRUTH: every claim about the item (what it is, who, when, numbers, history, records, reviews, how it "
+        "sounds or looks) must come from the item's facts. Never add outside details, comparisons to real works "
+        "or events you are not certain of, statistics, or 'first time ever' claims. The agents have NOT seen, "
+        "heard, read, played or tasted the item yet - they must not say they have; they can say what they plan to "
+        "do, or what it reminds them of from their own lives.\n"
+        "- VALUE: each line must give the reader something concrete - a fact from the item, or a specific "
+        "personal detail from that agent's own interests (a named trail, a record they own, a recipe, a hobby "
+        "project) tied directly to the item. Banned: filler praise ('iconic', 'wild', 'clutch', 'love this', "
+        "'hitting different', 'lowkey'), vague reactions, 'I'm curious if...' musings, and questions nobody in the "
+        "room could answer from the facts. Prefer statements that teach something.\n"
+        "- Lines react to each other: add a new fact, disagree, ask a pointed question another agent then "
+        "answers, or connect two facts. Together the lines should use most of the item's facts.\n"
+        "- Casual spoken voice, 1 to 2 sentences per line, each agent clearly in character. No emoji.\n"
+        "- topic: a short, specific headline naming the actual thing.\n"
+        "- takeaway: one concrete 'try it' sentence - exactly what to watch, listen to, read, make or look up, "
+        "using names from the facts.\n"
+        + (f"- Avoid repeating these recent topics: {'; '.join(recent)}\n" if recent else '')
+        + "\nReturn ONLY a JSON array with one object per item, in order, each with keys: item_id, topic, "
+        "lines (array of {agent, text}, where agent is one of: " + ", ".join(ALL_AGENTS) + "), takeaway."
+    )
+    response = claude_create(
+        log_purpose='breakroom_scenes',
+        model=BREAKROOM_MODEL,
+        max_tokens=2500,
+        messages=[{'role': 'user', 'content': prompt}]
+    )
+    raw_scenes = _breakroom_json(_breakroom_text(response), '[', ']')
+    by_id = {it['id']: it for it in items}
+    scenes = []
+    for raw in raw_scenes:
+        item = by_id.get(str(raw.get('item_id')))
+        lines = [
+            {'agent': l['agent'], 'text': str(l.get('text') or '').strip()}
+            for l in (raw.get('lines') or [])
+            if isinstance(l, dict) and l.get('agent') in ALL_AGENTS and str(l.get('text') or '').strip()
+        ]
+        if not item or len(lines) < 3:
+            continue
+        scenes.append({
+            'id': uuid.uuid4().hex[:12], 'date': today_local().isoformat(), 'createdAt': now_local().isoformat(),
+            'category': item['category'], 'topic': str(raw.get('topic') or item['title']).strip(),
+            'why': '', 'sourceName': item['sourceName'], 'sourceUrl': item['sourceUrl'],
+            'lines': lines, 'takeaway': str(raw.get('takeaway') or '').strip(),
+            'feedback': None, 'replies': []
+        })
+        item['usedOn'] = today_local().isoformat()
+    if not scenes:
+        raise ValueError('No usable scenes came back.')
+    with breakroom_lock:
+        existing = _bj_load(BREAKROOM_SCENES_FILE, [])
+        _bj_save(BREAKROOM_SCENES_FILE, scenes + existing)
+        _bj_save(BREAKROOM_POOL_FILE, pool)
+    return scenes
+
+
+def breakroom_pool_exhausted():
+    pool = _bj_load(BREAKROOM_POOL_FILE, None)
+    return bool(pool) and pool.get('week') == breakroom_pool_week() and not any(not i.get('usedOn') for i in pool['items'])
+
+
+def breakroom_remaining_today():
+    today = today_local().isoformat()
+    made = sum(1 for s in _bj_load(BREAKROOM_SCENES_FILE, []) if s.get('date') == today)
+    return max(0, BREAKROOM_SCENES_PER_DAY - made)
+
+
+def _breakroom_job():
+    global breakroom_job_running, breakroom_last_error
+    try:
+        pool = _bj_load(BREAKROOM_POOL_FILE, None)
+        if not pool or pool.get('week') != breakroom_pool_week():
+            build_breakroom_pool()
+        remaining = breakroom_remaining_today()
+        if remaining:
+            generate_breakroom_scenes(remaining)
+        breakroom_last_error = None
+    except Exception as e:
+        print(f"Break room error: {e}")
+        breakroom_last_error = str(e)
+    finally:
+        with breakroom_lock:
+            breakroom_job_running = False
+
+
+def start_breakroom_job():
+    global breakroom_job_running
+    with breakroom_lock:
+        if breakroom_job_running:
+            return True
+        pool = _bj_load(BREAKROOM_POOL_FILE, None)
+        pool_stale = not pool or pool.get('week') != breakroom_pool_week()
+        if not pool_stale and (not breakroom_remaining_today() or breakroom_pool_exhausted()):
+            return False
+        breakroom_job_running = True
+    threading.Thread(target=_breakroom_job, daemon=True).start()
+    return True
+
+
+# poll=1 only reads - the page polls while a job is running, and a failed job
+# must not be silently retried by that polling.
+@app.route('/breakroom/feed', methods=['GET'])
+def breakroom_feed():
+    global breakroom_last_error
+    if not request.args.get('poll'):
+        breakroom_last_error = None
+        start_breakroom_job()
+    scenes = _bj_load(BREAKROOM_SCENES_FILE, [])[:60]
+    return jsonify({
+        'success': True, 'scenes': scenes, 'generating': breakroom_job_running,
+        'remainingToday': breakroom_remaining_today(), 'poolExhausted': breakroom_pool_exhausted(),
+        'error': breakroom_last_error,
+        'categories': BREAKROOM_CATEGORIES
+    })
+
+
+@app.route('/breakroom/feedback', methods=['POST'])
+def breakroom_feedback():
+    data = request.json or {}
+    scene_id, value = data.get('sceneId'), data.get('value')
+    if value not in ('up', 'down', None):
+        return jsonify({'success': False, 'error': 'Bad value'}), 400
+    with breakroom_lock:
+        scenes = _bj_load(BREAKROOM_SCENES_FILE, [])
+        scene = next((s for s in scenes if s['id'] == scene_id), None)
+        if not scene:
+            return jsonify({'success': False, 'error': 'Scene not found'}), 404
+        prefs = _bj_load(BREAKROOM_PREFS_FILE, {})
+        cats = prefs.setdefault('categories', {}).setdefault(scene['category'], {'up': 0, 'down': 0})
+        if scene.get('feedback') in ('up', 'down'):
+            cats[scene['feedback']] = max(0, cats[scene['feedback']] - 1)
+        if value:
+            cats[value] += 1
+        scene['feedback'] = value
+        _bj_save(BREAKROOM_SCENES_FILE, scenes)
+        _bj_save(BREAKROOM_PREFS_FILE, prefs)
+    return jsonify({'success': True})
+
+
+# "Jump in": Francis adds a line to a scene and a couple of agents react.
+@app.route('/breakroom/reply', methods=['POST'])
+def breakroom_reply():
+    try:
+        data = request.json or {}
+        scene_id = data.get('sceneId')
+        text = str(data.get('text') or '').strip()[:500]
+        if not text:
+            return jsonify({'success': False, 'error': 'Say something first'}), 400
+        scenes = _bj_load(BREAKROOM_SCENES_FILE, [])
+        scene = next((s for s in scenes if s['id'] == scene_id), None)
+        if not scene:
+            return jsonify({'success': False, 'error': 'Scene not found'}), 404
+        convo = "\n".join(f"{l['agent'].capitalize()}: {l['text']}" for l in scene['lines'] + scene.get('replies', []))
+        speakers = list(dict.fromkeys(l['agent'] for l in scene['lines']))
+        prompt = (
+            f"Break-room chat among coworkers about: {scene['topic']}.\n\nSo far:\n{convo}\n\n"
+            f"Francis (the boss, joining in) just said: \"{text}\"\n\n"
+            "Write 2 or 3 short replies from agents among these speakers: " + ", ".join(speakers) + ". "
+            "They answer or build on what Francis said with something specific (a name, number, detail or "
+            "personal anecdote), in character, 1 to 2 casual sentences each, no filler, no emoji, and never "
+            "inventing facts about the topic beyond what was said above. "
+            "Return ONLY a JSON array of {agent, text}."
+        )
+        response = claude_create(
+            log_purpose='breakroom_reply', model=BREAKROOM_MODEL, max_tokens=500,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        replies = [
+            {'agent': r['agent'], 'text': str(r.get('text') or '').strip()}
+            for r in _breakroom_json(_breakroom_text(response), '[', ']')
+            if isinstance(r, dict) and r.get('agent') in ALL_AGENTS and str(r.get('text') or '').strip()
+        ][:3]
+        if not replies:
+            return jsonify({'success': False, 'error': "They didn't have anything to add - try again."}), 502
+        with breakroom_lock:
+            scenes = _bj_load(BREAKROOM_SCENES_FILE, [])
+            scene = next(s for s in scenes if s['id'] == scene_id)
+            scene.setdefault('replies', []).append({'agent': 'you', 'text': text})
+            scene['replies'].extend(replies)
+            _bj_save(BREAKROOM_SCENES_FILE, scenes)
+        return jsonify({'success': True, 'replies': scene['replies']})
+    except Exception as e:
+        print(f"Break room reply error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/usage/summary', methods=['GET'])
 def usage_summary():
