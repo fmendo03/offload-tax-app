@@ -6800,7 +6800,7 @@ body.va-open #notification-toasts {
                     </div>
                     <div class="kb-files-list" id="kb-files-list-firm"></div>
                     <div class="kb-connect-bar">
-                        <input type="text" class="kb-connect-input" id="kb-connect-input-firm" placeholder="Paste a file or folder path, e.g. C:\Users\...\Tax Docs">
+                        <input type="text" class="kb-connect-input" id="kb-connect-input-firm" placeholder="Paste a file or folder path - or a OneDrive / Google Sheets share link">
                         <button type="button" class="pane-toolbar-btn kb-browse-btn" id="kb-browse-file-btn-firm" title="Browse for a file">&#128196;</button>
                         <button type="button" class="pane-toolbar-btn kb-browse-btn" id="kb-browse-folder-btn-firm" title="Browse for a folder">&#128193;</button>
                         <button type="button" class="pane-toolbar-btn" id="kb-connect-btn-firm">Connect</button>
@@ -6837,7 +6837,7 @@ body.va-open #notification-toasts {
                     </div>
                     <div class="kb-files-list" id="kb-files-list-personal"></div>
                     <div class="kb-connect-bar">
-                        <input type="text" class="kb-connect-input" id="kb-connect-input-personal" placeholder="Paste a file or folder path, e.g. C:\Users\...\Tax Docs">
+                        <input type="text" class="kb-connect-input" id="kb-connect-input-personal" placeholder="Paste a file or folder path - or a OneDrive / Google Sheets share link">
                         <button type="button" class="pane-toolbar-btn kb-browse-btn" id="kb-browse-file-btn-personal" title="Browse for a file">&#128196;</button>
                         <button type="button" class="pane-toolbar-btn kb-browse-btn" id="kb-browse-folder-btn-personal" title="Browse for a folder">&#128193;</button>
                         <button type="button" class="pane-toolbar-btn" id="kb-connect-btn-personal">Connect</button>
@@ -14557,14 +14557,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
                 const icon = document.createElement('span');
                 icon.className = 'kb-connection-icon';
-                icon.textContent = conn.type === 'folder' ? '📁' : '📄';
+                icon.textContent = conn.type === 'folder' ? '📁' : (conn.type === 'url' ? '🔗' : '📄');
                 row.appendChild(icon);
 
                 const pathEl = document.createElement('span');
                 pathEl.className = 'kb-connection-path' + (conn.missing ? ' missing' : '');
                 pathEl.textContent = conn.path;
                 if (conn.missing) {
-                    pathEl.title = `${conn.path} - not found (moved or deleted?)`;
+                    pathEl.title = `${conn.path} - ${conn.error || 'not found (moved or deleted?)'}`;
+                } else if (conn.type === 'url') {
+                    pathEl.textContent = conn.fileName ? `${conn.fileName} (linked)` : conn.path;
+                    pathEl.title = `${conn.path} - re-checked automatically; click to open the link`;
+                    pathEl.addEventListener('click', () => window.open(conn.path, '_blank', 'noopener'));
                 } else {
                     pathEl.title = 'Click to open the folder this is in';
                     pathEl.addEventListener('click', () => revealKbPath(conn.path));
@@ -14657,7 +14661,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     renderKbLiveConnectionsReport(side);
                     if (!kbEditing[side]) renderKbColumn(side);
                 } else {
-                    alert(data.error || 'Could not connect that path.');
+                    alert(data.error || 'Could not connect that path or link.');
                 }
             } catch (error) {
                 console.error('Failed to connect path:', error);

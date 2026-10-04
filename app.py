@@ -16,6 +16,7 @@ import json
 import base64
 import io
 import re
+import math
 import uuid
 import secrets
 import subprocess
@@ -26,6 +27,9 @@ import shutil
 import hashlib
 import urllib.request
 import urllib.error
+import urllib.parse
+import socket
+import ipaddress
 import threading
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -493,8 +497,8 @@ def _log_claude_usage(purpose, agent, model, response):
         print(f"Usage log error: {e}")
 
 
-def claude_create(log_agent=None, **kwargs):
-    purpose = sys._getframe(1).f_code.co_name
+def claude_create(log_agent=None, log_purpose=None, **kwargs):
+    purpose = log_purpose or sys._getframe(1).f_code.co_name
     response = client.messages.create(**kwargs)
     _log_claude_usage(purpose, log_agent, kwargs.get('model'), response)
     return response
@@ -902,30 +906,205 @@ def kb_subject_label(side):
     return 'this tax practice / firm' if side == 'firm' else "Francis, the firm owner, personally (not business facts)"
 
 
-# Live, per-request view of a side's connected files/folders for chat context.
-# Deliberately reads straight from kb_connections.json rather than anything
-# merged into kb_notes.json - connections are never written into the
-# permanent report (see sync_kb_connection), so this is the only way agents
-# see their content, and it vanishes the instant a connection is removed.
-def get_kb_connections_context(side):
+# What chat sees of a side's connected files/folders. They form a searchable
+# LIBRARY: the files' full text is NOT pasted into every message (a big
+# spreadsheet re-sent on every message was the single biggest cost in the app)
+# - instead this is a short, stable listing (name + headline overview), and the
+# agent calls the search_library tool to pull the specific passages a question
+# needs, only when it needs them. full=True is the old everything-included
+# form, used by the explicit "ask the Knowledge Base" box (see /kb/ask), where
+# the one question is the whole request.
+def get_kb_connections_context(side, full=False):
     connections, _ = sync_all_kb_connections()
-    parts = []
+    if full:
+        parts = []
+        for conn in connections.get(side, []):
+            if conn.get('missing'):
+                continue
+            content = (conn.get('raw_text') or '').strip() or (conn.get('summary') or '').strip()
+            if not content:
+                continue
+            parts.append(f"From \"{conn['path']}\":\n{content[:100000]}")
+        if not parts:
+            return ""
+        return (
+            "\n\nLIVE CONNECTED FILES/FOLDERS (read directly from disk right now, not stored - "
+            "if a connection is removed this section will simply stop appearing):\n" + "\n\n".join(parts)
+        )
+
+    lines = []
     for conn in connections.get(side, []):
-        if conn.get('missing'):
+        if conn.get('missing') or not (conn.get('raw_text') or '').strip():
             continue
-        # raw_text (the file's actual extracted content) is what answers
-        # specific questions accurately; summary is only a fallback for
-        # connections where no text could be extracted (e.g. an image/PDF).
-        content = (conn.get('raw_text') or '').strip() or (conn.get('summary') or '').strip()
-        if not content:
-            continue
-        parts.append(f"From \"{conn['path']}\":\n{content}")
-    if not parts:
+        entry = f"- \"{conn['path']}\""
+        summary = (conn.get('summary') or '').strip()
+        if summary:
+            entry += "\n  Overview (headline only - not for exact figures):\n" + "\n".join('  ' + l for l in summary.split('\n'))
+        lines.append(entry)
+    if not lines:
         return ""
     return (
-        "\n\nLIVE CONNECTED FILES/FOLDERS (read directly from disk right now, not stored - "
-        "if a connection is removed this section will simply stop appearing):\n" + "\n\n".join(parts)
+        f"\n\nLIBRARY - connected files about {kb_subject_label(side)}, kept up to date. Their full contents are "
+        "NOT included here; use the search_library tool for anything that depends on specifics from them "
+        "(figures, dates, names, rows) rather than guessing or leaning on the overview:\n" + "\n".join(lines)
     )
+
+
+# --- Library search ------------------------------------------------------
+# Splits each connected file's stored text into chunks and finds the ones that
+# match a query, so only a few hundred tokens of the right passages reach the
+# model instead of the whole file. Plain keyword scoring (rarer words count
+# for more) plus an exact-phrase and date-format bonus - no extra service.
+LIBRARY_CHUNK_CHARS = 1800
+LIBRARY_RESULT_CHARS = 7000
+LIBRARY_SEARCH_MAX_RESULTS = 4
+LIBRARY_STOPWORDS = {
+    'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'is', 'was', 'what', 'whats', 'how', 'much',
+    'many', 'did', 'do', 'does', 'we', 'our', 'my', 'me', 'i', 'it', 'at', 'by', 'with', 'from', 'this', 'that'
+}
+
+
+def library_has_content():
+    connections = load_kb_connections()
+    return any(
+        not conn.get('missing') and (conn.get('raw_text') or '').strip()
+        for side in ('firm', 'personal') for conn in connections.get(side, [])
+    )
+
+
+def _library_files():
+    files = []
+    connections = load_kb_connections()
+    for side in ('firm', 'personal'):
+        for conn in connections.get(side, []):
+            raw = (conn.get('raw_text') or '').strip()
+            if conn.get('missing') or not raw:
+                continue
+            # A folder's text is one "[Attached file: name]" block per file.
+            pieces = re.split(r'(?m)^\[Attached file: (.+?)\]\s*$', raw)
+            if len(pieces) >= 3:
+                for i in range(1, len(pieces), 2):
+                    files.append({'name': pieces[i], 'source': conn['path'], 'text': pieces[i + 1].strip()})
+            else:
+                files.append({'name': os.path.basename(conn['path'].rstrip('/\\')) or conn['path'],
+                              'source': conn['path'], 'text': raw})
+    return files
+
+
+# Each chunk repeats its sheet's name and column row, so a chunk from the
+# middle of a long daily-numbers sheet still says what each column is.
+def _chunk_file_text(text):
+    chunks = []
+    header = ''
+    current = []
+    size = 0
+    expecting_columns = False
+
+    def flush():
+        nonlocal current, size
+        if current:
+            chunks.append((header + '\n' if header else '') + '\n'.join(current))
+        current, size = [], 0
+
+    for line in text.split('\n'):
+        if line.startswith('Sheet: '):
+            flush()
+            header = line
+            expecting_columns = True
+            continue
+        if expecting_columns:
+            header = header + '\nColumns: ' + line[:400]
+            expecting_columns = False
+            continue
+        if current and size + len(line) > LIBRARY_CHUNK_CHARS:
+            flush()
+        current.append(line)
+        size += len(line) + 1
+    flush()
+    return chunks or [text]
+
+
+# A date in the query, written either way (2026-09-15 or 9/15/2026), also
+# matches the other way spreadsheets commonly store it.
+def _query_date_variants(query):
+    variants = set()
+    dates = [(int(y), int(m), int(d)) for y, m, d in re.findall(r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b', query)]
+    for m, d, y in re.findall(r'\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b', query):
+        y = int(y)
+        dates.append((y + 2000 if y < 100 else y, int(m), int(d)))
+    for y, m, d in dates:
+        variants.update({f'{y}-{m:02d}-{d:02d}', f'{m}/{d}/{y}', f'{m:02d}/{d:02d}/{y}', f'{m}/{d}/{y % 100:02d}'})
+    return variants
+
+
+def run_library_search(args):
+    query = str(args.get('query') or '').strip()
+    file_filter = str(args.get('file') or '').strip().lower()
+    where = str(args.get('where') or 'match').strip().lower()
+    part = args.get('part')
+
+    files = _library_files()
+    if file_filter:
+        files = [f for f in files if file_filter in f['name'].lower() or file_filter in f['source'].lower()]
+    if not files:
+        return "The library has no readable files" + (" matching that name." if file_filter else " (nothing is connected, or the connection can't be read right now).")
+
+    chunked = [(f['name'], _chunk_file_text(f['text'])) for f in files]
+
+    def render(name, index, total, text):
+        return f"--- {name} (part {index + 1} of {total}) ---\n{text}"
+
+    results = []
+    if part:
+        try:
+            wanted = int(part) - 1
+        except (TypeError, ValueError):
+            return 'part must be a number.'
+        name, chunks = chunked[0]
+        if not 0 <= wanted < len(chunks):
+            return f'{name} has {len(chunks)} parts - ask for a part between 1 and {len(chunks)}.'
+        results.append(render(name, wanted, len(chunks), chunks[wanted]))
+    elif where in ('latest', 'start'):
+        for name, chunks in chunked:
+            picks = range(max(0, len(chunks) - 3), len(chunks)) if where == 'latest' else range(0, min(2, len(chunks)))
+            for i in picks:
+                results.append(render(name, i, len(chunks), chunks[i]))
+    else:
+        terms = [t for t in re.findall(r'[a-z0-9]+', query.lower()) if t not in LIBRARY_STOPWORDS and (len(t) > 1 or t.isdigit())]
+        if not terms:
+            return 'Give the specific words, names or dates to look for (as they would appear in the file), or use where="latest".'
+        entries = [(name, i, len(chunks), chunk, chunk.lower()) for name, chunks in chunked for i, chunk in enumerate(chunks)]
+        total = len(entries)
+        patterns = {t: re.compile(r'(?<![a-z0-9])' + re.escape(t) + r'(?![a-z0-9])') for t in terms}
+        doc_freq = {t: sum(1 for e in entries if patterns[t].search(e[4])) for t in terms}
+        phrase = ' '.join(query.lower().split())
+        date_variants = _query_date_variants(query)
+        scored = []
+        for name, i, n, chunk, lower in entries:
+            score = 0.0
+            for t in terms:
+                count = len(patterns[t].findall(lower))
+                if count:
+                    score += math.log(1 + total / (1 + doc_freq[t])) * (1 + math.log(count))
+            if score and len(phrase) > 3 and phrase in lower:
+                score += 10
+            if date_variants and any(v in lower for v in date_variants):
+                score += 12
+            if score > 0:
+                scored.append((score, name, i, n, chunk))
+        scored.sort(key=lambda x: -x[0])
+        # Only passages close to the best match - a precise hit (an exact
+        # date, a client's name) shouldn't drag in loosely related ones.
+        best = scored[0][0] if scored else 0
+        for score, name, i, n, chunk in [x for x in scored if x[0] >= best * 0.6][:LIBRARY_SEARCH_MAX_RESULTS]:
+            results.append(render(name, i, n, chunk))
+        if not results:
+            return 'No passages matched. Try different words (as written in the file), a date like 2026-10-03, or where="latest" for the most recent entries.'
+
+    output = '\n\n'.join(results)
+    if len(output) > LIBRARY_RESULT_CHARS:
+        output = output[:LIBRARY_RESULT_CHARS] + '\n...(cut off - ask for a specific part, or narrow the search)'
+    return output
 
 
 def merge_into_kb_report(side, new_info, source_label=None):
@@ -1062,7 +1241,7 @@ def kb_ask():
             return jsonify({'success': False, 'error': 'Missing side or question'}), 400
 
         report = load_kb_notes().get(side, '').strip()
-        connections_context = get_kb_connections_context(side)
+        connections_context = get_kb_connections_context(side, full=True)
         if not report and not connections_context:
             return jsonify({'success': True, 'answer': "The knowledge base doesn't have any information yet."})
 
@@ -1214,7 +1393,7 @@ def kb_forget():
 # it persists anywhere, and it never touches kb_notes.json.
 KB_MAX_FILES_PER_CONNECTION = 40
 KB_MAX_FILE_BYTES = 8 * 1024 * 1024
-KB_CONNECTION_RAW_TEXT_LIMIT = 100000
+KB_CONNECTION_RAW_TEXT_LIMIT = 600000
 
 
 def load_kb_connections():
@@ -1328,6 +1507,9 @@ def read_connection_attachments(path, is_folder, signature):
 #   - summary: a short LLM-written blurb, used ONLY for the friendly report
 #     display (renderKbLiveConnectionsReport) - never for answering questions.
 def sync_kb_connection(side, conn):
+    if conn.get('type') == 'url':
+        return sync_url_connection(side, conn)
+
     path = conn['path']
     is_folder = conn['type'] == 'folder'
 
@@ -1350,6 +1532,14 @@ def sync_kb_connection(side, conn):
         # caching a false "nothing here" result over real data.
         return False
 
+    source_desc = f"connected folder \"{path}\"" if is_folder else f"connected file \"{path}\""
+    return _finish_connection_sync(side, conn, attachments, new_signature, source_desc)
+
+
+# The part both kinds of connection (a path on disk, a link) share once their
+# files are in hand: extract the text, keep it for the library, and write the
+# short overview.
+def _finish_connection_sync(side, conn, attachments, new_signature, source_desc):
     conn['signature'] = new_signature
     conn['lastSyncedAt'] = now_local().isoformat()
     if not attachments:
@@ -1365,11 +1555,10 @@ def sync_kb_connection(side, conn):
 
     raw_text = "\n\n".join(b['text'] for b in blocks if b.get('type') == 'text').strip()
     if len(raw_text) > KB_CONNECTION_RAW_TEXT_LIMIT:
-        raw_text = raw_text[:KB_CONNECTION_RAW_TEXT_LIMIT] + "\n\n...(truncated - too large to include in full)"
+        raw_text = raw_text[:KB_CONNECTION_RAW_TEXT_LIMIT] + "\n\n...(truncated - too large to store in full)"
     conn['raw_text'] = raw_text
 
     subject = kb_subject_label(side)
-    source_desc = f"connected folder \"{path}\"" if is_folder else f"connected file \"{path}\""
     instruction = (
         f"Write a BRIEF, high-level summary of the attached content about {subject} (source: {source_desc}). "
         "This is just an at-a-glance overview shown in a UI panel - the full content is separately available "
@@ -1380,7 +1569,13 @@ def sync_kb_connection(side, conn):
         "If there's nothing meaningfully relevant to summarize, reply with exactly: "
         "(no relevant facts found in this connection)"
     )
-    content_blocks = list(blocks) + [{'type': 'text', 'text': instruction}]
+    # Only the first part of a very large file is needed for an overview.
+    overview_blocks = []
+    for b in blocks:
+        if b.get('type') == 'text' and len(b['text']) > 60000:
+            b = {'type': 'text', 'text': b['text'][:60000] + '\n...(rest of file omitted from this overview)'}
+        overview_blocks.append(b)
+    content_blocks = overview_blocks + [{'type': 'text', 'text': instruction}]
 
     response = claude_create(
         model="claude-sonnet-5",
@@ -1394,6 +1589,121 @@ def sync_kb_connection(side, conn):
         summary = ''
     conn['summary'] = summary
     return True
+
+
+# --- Link connections (OneDrive / SharePoint / Google Sheets / any file URL) ---
+# A path on this computer can't be read by the hosted web app, so a connection
+# can also be a share link: the server downloads the file itself, re-checking at
+# most every KB_URL_RECHECK_SECONDS and only re-reading it when the content
+# actually changed (daily-updated files just work). Links are fetched with
+# guards - https only, and never to a private/internal address.
+KB_URL_RECHECK_SECONDS = 300
+KB_URL_TIMEOUT_SECONDS = 25
+
+
+def _is_public_host(hostname):
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except OSError:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            return False
+    return bool(infos)
+
+
+class _PublicOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlparse(newurl)
+        if parsed.scheme != 'https' or not _is_public_host(parsed.hostname or ''):
+            raise urllib.error.URLError('Redirected somewhere that is not allowed.')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# Turns a "share" link into a direct-download one where the service has a
+# known pattern; anything else is fetched as given.
+def resolve_download_url(url):
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or '').lower()
+    if host == '1drv.ms' or host.endswith('.1drv.ms') or host == 'onedrive.live.com':
+        encoded = base64.urlsafe_b64encode(url.encode('utf-8')).decode('ascii').rstrip('=')
+        return f'https://api.onedrive.com/v1.0/shares/u!{encoded}/root/content'
+    if host.endswith('.sharepoint.com'):
+        query = dict(urllib.parse.parse_qsl(parsed.query))
+        query['download'] = '1'
+        return urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(query)))
+    sheets = re.match(r'https://docs\.google\.com/spreadsheets/d/([\w-]+)', url)
+    if sheets:
+        return f'https://docs.google.com/spreadsheets/d/{sheets.group(1)}/export?format=xlsx'
+    drive = re.match(r'https://drive\.google\.com/file/d/([\w-]+)', url)
+    if drive:
+        return f'https://drive.google.com/uc?export=download&id={drive.group(1)}'
+    return url
+
+
+def fetch_url_file(url):
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != 'https' or not parsed.hostname:
+        raise ValueError('The link has to start with https://')
+    target = resolve_download_url(url)
+    target_host = urllib.parse.urlparse(target).hostname or ''
+    if not _is_public_host(target_host):
+        raise ValueError("That address can't be reached from here.")
+    opener = urllib.request.build_opener(_PublicOnlyRedirectHandler)
+    request_obj = urllib.request.Request(target, headers={'User-Agent': 'Mozilla/5.0 (Offload knowledge base)'})
+    with opener.open(request_obj, timeout=KB_URL_TIMEOUT_SECONDS) as response:
+        data = response.read(KB_MAX_FILE_BYTES + 1)
+        if len(data) > KB_MAX_FILE_BYTES:
+            raise ValueError(f'That file is larger than {KB_MAX_FILE_BYTES // (1024 * 1024)} MB.')
+        content_type = (response.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+        disposition = response.headers.get('Content-Disposition') or ''
+    filename = ''
+    match = re.search(r"filename\*=UTF-8''([^;]+)", disposition) or re.search(r'filename="?([^";]+)"?', disposition)
+    if match:
+        filename = urllib.parse.unquote(match.group(1))
+    if not filename:
+        filename = os.path.basename(urllib.parse.unquote(parsed.path)) or 'linked-file'
+    if '.' not in os.path.basename(filename):
+        filename += mimetypes.guess_extension(content_type) or ''
+    if data[:15].lower().startswith((b'<!doctype html', b'<html')):
+        raise ValueError("That link opened a web page instead of the file - check it's shared so anyone with the link can view it.")
+    return data, filename
+
+
+def sync_url_connection(side, conn):
+    now = now_local()
+    last_checked = conn.get('lastCheckedAt')
+    if last_checked and 'summary' in conn and 'raw_text' in conn and not conn.get('missing'):
+        try:
+            if (now - datetime.fromisoformat(last_checked)).total_seconds() < KB_URL_RECHECK_SECONDS:
+                return False
+        except ValueError:
+            pass
+    conn['lastCheckedAt'] = now.isoformat()
+    try:
+        data, filename = fetch_url_file(conn['url'])
+    except Exception as e:
+        # A failed re-check keeps whatever was last read; only a connection
+        # that never worked is flagged as unreachable.
+        if 'raw_text' not in conn:
+            conn['missing'] = True
+        conn['error'] = str(e)
+        return False
+    conn['missing'] = False
+    conn.pop('error', None)
+
+    new_signature = {'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data)}
+    if new_signature == conn.get('signature') and 'summary' in conn and 'raw_text' in conn:
+        return False
+
+    attachments = [{
+        'name': filename,
+        'mimeType': mimetypes.guess_type(filename)[0] or 'application/octet-stream',
+        'data': base64.b64encode(data).decode('ascii')
+    }]
+    conn['fileName'] = filename
+    return _finish_connection_sync(side, conn, attachments, new_signature, f"linked file \"{filename}\" ({conn['url']})")
 
 
 # Runs every /kb/data poll (the frontend already refreshes that every ~15s
@@ -1420,8 +1730,9 @@ def kb_connections_add():
         if side not in ('firm', 'personal') or not raw_path:
             return jsonify({'success': False, 'error': 'Missing side or path'}), 400
 
-        path = os.path.normpath(raw_path)
-        if not os.path.exists(path):
+        is_link = raw_path.lower().startswith(('http://', 'https://'))
+        path = raw_path if is_link else os.path.normpath(raw_path)
+        if not is_link and not os.path.exists(path):
             return jsonify({'success': False, 'error': f'No file or folder found at "{path}"'}), 400
 
         connections = load_kb_connections()
@@ -1432,11 +1743,19 @@ def kb_connections_add():
             'id': uuid.uuid4().hex,
             'userId': current_user_id(),
             'path': path,
-            'type': 'folder' if os.path.isdir(path) else 'file',
+            'type': 'url' if is_link else ('folder' if os.path.isdir(path) else 'file'),
             'addedAt': now_local().isoformat(),
             'signature': {},
             'missing': False
         }
+        if is_link:
+            conn['url'] = path
+            # Prove the link works before keeping it, so a bad or private
+            # link is reported now instead of sitting there silently broken.
+            try:
+                fetch_url_file(path)
+            except Exception as link_error:
+                return jsonify({'success': False, 'error': f"Couldn't read that link: {link_error}"}), 400
         connections[side].append(conn)
         save_kb_connections(connections)
 
@@ -5684,6 +6003,8 @@ def chat():
             tools.append(UPDATE_TASK_TOOL)
         if agent == 'ashanti':
             tools.append(MANAGE_CALENDAR_TOOL)
+        if library_has_content():
+            tools.append(SEARCH_LIBRARY_TOOL)
 
         # Build the conversation, then fold any attachments (images, PDFs, or
         # extracted text from Word/Excel/etc.) into the final turn's content as
@@ -5705,14 +6026,47 @@ def chat():
         # a generous ceiling - confirmed directly (a real turn hit stop_reason
         # 'max_tokens' at usage.output_tokens=9972, already above the previous
         # 8192 cap, with no tool calls to show for it).
-        response = claude_create(
-            log_agent=agent,
-            model="claude-sonnet-5",
-            max_tokens=16000,
-            system=build_system_blocks(system_static, system_notes, system_prompt),
-            messages=claude_messages,
-            tools=tools
-        )
+        chat_system = build_system_blocks(system_static, system_notes, system_prompt)
+
+        def ask_claude():
+            return claude_create(
+                log_agent=agent,
+                log_purpose='chat',
+                model="claude-sonnet-5",
+                max_tokens=16000,
+                system=chat_system,
+                messages=claude_messages,
+                tools=tools
+            )
+
+        response = ask_claude()
+
+        # search_library is the one tool whose result the model has to see
+        # before it can answer, so (unlike the others, which only record
+        # what the agent chose to do) it gets a real round trip: run the
+        # search, hand the passages back, and let the model continue. Capped
+        # so a confused search loop can't run away.
+        for _ in range(3):
+            library_calls = [b for b in response.content
+                             if getattr(b, 'type', None) == 'tool_use' and getattr(b, 'name', None) == 'search_library']
+            if response.stop_reason != 'tool_use' or not library_calls:
+                break
+            tool_results = []
+            for block in response.content:
+                if getattr(block, 'type', None) != 'tool_use':
+                    continue
+                if block.name == 'search_library':
+                    try:
+                        result_text = run_library_search(block.input or {})
+                    except Exception as search_error:
+                        print(f"Library search error: {search_error}")
+                        result_text = "The library search failed - answer without it and say you couldn't check the files."
+                else:
+                    result_text = 'OK'
+                tool_results.append({'type': 'tool_result', 'tool_use_id': block.id, 'content': result_text})
+            claude_messages.append({'role': 'assistant', 'content': response.content})
+            claude_messages.append({'role': 'user', 'content': tool_results})
+            response = ask_claude()
 
         # Extract response text - concatenate every text block, since a web search
         # turn interleaves text with server-side tool-use/result blocks rather than
@@ -5955,6 +6309,28 @@ def chat():
 # never continues for it. It exists only so the model can hand the UI a small set
 # of tappable options when it asks a short, closed-set clarifying question (e.g.
 # "which sport?"), instead of the user having to type a free-text reply.
+SEARCH_LIBRARY_TOOL = {
+    "name": "search_library",
+    "description": (
+        "Look things up in the business's connected files (spreadsheets, documents) - the library. Use it whenever "
+        "an answer depends on specifics from those files: exact figures, dates, a client's numbers, a particular "
+        "row. Never guess or estimate such details from memory. Query: the distinctive words, names or dates as "
+        "they'd appear in the file (e.g. a client name, or a date like 2026-10-03). For 'latest', 'most recent', "
+        "'yesterday' or 'current' questions about a file that grows over time, set where='latest' to get its most "
+        "recent entries. where='start' returns the beginning of a file. If a result says a file has more parts, "
+        "pass part=N to read a specific part. You may search more than once to refine."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Words, names or dates to find. Optional when where or part is given."},
+            "where": {"type": "string", "enum": ["match", "latest", "start"], "description": "match (default): best-matching passages. latest: the file's most recent (last) entries. start: the beginning."},
+            "file": {"type": "string", "description": "Optional part of a file name to limit the search to one file."},
+            "part": {"type": "integer", "description": "Read this specific numbered part of the (first matching) file."}
+        }
+    }
+}
+
 QUICK_REPLIES_TOOL = {
     "name": "suggest_quick_replies",
     "description": (
