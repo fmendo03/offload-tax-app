@@ -241,6 +241,7 @@ personal_knowledge_base.json
 thought_status.json
 personal_thought_status.json
 usage_log.jsonl
+kb_merge_state.json
 attachments/
 
 # Local Claude Code tooling config, not part of the deployed app

@@ -366,6 +366,7 @@ def _require_login():
         return
     if not session.get('user_id'):
         return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    maybe_run_daily_kb_merge()
 
 
 # --- Attachments -----------------------------------------------------------
@@ -1150,6 +1151,113 @@ def merge_into_kb_report(side, new_info, source_label=None):
     return updated
 
 
+# --- Daily merge of check-in answers into the report ---------------------
+# Answering a check-in question used to rewrite the entire report right away -
+# an AI call that re-reads and re-writes the whole thing (about 2 cents each,
+# growing with the report). The answer itself is already saved the moment it's
+# submitted (agents see the latest 30 straight from there - see
+# get_knowledge_base_context), so folding it into the report can wait: new
+# answers are flagged merged=False, and all of a side's pending answers go into
+# the report in ONE rewrite - at the first activity of each day, and whenever
+# the Knowledge Base page is opened (so what's shown there is current). Entries
+# saved before this existed have no flag and count as already merged.
+KB_MERGE_STATE_FILE = _data_path('kb_merge_state.json')
+kb_answers_lock = threading.Lock()
+kb_merge_thread_lock = threading.Lock()
+kb_merge_in_progress = False
+_kb_daily_checked_date = None
+
+
+def _kb_store(side):
+    if side == 'firm':
+        return load_knowledge_base, save_knowledge_base
+    return load_personal_knowledge_base, save_personal_knowledge_base
+
+
+def count_pending_kb_answers(side):
+    load, _ = _kb_store(side)
+    return sum(1 for entries in load().values() for e in entries if e.get('merged') is False)
+
+
+def merge_pending_kb_answers(side):
+    load, save = _kb_store(side)
+    with kb_answers_lock:
+        snapshot = [
+            (agent, e.get('date', ''), e.get('question', ''), e.get('answer', ''))
+            for agent, entries in load().items() for e in entries if e.get('merged') is False
+        ]
+    if not snapshot:
+        return 0
+    new_info = "\n\n".join(
+        f"Q (asked by {agent.capitalize()}): {question}\nA (answered {date}): {answer}"
+        for agent, date, question, answer in snapshot
+    )
+    # If this raises (network, API), nothing is marked merged and the answers
+    # simply wait for the next run.
+    merge_into_kb_report(side, new_info, source_label="answers to check-in questions")
+    done = {(agent, question, answer) for agent, _, question, answer in snapshot}
+    with kb_answers_lock:
+        kb = load()
+        for agent, entries in kb.items():
+            for e in entries:
+                if e.get('merged') is False and (agent, e.get('question', ''), e.get('answer', '')) in done:
+                    e['merged'] = True
+        save(kb)
+    return len(snapshot)
+
+
+# Runs the merge for both sides on a background thread (it's an AI call, so it
+# never holds up the request that triggered it); a second trigger while one
+# is running does nothing.
+def kick_off_kb_merge():
+    global kb_merge_in_progress
+    with kb_merge_thread_lock:
+        if kb_merge_in_progress:
+            return False
+        if not any(count_pending_kb_answers(side) for side in ('firm', 'personal')):
+            return False
+        kb_merge_in_progress = True
+
+    def run():
+        global kb_merge_in_progress
+        try:
+            for side in ('firm', 'personal'):
+                try:
+                    merge_pending_kb_answers(side)
+                except Exception as e:
+                    print(f"KB merge error ({side}): {e}")
+        finally:
+            with kb_merge_thread_lock:
+                kb_merge_in_progress = False
+
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
+# "Once a day" without a scheduler: the first request of each new day claims
+# the day (remembered in kb_merge_state.json so a restart doesn't repeat it)
+# and kicks off the merge of everything answered before then.
+def maybe_run_daily_kb_merge():
+    global _kb_daily_checked_date
+    today = today_str()
+    if _kb_daily_checked_date == today:
+        return
+    _kb_daily_checked_date = today
+    state = {}
+    if os.path.exists(KB_MERGE_STATE_FILE):
+        try:
+            with open(KB_MERGE_STATE_FILE, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            state = {}
+    if state.get('lastDailyMerge') == today:
+        return
+    state['lastDailyMerge'] = today
+    with open(KB_MERGE_STATE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(state, f)
+    kick_off_kb_merge()
+
+
 # Used when Francis edits the report directly - the report should always read
 # as an organized summary, even if what got typed/pasted into the textarea was
 # a raw, unstructured paragraph. Unlike merge_into_kb_report, this has no
@@ -1180,6 +1288,9 @@ def organize_kb_text(side, raw_text):
 
 @app.route('/kb/data', methods=['GET'])
 def kb_data():
+    # Opening (or polling) the Knowledge Base page folds any waiting check-in
+    # answers into the report in the background; the page's next refresh shows it.
+    kick_off_kb_merge()
     connections, _ = sync_all_kb_connections()
     notes = load_kb_notes()
     return jsonify({
@@ -4784,18 +4895,20 @@ def learn_answer():
 
         today = today_str()
 
-        kb = load_knowledge_base()
-        agent_entries = kb.setdefault(agent, [])
+        # Saved right away (agents see it on their next message); it's folded
+        # into the report in the next daily merge - see merge_pending_kb_answers.
+        with kb_answers_lock:
+            kb = load_knowledge_base()
+            agent_entries = kb.setdefault(agent, [])
 
-        existing = next((e for e in agent_entries if e.get('date') == today and e.get('question') == question), None)
-        if existing:
-            existing['answer'] = answer
-        else:
-            agent_entries.append({'date': today, 'question': question, 'answer': answer})
+            existing = next((e for e in agent_entries if e.get('date') == today and e.get('question') == question), None)
+            if existing:
+                existing['answer'] = answer
+                existing['merged'] = False
+            else:
+                agent_entries.append({'date': today, 'question': question, 'answer': answer, 'merged': False})
 
-        save_knowledge_base(kb)
-        if not existing:
-            merge_into_kb_report('firm', f"Q: {question}\nA: {answer}", source_label=f"chat check-in with {agent.capitalize()}")
+            save_knowledge_base(kb)
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error: {str(e)}")
@@ -4901,18 +5014,18 @@ def personal_answer():
 
         today = today_str()
 
-        kb = load_personal_knowledge_base()
-        agent_entries = kb.setdefault(agent, [])
+        with kb_answers_lock:
+            kb = load_personal_knowledge_base()
+            agent_entries = kb.setdefault(agent, [])
 
-        existing = next((e for e in agent_entries if e.get('date') == today and e.get('question') == question), None)
-        if existing:
-            existing['answer'] = answer
-        else:
-            agent_entries.append({'date': today, 'question': question, 'answer': answer})
+            existing = next((e for e in agent_entries if e.get('date') == today and e.get('question') == question), None)
+            if existing:
+                existing['answer'] = answer
+                existing['merged'] = False
+            else:
+                agent_entries.append({'date': today, 'question': question, 'answer': answer, 'merged': False})
 
-        save_personal_knowledge_base(kb)
-        if not existing:
-            merge_into_kb_report('personal', f"Q: {question}\nA: {answer}", source_label=f"chat check-in with {agent.capitalize()}")
+            save_personal_knowledge_base(kb)
         return jsonify({'success': True})
     except Exception as e:
         print(f"Error: {str(e)}")
