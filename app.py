@@ -376,7 +376,7 @@ def _require_login():
 
 # --- Attachments -----------------------------------------------------------
 # A single generic file store shared by every item type that can carry a
-# file (To-Do, Calendar events, Discussion Topics, Project/Solo Tasks) -
+# file (To-Do, Calendar events, Discussion Topics, Tasks and Projects) -
 # rather than one bespoke upload path per feature. Each upload gets its own
 # folder (named by a random id) holding exactly one file under its original
 # name, so serving it back needs no separate metadata store - the folder
@@ -6587,7 +6587,7 @@ def chat():
         quick_replies = []
         refer = None
         propose_project = None
-        propose_task = None
+        propose_tasks = []
         created_files = []
         task_update = None
         calendar_update = None
@@ -6665,11 +6665,15 @@ def chat():
                 block_input = block.input or {}
                 task_text = str(block_input.get('task', '')).strip()
                 task_name = str(block_input.get('name', '')).strip()
+                # Only Manny hands tasks to other colleagues; everyone else's
+                # task is their own, whatever the model put in `agent`.
+                assignee = block_input.get('agent')
+                if agent != 'manny' or assignee not in ALL_AGENTS:
+                    assignee = agent
                 if task_text and task_name:
-                    propose_task = {
-                        'task': task_text,
-                        'name': task_name
-                    }
+                    # A repeat call for the same assignee refines that proposal.
+                    propose_tasks = [t for t in propose_tasks if t['agent'] != assignee]
+                    propose_tasks.append({'agent': assignee, 'task': task_text, 'name': task_name})
             elif block_name == 'update_task' and task_context:
                 block_input = block.input or {}
                 new_task_text = str(block_input.get('task', '')).strip()
@@ -6787,7 +6791,7 @@ def chat():
             'quick_replies': quick_replies,
             'refer': refer,
             'propose_project': propose_project,
-            'propose_task': propose_task,
+            'propose_tasks': propose_tasks,
             'created_files': created_files,
             'task_update': task_update,
             'calendar_update': calendar_update,
@@ -6864,10 +6868,11 @@ REFER_TEAMMATE_TOOL = {
         "them next. (2) The work genuinely needs several different colleagues' parts "
         "coordinated into a real plan, not just you or one other specialist - refer him to "
         "MANNY specifically (not each colleague individually), since working out who's needed "
-        "and setting up a project with a task for each of them is his job, not something to "
-        "assemble piecemeal from your own chat. If the work is entirely yours to do, don't "
-        "refer it away - call propose_task (a single item) or propose_project (several tasks "
-        "that belong together) instead. In every case, this shows Francis a "
+        "and setting up each one's task (a project only if the steps must happen in order) is "
+        "his job, not something to assemble piecemeal from your own chat. If the work is "
+        "entirely yours to do, don't refer it away - call propose_task (one task) or "
+        "propose_project (only if several of your own steps must happen one after another) "
+        "instead. In every case, this shows Francis a "
         "\"Speak to [Name]\" button; if he clicks it, he's taken straight to that colleague's own "
         "1:1 chat with your summary already given to them as context, so he never repeats "
         "himself and they pick up right where you left off. Always pair this call with a short "
@@ -6962,30 +6967,36 @@ MANAGE_CALENDAR_TOOL = {
 PROPOSE_TASK_TOOL = {
     "name": "propose_task",
     "description": (
-        "Call this once a real piece of YOUR OWN work Francis wants has been fully thought "
-        "through - you know exactly what needs to happen, with nothing meaningful left to "
-        "figure out - and it's just ONE task, not grouped with anything else. You don't need "
-        "Francis to separately say \"lock it in\" first, proposing it (with its own Accept card) "
-        "IS how he signs off. If the work genuinely needs other specific colleagues too, don't "
-        "call this - use refer_to_teammate to send Francis to Manny instead. If it's actually "
-        "several linked tasks that belong together as one piece of coordinated work, use "
-        "propose_project instead, not this. Do NOT call this while still being worked out - "
-        "only once it's actually settled. Do NOT call it again for every small clarifying detail "
-        "Francis asks about after already proposing it - just answer the question directly. If "
-        "you call this again after an earlier proposal in the same conversation that Francis "
-        "hasn't accepted yet, it UPDATES that same proposal in place (it does not create a "
-        "second, separate one)."
+        "Call this once a real piece of work Francis wants has been fully thought through - you "
+        "know exactly what needs to happen, with nothing meaningful left to figure out. A task is "
+        "one colleague's piece of work. You don't need Francis to separately say \"lock it in\" "
+        "first, proposing it (with its own Accept card) IS how he signs off. If the work is "
+        "someone else's, don't call this - use refer_to_teammate to send Francis to them (or to "
+        "Manny if it spans several colleagues). Exception, Manny only: when Francis brings you "
+        "work for several colleagues that does NOT have to happen in a particular order, call "
+        "this once per colleague, setting `agent` to who does it - each becomes that colleague's "
+        "own task. If the steps must happen one after another, that's a project (propose_project), "
+        "not several tasks. Do NOT call this while still being worked out - only once it's "
+        "actually settled. Do NOT call it again for every small clarifying detail Francis asks "
+        "about after already proposing it - just answer the question directly. If you call this "
+        "again for the same person after an earlier proposal that Francis hasn't accepted yet, it "
+        "UPDATES that proposal in place (it does not create a second one)."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "task": {
                 "type": "string",
-                "description": "One clear, specific description of the task, written so you can pick it up and act on it in your own Workspace without needing to re-read this whole conversation."
+                "description": "One clear, specific description of the task, written so whoever does it can pick it up and act on it in their own Workspace without needing to re-read this whole conversation."
             },
             "name": {
                 "type": "string",
                 "description": "A short 3-6 word title for this task, e.g. \"Draft Q3 Newsletter\" - not a sentence, just enough to identify it at a glance in a list."
+            },
+            "agent": {
+                "type": "string",
+                "enum": ALL_AGENTS,
+                "description": "Manny only: which colleague does this task. Everyone else leaves this out - the task is always their own."
             }
         },
         "required": ["task", "name"]
@@ -6994,34 +7005,31 @@ PROPOSE_TASK_TOOL = {
 
 # Acted on by the frontend. Posts a proposal card with an Accept Project
 # button instead of a plain message. Accepting sends each listed teammate's
-# task into their own Workspace - this is how a settled plan turns into
-# actual assigned work. The Accept/Pass card itself is the "before work
-# begins" checkpoint, so this doesn't gate on Francis separately saying the
-# plan is settled first, and Manny (reached via a referral for multi-person
-# work - see REFER_TEAMMATE_TOOL) assembles a project spanning several
-# colleagues the same way.
+# task into their own Workspace, in the order listed - and a later task can't
+# be started until the one before it is completed. The Accept/Pass card itself
+# is the "before work begins" checkpoint, so this doesn't gate on Francis
+# separately saying the plan is settled first, and Manny (reached via a
+# referral for multi-person work - see REFER_TEAMMATE_TOOL) assembles a
+# project spanning several colleagues the same way.
 PROPOSE_PROJECT_TOOL = {
     "name": "propose_project",
     "description": (
-        "Call this once a real, multi-task piece of work Francis wants has been fully thought "
-        "through - you know exactly what needs to happen, with nothing meaningful left to "
-        "figure out. A project is a GROUP of tasks, so this is for when there are genuinely "
-        "several of them that belong together as one piece of coordinated work - either several "
-        "linked steps of your own, or (Manny only) one task per colleague involved. If it's just "
-        "ONE task on its own, use propose_task instead, not this - don't pad a single task out "
-        "into a one-item project. If the work genuinely needs other specific colleagues too and "
-        "you aren't Manny, don't call this yourself - use refer_to_teammate to send Francis to "
-        "Manny instead (unless you ARE Manny: when Francis brings you something that needs "
-        "several colleagues, or a teammate refers him to you for that reason, work out who's "
-        "needed for which part and list a task for each of them here). Do NOT call this while "
-        "the plan is still being worked out - open questions or anything undecided - only once "
-        "it's actually settled. Do NOT call it again for every small clarifying detail Francis "
-        "asks about after a plan was already proposed - just answer the question directly. If "
-        "you call this again after an earlier proposal in the same conversation that Francis "
-        "hasn't accepted yet, it UPDATES that same proposal in place (it does not create a "
-        "second, separate one) - so only do that when something in the plan actually changed, "
-        "and carry forward every detail from the prior version that's still accurate, not just "
-        "the new part."
+        "Call this ONLY for multi-step work where each step has to be finished before the next "
+        "one can begin - the next step needs what the previous one produces (research, THEN a "
+        "draft built on it, THEN a review of the draft). A project is that ordered chain of at "
+        "least two tasks, listed in the exact order they must happen; the app will not let a "
+        "later task start until the one before it is done. Do NOT use it just because several "
+        "tasks are related or share a purpose: if they could be done at the same time or in any "
+        "order they are separate tasks (propose_task, or for Manny, one propose_task per "
+        "colleague). A single task is never a project. The steps can be yours or (Manny only) "
+        "span colleagues - if you aren't Manny and the chain needs other colleagues, don't call "
+        "this yourself - use refer_to_teammate to send Francis to Manny. Call it only once the "
+        "plan is fully thought through, with nothing left undecided. Do NOT call it again for "
+        "every small clarifying detail Francis asks about after a plan was already proposed - "
+        "just answer the question directly. If you call this again after an earlier proposal in "
+        "the same conversation that Francis hasn't accepted yet, it UPDATES that same proposal "
+        "in place - so only do that when something in the plan actually changed, and carry "
+        "forward every detail from the prior version that's still accurate."
     ),
     "input_schema": {
         "type": "object",
@@ -7032,17 +7040,18 @@ PROPOSE_PROJECT_TOOL = {
             },
             "summary": {
                 "type": "string",
-                "description": "1-3 sentences, in your own voice, summarizing the plan - this is the message shown to Francis alongside the task breakdown."
+                "description": "1-3 sentences, in your own voice, summarizing the plan and why each step has to wait for the one before it - this is the message shown to Francis alongside the task breakdown."
             },
             "tasks": {
                 "type": "array",
+                "description": "The steps in the exact order they must happen - each one starts only after the previous one is completed.",
                 "items": {
                     "type": "object",
                     "properties": {
                         "agent": {"type": "string", "enum": ALL_AGENTS},
                         "task": {
                             "type": "string",
-                            "description": "One clear, specific task for this person, written so they can pick it up and act on it in their own Workspace without needing to re-read this whole conversation."
+                            "description": "One clear, specific task for this person, written so they can pick it up and act on it in their own Workspace without needing to re-read this whole conversation. Say what it builds on from the previous step."
                         },
                         "name": {
                             "type": "string",
@@ -7193,11 +7202,13 @@ Once results are back, use them confidently: give a concrete, direct answer ("Be
 
 If what Francis needs crosses into one colleague's WORK expertise (an actual task, not a hobby), call `refer_to_teammate` naming them with a short summary of the relevant context. It shows Francis a "Speak to [Name]" button that opens that colleague's chat with your summary waiting, so he never repeats himself. No need to ask permission first.
 
-If the work needs SEVERAL colleagues' parts coordinated, refer him to MANNY the same way (`refer_to_teammate`, with a summary of what's needed and why it spans people). Manny sets up a project with a task for each person; don't assemble that piecemeal yourself.
+If the work needs SEVERAL colleagues' parts coordinated, refer him to MANNY the same way (`refer_to_teammate`, with a summary of what's needed and why it spans people). Manny sets up each person's task (a project only if the steps must happen in order); don't assemble that piecemeal yourself.
 
-## Proposing Tasks and Projects
+## Tasks and Projects
 
-Once you and Francis have settled on a real piece of work that's entirely yours to do, call `propose_task` for a single standalone task, or `propose_project` when it's several linked steps of your own. Either posts a proposal card with an Accept button; accepting sends it to your Workspace, and nothing runs until Francis decides. Manny uses `propose_project` at team scale, listing a task for each person involved when Francis brings him multi-person work (directly or via a referral).
+A **task** is one colleague's piece of work. A **project** exists only for multi-step work where each step must be finished before the next can begin (the next step needs what the previous one produced), so its tasks run in order and a later one can't start until the one before it is done. Related tasks that could happen at the same time or in any order are just separate tasks, never a project. To-Dos are Francis's own list and have nothing to do with you.
+
+Once you and Francis have settled on real work that's entirely yours, call `propose_task` for one task, or `propose_project` only when it's an ordered chain of your own steps. Either posts a proposal card with an Accept button; accepting sends it to your Workspace, and nothing runs until Francis decides. Manny, when Francis brings him multi-person work (directly or via a referral), calls `propose_task` once per colleague if the pieces are independent, or `propose_project` listing the steps in order if each depends on the one before.
 """
 
 

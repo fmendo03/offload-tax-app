@@ -710,7 +710,7 @@
             margin: 14px 0 6px;
         }
 
-        .ptree-solo-tasks {
+        .ptree-standalone-tasks {
             margin: 0;
             padding-left: 0;
             border-left: none;
@@ -6348,7 +6348,7 @@ body.va-open #notification-toasts {
     text-decoration-color: #667eea;
 }
 
-/* Top-level collapsible groups (Todo Discussions/Solo Tasks/Project Tasks) -
+/* Top-level collapsible groups (Discussions/Tasks/Projects) -
    one step bolder/darker than .workspace-project-name's per-project
    sub-headers, so the hierarchy between "which top-level group" and "which
    project inside Project Tasks" stays visually clear. */
@@ -6453,7 +6453,7 @@ body.va-open #notification-toasts {
 
 /* Only present when a task has produced/attached files - toggles that
    task's own file list (see buildTaskRowWithFiles) independently of the
-   Solo/Project Tasks group's own collapse. */
+   Tasks/Projects group's own collapse. */
 .workspace-task-files-chevron {
     font-size: 10px;
     color: #999;
@@ -9000,7 +9000,7 @@ function saveWorkspaceItems() {
     }
 }
 
-// Adds (or refreshes, if it's already there) a Discussion Topic/To-Do
+// Adds (or refreshes, if it's already there) a Discussion Topic
 // reference in an agent's Workspace - deduped by kind+sourceId so repeatedly
 // hitting "Discuss with X"/"Add to Calendar" on the same one just updates it
 // in place rather than piling up duplicates.
@@ -9388,11 +9388,16 @@ function upsertProjectProposal(agent, proposeProjectData) {
 // project here; the pending proposal just lives on its own chat message
 // until accepted, same dedupe-in-place behavior for a refined proposal.
 function upsertTaskProposal(agent, proposeTaskData) {
-    const existingMsg = (chatHistory[agent] || []).find(m => m.taskProposal && m.taskProposal.status === 'proposed');
-    const taskProposalId = existingMsg ? existingMsg.taskProposal.id : `${Date.now()}-task`;
+    // Normally the task is this agent's own; Manny can hand independent tasks
+    // to colleagues, and a refined proposal replaces the earlier unaccepted
+    // one for that same person.
+    const assignee = proposeTaskData.agent || agent;
+    const existingMsg = (chatHistory[agent] || []).find(m => m.taskProposal && m.taskProposal.status === 'proposed' && (m.taskProposal.agent || agent) === assignee);
+    const taskProposalId = existingMsg ? existingMsg.taskProposal.id : `${Date.now()}-task-${assignee}`;
 
     const taskProposal = {
         id: taskProposalId,
+        agent: assignee,
         task: proposeTaskData.task,
         name: proposeTaskData.name,
         status: 'proposed'
@@ -9453,10 +9458,10 @@ function getFilteredProjectsWithTasks() {
 }
 
 // Tasks that aren't part of any project (task.projectId is null - see
-// createSoloTaskEntry) - listed on the Projects page in their own section,
+// createTaskEntry) - listed on the Projects page in their own section,
 // same tree/preview mechanics as a project's tasks, just without a project
 // wrapping them.
-function getLiveSoloTasks() {
+function getLiveStandaloneTasks() {
     const result = [];
     Object.keys(workspaceTasks).forEach(agent => {
         (workspaceTasks[agent] || []).forEach(task => {
@@ -9467,8 +9472,8 @@ function getLiveSoloTasks() {
     return result.sort((a, b) => new Date(b.task.createdAt) - new Date(a.task.createdAt));
 }
 
-function getFilteredSoloTasks() {
-    const all = getLiveSoloTasks();
+function getFilteredStandaloneTasks() {
+    const all = getLiveStandaloneTasks();
     if (projectsAgentFilter === 'all') return all;
     return all.filter(({ agent }) => agent === projectsAgentFilter);
 }
@@ -9556,7 +9561,7 @@ function renderProjectsPane() {
     const allLive = getLiveProjectsWithTasks();
     const liveIds = new Set(allLive.map(p => p.project.id));
     Array.from(selectedProjectIds).forEach(id => { if (!liveIds.has(id)) selectedProjectIds.delete(id); });
-    // A solo task's "project id" is null (it doesn't have one) - only prune
+    // A task's "project id" is null (it doesn't have one) - only prune
     // the preview when it actually points at a real project that's gone,
     // not whenever that lookup comes back null.
     const previewProjectId = previewProjectIdInScope();
@@ -9568,14 +9573,14 @@ function renderProjectsPane() {
     if (cancelBtn) cancelBtn.disabled = selectedProjectIds.size === 0;
 
     const ordered = getFilteredProjectsWithTasks();
-    const soloTasks = getFilteredSoloTasks();
+    const standaloneTasks = getFilteredStandaloneTasks();
 
-    if (ordered.length === 0 && soloTasks.length === 0) {
+    if (ordered.length === 0 && standaloneTasks.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'page-empty';
         empty.textContent = projectsAgentFilter === 'all'
-            ? 'No projects or tasks yet - accepted "Suggestions for the firm" and group project proposals will show up here, along with any solo tasks.'
-            : `No projects or solo tasks for ${capitalizeAgent(projectsAgentFilter)}.`;
+            ? 'No projects or tasks yet - accepted "Suggestions for the firm" and group project proposals will show up here, along with any tasks.'
+            : `No projects or tasks for ${capitalizeAgent(projectsAgentFilter)}.`;
         list.appendChild(empty);
         return;
     }
@@ -9680,28 +9685,28 @@ function renderProjectsPane() {
         list.appendChild(block);
     });
 
-    // Solo tasks - not part of any project (task.projectId is null), so
+    // tasks - not part of any project (task.projectId is null), so
     // there's no project row to nest them under. Listed flat, same tree/
     // preview mechanics (expand to see files, same action buttons) as a
     // project's own tasks.
-    if (soloTasks.length > 0) {
+    if (standaloneTasks.length > 0) {
         const sectionHeader = document.createElement('div');
         sectionHeader.className = 'ptree-section-header';
-        sectionHeader.textContent = 'Solo Tasks';
+        sectionHeader.textContent = 'Tasks';
         list.appendChild(sectionHeader);
 
-        const soloWrap = document.createElement('div');
-        soloWrap.className = 'ptree-tasks ptree-solo-tasks';
-        soloTasks.forEach(({ agent, task }) => {
+        const standaloneWrap = document.createElement('div');
+        standaloneWrap.className = 'ptree-tasks ptree-standalone-tasks';
+        standaloneTasks.forEach(({ agent, task }) => {
             const taskExpanded = activeTaskKey === taskKey(agent, task.id);
-            appendTaskTreeRow(soloWrap, agent, task, taskExpanded);
+            appendTaskTreeRow(standaloneWrap, agent, task, taskExpanded);
         });
-        list.appendChild(soloWrap);
+        list.appendChild(standaloneWrap);
     }
 }
 
 // One task row (with its expand-to-show-files behavior) inside the Projects
-// pane's tree - shared by a project's own task list and the flat Solo Tasks
+// pane's tree - shared by a project's own task list and the flat Tasks
 // section, since both need identical row/expand/action-button behavior.
 function appendTaskTreeRow(container, agent, task, taskExpanded) {
     const taskRow = document.createElement('div');
@@ -9721,7 +9726,7 @@ function appendTaskTreeRow(container, agent, task, taskExpanded) {
     const taskText = document.createElement('span');
     taskText.className = 'ptree-task-text';
     if (task.status === 'completed') taskText.classList.add('completed');
-    taskText.textContent = `${TASK_ICON} ${capitalizeAgent(agent)}: ${task.name || task.task}`;
+    taskText.textContent = `${TASK_ICON} ${projectStepPrefix(task)}${capitalizeAgent(agent)}: ${task.name || task.task}`;
     taskText.title = task.task;
 
     taskTop.appendChild(chevronT);
@@ -10816,21 +10821,21 @@ function renderArchivePage() {
 // were never wrapped in a task or project to begin with. Archived/cancelled
 // items are hidden here - they live on the Archived page instead.
 function renderWorkspaceTasks(agent) {
-    // Workspace tab: To-Dos, Discussions and Files. Projects & Tasks tab:
-    // Solo Tasks and Project Tasks (with their files nested underneath).
+    // Workspace tab: Discussions and Files. Projects & Tasks tab:
+    // Tasks and Projects (with their files nested underneath).
     const container = document.getElementById('workspace-tasks-list');
     const projContainer = document.getElementById('workspace-projects-list');
     if (!container || !projContainer) return;
     container.innerHTML = '';
     projContainer.innerHTML = '';
 
-    // A completed to-do no longer needs a place in the Workspace - this is a
-    // standing invariant (not just something that happens at the moment it's
-    // marked complete, see updateTodoItem), so it's enforced here too, right
-    // before every render.
-    (workspaceItems[agent] || [])
-        .filter(i => i.kind === 'todo' && (todosList.find(t => t.id === i.sourceId) || {}).completed)
-        .forEach(i => removeWorkspaceItemCore(agent, i.id));
+    // To-Dos are Francis's own list and have nothing to do with the agents.
+    // Older versions could drop one into an agent's Workspace - clear any
+    // that are left over.
+    if ((workspaceItems[agent] || []).some(i => i.kind === 'todo')) {
+        workspaceItems[agent] = workspaceItems[agent].filter(i => i.kind !== 'todo');
+        saveWorkspaceItems();
+    }
 
     const tasks = (workspaceTasks[agent] || []).filter(t => !t.archived);
     const standaloneFiles = (workspaceFiles[agent] || []).filter(f => !f.taskId && !f.archived);
@@ -10845,23 +10850,15 @@ function renderWorkspaceTasks(agent) {
         el.appendChild(empty);
     };
     if (items.length === 0 && standaloneFiles.length === 0) {
-        addEmptyNote(container, 'Nothing here yet - to-dos and topics sent over for discussion, and files this agent creates or you attach, will show up here.');
+        addEmptyNote(container, 'Nothing here yet - topics sent over for discussion, and files this agent creates or you attach, will show up here.');
     }
     if (tasks.length === 0) {
         addEmptyNote(projContainer, 'No tasks yet - accepted projects and tasks will show up here.');
     }
 
-    // To-Dos and Discussion Topics sent over for discussion (see
-    // discussTopicWithAgent) are both lightweight
-    // references dropped in for a chat-based discussion, as opposed to
-    // actual work (Project/Solo Tasks below) - but they're otherwise
-    // unrelated, so each gets its own collapsible group.
-    const todoItems = items.filter(i => i.kind === 'todo');
-    if (todoItems.length > 0) {
-        const body = appendWorkspaceGroup(container, agent, 'todos', '✅ To-Do', todoItems.length);
-        todoItems.forEach(item => body.appendChild(buildWorkspaceItemRow(agent, item)));
-    }
-
+    // Discussion Topics sent over for discussion (see discussTopicWithAgent)
+    // are lightweight references dropped in for a chat-based discussion, as
+    // opposed to actual work (Tasks and Projects, on their own tab).
     const discussionItems = items.filter(i => i.kind === 'discussion');
     if (discussionItems.length > 0) {
         const body = appendWorkspaceGroup(container, agent, 'discussions', '\u{1F4AC} Discussions', discussionItems.length);
@@ -10873,12 +10870,12 @@ function renderWorkspaceTasks(agent) {
         standaloneFiles.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
     }
 
-    // Solo tasks (no project - see createSoloTaskEntry) get their own
+    // tasks (no project - see createTaskEntry) get their own
     // collapsible group - there's no project to nest them under.
-    const soloTasks = tasks.filter(t => !t.projectId);
-    if (soloTasks.length > 0) {
-        const body = appendWorkspaceGroup(projContainer, agent, 'solo', `${TASK_ICON} Solo Tasks`, soloTasks.length);
-        soloTasks.forEach(task => buildTaskRowWithFiles(agent, task, body));
+    const standaloneTasks = tasks.filter(t => !t.projectId);
+    if (standaloneTasks.length > 0) {
+        const body = appendWorkspaceGroup(projContainer, agent, 'tasks', `${TASK_ICON} Tasks`, standaloneTasks.length);
+        standaloneTasks.forEach(task => buildTaskRowWithFiles(agent, task, body));
     }
 
     // Group the rest by project so it reads as "here's everything from
@@ -10893,7 +10890,7 @@ function renderWorkspaceTasks(agent) {
 
     const projectTaskCount = Object.values(byProject).reduce((sum, g) => sum + g.items.length, 0);
     if (projectTaskCount > 0) {
-        const body = appendWorkspaceGroup(projContainer, agent, 'projects', `${PROJECT_ICON} Project Tasks`, projectTaskCount);
+        const body = appendWorkspaceGroup(projContainer, agent, 'projects', `${PROJECT_ICON} Projects`, projectTaskCount);
 
         Object.entries(byProject).forEach(([projectId, group]) => {
             const projectGroupKey = `project:${projectId}`;
@@ -10933,10 +10930,10 @@ function renderWorkspaceTasks(agent) {
     }
 }
 
-// Builds one task row (Solo or Project Tasks) and, if it has any linked
+// Builds one task row (a Task or a Project step) and, if it has any linked
 // files (uploaded, or generated by create_file on completion - see
 // attachFilesToTask), a small chevron that collapses/expands just that
-// task's own file list, independent of the Solo/Project Tasks group's own
+// task's own file list, independent of the Tasks/Projects group's own
 // collapse. A file shows as its own indented card (Preview/Download/Archive)
 // right beneath its task - clicking its name opens it in the Workspace
 // preview panel (see buildWorkspaceFileRow).
@@ -10964,7 +10961,7 @@ function buildTaskRowWithFiles(agent, task, body) {
     const text = document.createElement('span');
     text.className = 'workspace-project-task-text';
     if (task.status === 'completed') text.classList.add('completed');
-    text.textContent = `${TASK_ICON} ${task.name || task.task}`;
+    text.textContent = `${TASK_ICON} ${projectStepPrefix(task)}${task.name || task.task}`;
     text.title = task.task;
     text.addEventListener('click', () => markTaskViewed(agent, task.id));
 
@@ -10978,8 +10975,8 @@ function buildTaskRowWithFiles(agent, task, body) {
 }
 
 // agent:groupKey -> collapsed boolean (default false = expanded), persisted
-// so a group someone collapses in the Workspace pane (Todo Discussions/Solo
-// Tasks/Project Tasks) stays collapsed across reloads/re-renders.
+// so a group someone collapses in the Workspace pane (Discussions/Tasks/
+// Projects) stays collapsed across reloads/re-renders.
 let workspaceGroupsCollapsed = {};
 
 function loadWorkspaceGroupsCollapsed() {
@@ -11038,6 +11035,50 @@ function findWorkspaceTaskById(agent, id) {
     return (workspaceTasks[agent] || []).find(t => t.id === id);
 }
 
+// A project is an ordered chain: a task's place in project.tasks is its step
+// number, and it can't start until every live step before it is completed
+// (archived/cancelled steps no longer hold it up). Returns null for a task
+// that isn't in a project.
+function getProjectStepInfo(task) {
+    const project = task && task.projectId ? projects[task.projectId] : null;
+    if (!project) return null;
+    const index = project.tasks.findIndex(e => e.taskId === task.id);
+    if (index < 0) return null;
+    let blocker = null;
+    for (let i = 0; i < index && !blocker; i++) {
+        const earlier = findWorkspaceTaskById(project.tasks[i].agent, project.tasks[i].taskId);
+        if (earlier && !earlier.archived && !earlier.cancelled && earlier.status !== 'completed') blocker = earlier;
+    }
+    return { step: index + 1, total: project.tasks.length, blocker };
+}
+
+function projectStepPrefix(task) {
+    const info = getProjectStepInfo(task);
+    return info ? `${info.step}. ` : '';
+}
+
+// What the earlier steps covered and produced - the point of ordering is that
+// this step builds on them. A step done by this same agent is already in
+// their own chat history, so only other people's steps are spelled out.
+function buildPreviousStepsContext(agent, task) {
+    const project = task.projectId ? projects[task.projectId] : null;
+    if (!project) return '';
+    const index = project.tasks.findIndex(e => e.taskId === task.id);
+    const parts = [];
+    for (let i = 0; i < index; i++) {
+        const entry = project.tasks[i];
+        const earlier = findWorkspaceTaskById(entry.agent, entry.taskId);
+        if (!earlier || earlier.archived || earlier.cancelled || entry.agent === agent) continue;
+        let part = `Step ${i + 1} - ${earlier.name || earlier.task} (${capitalizeAgent(entry.agent)}): ${earlier.task}`;
+        getTaskFiles(entry.agent, earlier.id).filter(f => f.content).forEach(f => {
+            part += `\n[Output: ${f.name}]\n${String(f.content).slice(0, 2500)}`;
+        });
+        parts.push(part);
+    }
+    if (!parts.length) return '';
+    return `\n\nThis is step ${index + 1} of the project "${task.projectName}". The earlier steps are done - here is what they covered and produced:\n\n${parts.join('\n\n')}`;
+}
+
 // Re-renders everywhere a task's state is shown (Workspace pane, Projects
 // sidebar, agent badge) after any status change - keeps them from drifting
 // out of sync since workspaceTasks is the single source of truth for both.
@@ -11068,7 +11109,13 @@ function buildTaskActionsRow(agent, task) {
         // produces shows as its own card below, with its own Preview/Download.
         const startBtn = document.createElement('button');
         startBtn.type = 'button';
-        if (task.status === 'not_started') {
+        const stepInfo = task.status === 'not_started' ? getProjectStepInfo(task) : null;
+        if (stepInfo && stepInfo.blocker) {
+            startBtn.className = 'task-action-btn start';
+            startBtn.textContent = 'Waiting';
+            startBtn.disabled = true;
+            startBtn.title = `Step ${stepInfo.step} - starts once "${stepInfo.blocker.name || stepInfo.blocker.task}" is completed`;
+        } else if (task.status === 'not_started') {
             startBtn.className = 'task-action-btn solid-start';
             startBtn.textContent = 'Start';
             startBtn.addEventListener('click', stop(() => startProjectTask(agent, task.id)));
@@ -11130,7 +11177,7 @@ function buildTaskActionsRow(agent, task) {
         // text directly (creating a new task) or, when editing an existing
         // one, discuss the change instead of just typing over it - see
         // openTaskModal/discussTaskWithAgent. Purple as a visual cue for
-        // that discuss path: a solo task discusses with its own agent, a
+        // that discuss path: a task discusses with its own agent, a
         // project task always with Manny (he can see whether it ripples
         // into other tasks in the project).
         const editBtn = document.createElement('button');
@@ -11219,38 +11266,20 @@ function buildWorkspaceFileRow(agent, file) {
     return row;
 }
 
-// A Discussion Topic or To-Do sent over to this agent (see
+// A Discussion Topic sent over to this agent (see
 // discussTopicWithAgent) - not a real file, just a
 // reference card. Click the row (or its Preview button) to show its details
 // in the Workspace preview panel below; Remove only unlinks it here, the
-// actual topic/to-do is untouched.
+// actual topic is untouched.
 function buildWorkspaceItemRow(agent, item) {
     const row = document.createElement('div');
     row.className = 'workspace-task-row workspace-file-row';
 
-    const icon = item.kind === 'todo' ? '✅' : '\u{1F4AC}';
     const text = document.createElement('span');
     text.className = 'workspace-file-text';
-    text.textContent = `${icon} ${item.title}`;
+    text.textContent = `\u{1F4AC} ${item.title}`;
     text.addEventListener('click', () => showWorkspaceItemPreview(agent, item.id));
     row.appendChild(text);
-
-    // Same Not Scheduled/Scheduled + Completed badges as the To-Do page's
-    // own list (see todoStatusLabels) - a completed one is pruned out of the
-    // Workspace before this ever renders (see renderWorkspaceTasks), so in
-    // practice this only ever shows Not Scheduled or Scheduled; Completed
-    // stays here as a fallback in case that pruning hasn't run yet.
-    if (item.kind === 'todo') {
-        const linkedTodo = todosList.find(t => t.id === item.sourceId);
-        if (linkedTodo) {
-            todoStatusLabels(linkedTodo).forEach(status => {
-                const badge = document.createElement('span');
-                badge.className = 'todo-status-badge ' + todoStatusBadgeClass(status);
-                badge.textContent = status;
-                row.appendChild(badge);
-            });
-        }
-    }
 
     row.appendChild(buildWorkspaceItemActionsRow(agent, item));
     return row;
@@ -11269,38 +11298,14 @@ function buildWorkspaceItemActionsRow(agent, item) {
     previewBtn.addEventListener('click', stop(() => showWorkspaceItemPreview(agent, item.id)));
     actions.appendChild(previewBtn);
 
-    // A to-do item is a live pointer to a real to-do, not just a chat
-    // reference - acting on it here goes through the exact same functions
-    // the To-Do page and Calendar use, so completing/deleting it here shows
-    // up everywhere else too (see updateTodoItem/deleteTodoItem).
-    const linkedTodo = item.kind === 'todo' ? todosList.find(t => t.id === item.sourceId) : null;
-    if (linkedTodo) {
-        const completeBtn = document.createElement('button');
-        completeBtn.type = 'button';
-        completeBtn.className = 'task-action-btn solid-complete';
-        completeBtn.textContent = linkedTodo.completed ? 'Mark Not Completed' : 'Mark Completed';
-        completeBtn.addEventListener('click', stop(() => updateTodoItem(linkedTodo.id, { completed: !linkedTodo.completed })));
-        actions.appendChild(completeBtn);
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.type = 'button';
-        deleteBtn.className = 'task-action-btn solid-archive';
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.addEventListener('click', stop(() => {
-            confirmPermanentDelete(linkedTodo.title, () => deleteTodoItem(linkedTodo.id));
-        }));
-        actions.appendChild(deleteBtn);
-    } else {
-        // A Discussion Topic reference (or an orphaned to-do reference with
-        // nothing left to act on) - just unlinks it from this Workspace,
-        // the source item itself is untouched.
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'task-action-btn solid-archive';
-        removeBtn.textContent = 'Remove';
-        removeBtn.addEventListener('click', stop(() => removeWorkspaceItem(agent, item.id)));
-        actions.appendChild(removeBtn);
-    }
+    // Just unlinks it from this Workspace - the Discussion Topic itself is
+    // untouched.
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'task-action-btn solid-archive';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', stop(() => removeWorkspaceItem(agent, item.id)));
+    actions.appendChild(removeBtn);
 
     return actions;
 }
@@ -11331,7 +11336,7 @@ function renderWorkspaceItemPreviewPanel(item) {
     const listHtml = points.length
         ? `<ul>${points.map(p => `<li>${escapeHtml(p.replace(/^[-*•]\s*/, ''))}</li>`).join('')}</ul>`
         : '<p style="color:#999;">No details added.</p>';
-    const kindLabel = item.kind === 'todo' ? 'To-Do Item' : 'Discussion Item';
+    const kindLabel = 'Discussion Item';
 
     emptyEl.style.display = 'none';
     contentEl.style.display = 'flex';
@@ -11373,6 +11378,11 @@ const MAX_TASK_AUTO_CONTINUES = 5;
 async function startProjectTask(agent, taskId, continueCount = 0, reminder = null) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task || task.status === 'in_progress') return;
+    const stepInfo = task.status === 'not_started' ? getProjectStepInfo(task) : null;
+    if (stepInfo && stepInfo.blocker) {
+        alert(`This is step ${stepInfo.step} of its project - "${stepInfo.blocker.name || stepInfo.blocker.task}" has to be completed first.`);
+        return;
+    }
     task.status = 'in_progress';
     if (!task.startedAt) task.startedAt = new Date();
     // Starting work moves the conversation on - drop any pending project-task
@@ -11388,7 +11398,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
         // this same chat history - repeating the full task text would read
         // as "start over" rather than "keep going from where you paused".
         text: continueCount === 0
-            ? `Please go ahead and do this now: ${task.task}`
+            ? `Please go ahead and do this now: ${task.task}${buildPreviousStepsContext(agent, task)}`
             : (reminder || `Please continue where you left off.`),
         timestamp: new Date()
     });
@@ -12067,7 +12077,7 @@ function buildProjectProposalCard(chatAgent, msgIndex, proposal) {
 }
 
 // Same shape as buildProjectProposalCard, for a single standalone task (see
-// propose_task/createSoloTaskEntry) - no per-teammate breakdown since it's
+// propose_task/createTaskEntry) - no per-teammate breakdown since it's
 // always just this one agent's own task.
 function buildTaskProposalCard(chatAgent, msgIndex, proposal) {
     const card = document.createElement('div');
@@ -12083,7 +12093,7 @@ function buildTaskProposalCard(chatAgent, msgIndex, proposal) {
     const row = document.createElement('div');
     row.className = 'project-proposal-task-row';
     row.innerHTML = `<span class="project-proposal-task-agent"></span><span class="project-proposal-task-text"></span>`;
-    row.querySelector('.project-proposal-task-agent').textContent = capitalizeAgent(chatAgent) + ':';
+    row.querySelector('.project-proposal-task-agent').textContent = capitalizeAgent(proposal.agent || chatAgent) + ':';
     row.querySelector('.project-proposal-task-text').textContent = proposal.task;
     taskList.appendChild(row);
     card.appendChild(taskList);
@@ -12170,7 +12180,7 @@ function createProjectTaskEntry(agent, projectId, projectName, taskText, created
 // no project to point back to (projectId/projectName stay null). Everything
 // else about it (status lifecycle, Start/Edit/Archive, files it produces)
 // works exactly the same as a project task.
-function createSoloTaskEntry(agent, taskText, createdAt, taskName) {
+function createTaskEntry(agent, taskText, createdAt, taskName) {
     return createProjectTaskEntry(agent, null, null, taskText, createdAt, taskName);
 }
 
@@ -12205,16 +12215,21 @@ function acceptProject(chatAgent, msgIndex) {
 
 // Same idea as acceptProject, for a single standalone task (see
 // propose_task/upsertTaskProposal) - accepting sends it straight into the
-// agent's own Workspace as a solo task, no project involved.
+// agent's own Workspace as a task, no project involved.
 function acceptTaskProposal(chatAgent, msgIndex) {
     const msg = chatHistory[chatAgent][msgIndex];
     if (!msg || !msg.taskProposal || msg.taskProposal.status === 'accepted') return;
 
     msg.taskProposal.status = 'accepted';
-    const created = createSoloTaskEntry(chatAgent, msg.taskProposal.task, new Date(), msg.taskProposal.name);
+    const assignee = msg.taskProposal.agent || chatAgent;
+    const created = createTaskEntry(assignee, msg.taskProposal.task, new Date(), msg.taskProposal.name);
     msg.taskProposal.taskId = created.id;
     saveWorkspaceTasks();
     displayProjectsList();
+    if (assignee !== chatAgent) {
+        updateAgentBadge(assignee);
+        if (currentAgent === assignee) renderWorkspaceTasks(assignee);
+    }
 
     saveToLocalStorage(chatAgent);
     if (currentAgent === chatAgent) displayMessages(chatAgent);
@@ -12322,13 +12337,13 @@ function refreshTaskModalAttachments() {
     }
 }
 
-// projectId is null for a solo task - one that isn't part of any project.
+// projectId is null for a task - one that isn't part of any project.
 function openTaskModal(projectId, agent, taskId) {
     const editing = !!taskId;
     const task = editing ? findWorkspaceTaskById(agent, taskId) : null;
     if (editing && !task) return;
 
-    document.getElementById('task-modal-title').textContent = editing ? 'Edit Task' : (projectId ? 'New Task' : 'New Solo Task');
+    document.getElementById('task-modal-title').textContent = editing ? 'Edit Task' : (projectId ? 'New Task' : 'New Task');
     document.getElementById('task-modal-project-id').value = projectId || '';
     document.getElementById('task-modal-agent-orig').value = editing ? agent : '';
     document.getElementById('task-modal-task-id').value = taskId || '';
@@ -12351,10 +12366,10 @@ function openTaskModal(projectId, agent, taskId) {
     document.getElementById('task-modal-name').value = editing ? (task.name || '') : '';
     document.getElementById('task-modal-text').value = editing ? task.task : '';
 
-    // Editing an existing task (solo or project) swaps Save for a "Discuss
+    // Editing an existing task (standalone or in a project) swaps Save for a "Discuss
     // with..." button - sends whatever's currently typed to a chat as a
     // reply-quote (see discussTaskWithAgent) instead of silently overwriting
-    // the task. A solo task is discussed with its own agent; a project task
+    // the task. A task is discussed with its own agent; a project task
     // always goes through Manny, since a change to it could affect other
     // tasks in the project. Creating a new task (nothing to discuss yet)
     // keeps the ordinary Save button.
@@ -12380,7 +12395,7 @@ function saveTaskModal() {
     if (!agent || !taskText) { alert('Please choose an agent and describe the task.'); return; }
 
     // A project id is only expected/used when this task belongs to one - a
-    // solo task (see createSoloTaskEntry) never has one, so projectId being
+    // task (see createTaskEntry) never has one, so projectId being
     // null here is the normal case, not a missing-data bug.
     const project = projectId ? projects[projectId] : null;
     if (projectId && !project) { closeTaskModal(); return; }
@@ -12404,7 +12419,7 @@ function saveTaskModal() {
         saveProjects();
         setActivePreview({ type: 'project', projectId });
     } else {
-        const created = createSoloTaskEntry(agent, taskText, new Date(), taskName || null);
+        const created = createTaskEntry(agent, taskText, new Date(), taskName || null);
         created.attachments = [...taskModalAttachments];
         saveWorkspaceTasks();
         setActivePreview({ type: 'task', agent, taskId: created.id });
@@ -12437,7 +12452,7 @@ function applyProjectTaskUpdate(taskAgent, taskId, newText, newName) {
 // "Discuss with {Agent}" on a task's Edit modal - sends whatever's currently
 // typed to a chat as a reply-quote (same mechanic as Discuss-with-agent on a
 // Discussion Topic/To-Do), instead of silently overwriting the task the way
-// Save does. A solo task is discussed directly with its own agent, with no
+// Save does. A task is discussed directly with its own agent, with no
 // further mechanism - it isn't grouped with anything else, so there's
 // nothing else to weigh. A PROJECT task always goes through Manny instead,
 // even if it's not his own task - he's the one who sees the whole project
@@ -13248,7 +13263,7 @@ async function classifyIfNeedsTask(message) {
     }
 }
 
-// Creates a not-started solo task from a chat message that turned out to need
+// Creates a not-started task from a chat message that turned out to need
 // real work, and replies in-chat to say so - Francis starts it himself
 // (the existing Start button) whenever he's ready, rather than it launching
 // immediately. Reuses the exact same task lifecycle as a hand-created task:
@@ -13256,7 +13271,7 @@ async function classifyIfNeedsTask(message) {
 // generated file) lands on the task card, not as a fresh chat bubble.
 function createTaskFromChatMessage(agent, message, taskName) {
     const name = taskName || deriveShortName(message);
-    createSoloTaskEntry(agent, message, new Date(), name);
+    createTaskEntry(agent, message, new Date(), name);
     refreshTaskViewsForAgent(agent);
 
     chatHistory[agent].push({
@@ -13454,10 +13469,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         // Same idea, for a single standalone task with no project wrapper -
         // see propose_task/upsertTaskProposal.
-        let taskProposal = null;
-        if (data.propose_task) {
-            taskProposal = upsertTaskProposal(agent, data.propose_task);
-        }
+        // Usually one; Manny can propose independent tasks for several
+        // colleagues at once - the first rides on this message, any others
+        // get a message of their own below.
+        const taskProposals = (data.propose_tasks || []).map(t => upsertTaskProposal(agent, t));
+        const taskProposal = taskProposals[0] || null;
 
         // A reply that's just a tool call (e.g. refer with no accompanying text)
         // has nothing to show as a chat bubble - skip it rather than leaving a
@@ -13497,6 +13513,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 generatedFiles: generatedFilesForChat,
                 relatedItemId: relatedItemId || undefined,
                 timestamp: new Date()
+            });
+            taskProposals.slice(1).forEach(extra => {
+                chatHistory[agent].push({
+                    type: 'agent',
+                    text: `Task for ${capitalizeAgent(extra.agent)}:`,
+                    quickReplies: [],
+                    taskProposal: extra,
+                    timestamp: new Date()
+                });
             });
             saveToLocalStorage(agent);
 
@@ -18942,11 +18967,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                                 .catch(() => {});
                         }
                     }
-                    Object.keys(workspaceItems).forEach(agent => {
-                        (workspaceItems[agent] || [])
-                            .filter(i => i.kind === 'todo' && i.sourceId === id)
-                            .forEach(i => removeWorkspaceItem(agent, i.id));
-                    });
                 } else {
                     // Previously silent - a failed delete (e.g. the to-do was
                     // already removed elsewhere) looked identical to nothing
