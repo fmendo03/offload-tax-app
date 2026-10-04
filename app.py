@@ -447,6 +447,74 @@ def _delete_item_attachments(item):
         if att_id:
             _delete_attachment_folder(att_id)
 
+# --- Claude usage log + prompt caching -------------------------------------
+# Every call to Claude goes through claude_create so what it actually costs is
+# on record (usage_log.jsonl, one line per call - see /usage/summary and
+# Settings > Usage) instead of guessed at. The purpose of a call is simply the
+# name of the function that made it.
+USAGE_LOG_FILE = _data_path('usage_log.jsonl')
+usage_log_lock = threading.Lock()
+
+# USD per million tokens (cache_write is the 5-minute cache), and per web search.
+MODEL_PRICING = {
+    'claude-sonnet-5': {'input': 2.00, 'output': 10.00, 'cache_write': 2.50, 'cache_read': 0.20},
+}
+WEB_SEARCH_COST_EACH = 0.01
+
+
+def _estimate_call_cost(model, input_tokens, output_tokens, cache_write, cache_read, web_searches):
+    price = MODEL_PRICING.get(model) or MODEL_PRICING['claude-sonnet-5']
+    return (
+        input_tokens * price['input'] + output_tokens * price['output']
+        + cache_write * price['cache_write'] + cache_read * price['cache_read']
+    ) / 1_000_000 + web_searches * WEB_SEARCH_COST_EACH
+
+
+def _log_claude_usage(purpose, agent, model, response):
+    try:
+        usage = response.usage
+        server_tool = getattr(usage, 'server_tool_use', None)
+        web_searches = int(getattr(server_tool, 'web_search_requests', 0) or 0) if server_tool else 0
+        input_tokens = int(getattr(usage, 'input_tokens', 0) or 0)
+        output_tokens = int(getattr(usage, 'output_tokens', 0) or 0)
+        cache_write = int(getattr(usage, 'cache_creation_input_tokens', 0) or 0)
+        cache_read = int(getattr(usage, 'cache_read_input_tokens', 0) or 0)
+        entry = {
+            'ts': now_local().isoformat(), 'purpose': purpose, 'agent': agent, 'model': model,
+            'input_tokens': input_tokens, 'output_tokens': output_tokens,
+            'cache_write_tokens': cache_write, 'cache_read_tokens': cache_read,
+            'web_searches': web_searches,
+            'cost': round(_estimate_call_cost(model, input_tokens, output_tokens, cache_write, cache_read, web_searches), 6)
+        }
+        with usage_log_lock:
+            with open(USAGE_LOG_FILE, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(entry) + '\n')
+    except Exception as e:
+        print(f"Usage log error: {e}")
+
+
+def claude_create(log_agent=None, **kwargs):
+    purpose = sys._getframe(1).f_code.co_name
+    response = client.messages.create(**kwargs)
+    _log_claude_usage(purpose, log_agent, kwargs.get('model'), response)
+    return response
+
+
+# The system prompt goes to Claude as blocks so the parts that don't change
+# between messages can be cached (read back at a tenth of the normal input
+# price for ~5 minutes): the agent's personality + team knowledge, then the
+# business notes. Anything that changes message to message (today's calendar,
+# task context, an abbreviated older history) comes last, uncached - a change
+# anywhere only invalidates what comes after it.
+def build_system_blocks(static_text, notes_text, volatile_text):
+    blocks = [{'type': 'text', 'text': static_text, 'cache_control': {'type': 'ephemeral'}}]
+    if notes_text.strip():
+        blocks.append({'type': 'text', 'text': notes_text, 'cache_control': {'type': 'ephemeral'}})
+    if volatile_text.strip():
+        blocks.append({'type': 'text', 'text': volatile_text})
+    return blocks
+
+
 KNOWLEDGE_BASE_FILE = _data_path('knowledge_base.json')
 THOUGHT_STATUS_FILE = _data_path('thought_status.json')
 PERSONAL_KNOWLEDGE_BASE_FILE = _data_path('personal_knowledge_base.json')
@@ -889,7 +957,7 @@ def merge_into_kb_report(side, new_info, source_label=None):
             "meta-commentary. Reply with ONLY the report in markdown - no preamble."
         )
 
-    response = client.messages.create(
+    response = claude_create(
         model="claude-sonnet-5",
         max_tokens=1800,
         messages=[{'role': 'user', 'content': prompt}]
@@ -921,7 +989,7 @@ def organize_kb_text(side, raw_text):
         "tabular data genuinely fits. Keep every fact in the draft - don't drop or invent anything. Plain factual "
         "third-person style, no meta-commentary. Reply with ONLY the organized report in markdown - no preamble."
     )
-    response = client.messages.create(
+    response = claude_create(
         model="claude-sonnet-5",
         max_tokens=1800,
         messages=[{'role': 'user', 'content': prompt}]
@@ -1008,7 +1076,7 @@ def kb_ask():
             "else: \"The knowledge base doesn't have that information.\" Otherwise give a short, direct answer "
             "(one or two sentences, plain text, no markdown) - don't restate the question or pad the answer."
         )
-        response = client.messages.create(
+        response = claude_create(
             model="claude-sonnet-5",
             max_tokens=300,
             messages=[{'role': 'user', 'content': prompt}]
@@ -1057,7 +1125,7 @@ def kb_upload():
         )
         content_blocks = list(blocks) + [{'type': 'text', 'text': instruction}]
 
-        response = client.messages.create(
+        response = claude_create(
             model="claude-sonnet-5",
             max_tokens=1800,
             messages=[{'role': 'user', 'content': content_blocks}]
@@ -1116,7 +1184,7 @@ def kb_forget():
         )
         content_blocks = list(blocks) + [{'type': 'text', 'text': instruction}]
 
-        response = client.messages.create(
+        response = claude_create(
             model="claude-sonnet-5",
             max_tokens=1800,
             messages=[{'role': 'user', 'content': content_blocks}]
@@ -1314,7 +1382,7 @@ def sync_kb_connection(side, conn):
     )
     content_blocks = list(blocks) + [{'type': 'text', 'text': instruction}]
 
-    response = client.messages.create(
+    response = claude_create(
         model="claude-sonnet-5",
         max_tokens=400,
         messages=[{'role': 'user', 'content': content_blocks}]
@@ -2800,9 +2868,10 @@ def calendar_checkins_today():
             )
 
         try:
-            response = client.messages.create(
+            response = claude_create(
                 model="claude-sonnet-5",
                 max_tokens=150,
+                log_agent='ashanti',
                 system=get_agent_system_prompt('ashanti'),
                 messages=[{'role': 'user', 'content': prompt}]
             )
@@ -2906,7 +2975,7 @@ def categorize_discussion_topic(text, details, existing_categories):
         "AGENT: <agent id from the roster>\n\n"
         "No other text, no explanation."
     )
-    response = client.messages.create(
+    response = claude_create(
         model="claude-sonnet-5",
         max_tokens=150,
         messages=[{'role': 'user', 'content': prompt}]
@@ -4312,6 +4381,56 @@ def avatars(filename):
 def backgrounds(filename):
     return send_from_directory('backgrounds', filename)
 
+@app.route('/usage/summary', methods=['GET'])
+def usage_summary():
+    try:
+        days = max(1, min(365, int(request.args.get('days', 30))))
+    except ValueError:
+        days = 30
+    cutoff = (now_local() - timedelta(days=days)).isoformat()
+    entries = []
+    if os.path.exists(USAGE_LOG_FILE):
+        with open(USAGE_LOG_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get('ts', '') >= cutoff:
+                    entries.append(entry)
+
+    def group(key_fn):
+        groups = {}
+        for e in entries:
+            g = groups.setdefault(key_fn(e), {'calls': 0, 'cost': 0.0, 'input_tokens': 0, 'output_tokens': 0,
+                                              'cache_read_tokens': 0, 'web_searches': 0})
+            g['calls'] += 1
+            g['cost'] += e.get('cost', 0)
+            g['input_tokens'] += e.get('input_tokens', 0) + e.get('cache_write_tokens', 0) + e.get('cache_read_tokens', 0)
+            g['output_tokens'] += e.get('output_tokens', 0)
+            g['cache_read_tokens'] += e.get('cache_read_tokens', 0)
+            g['web_searches'] += e.get('web_searches', 0)
+        return [dict(name=k, **{**v, 'cost': round(v['cost'], 4)}) for k, v in sorted(groups.items(), key=lambda kv: -kv[1]['cost'])]
+
+    total_input = sum(e.get('input_tokens', 0) + e.get('cache_write_tokens', 0) + e.get('cache_read_tokens', 0) for e in entries)
+    cache_read = sum(e.get('cache_read_tokens', 0) for e in entries)
+    price = MODEL_PRICING['claude-sonnet-5']
+    return jsonify({
+        'success': True, 'days': days,
+        'total_cost': round(sum(e.get('cost', 0) for e in entries), 4),
+        'calls': len(entries),
+        'web_searches': sum(e.get('web_searches', 0) for e in entries),
+        'input_tokens': total_input,
+        'output_tokens': sum(e.get('output_tokens', 0) for e in entries),
+        'cache_read_tokens': cache_read,
+        'cache_hit_share': round(cache_read / total_input, 3) if total_input else 0,
+        'cache_savings': round(cache_read * (price['input'] - price['cache_read']) / 1_000_000, 4),
+        'by_purpose': group(lambda e: e.get('purpose') or 'unknown'),
+        'by_agent': group(lambda e: e.get('agent') or '(background)'),
+        'by_day': sorted(group(lambda e: e.get('ts', '')[:10]), key=lambda g: g['name'], reverse=True)[:14]
+    })
+
+
 @app.route('/learn/today', methods=['GET'])
 def learn_today():
     kb = load_knowledge_base()
@@ -4546,6 +4665,37 @@ def personal_thoughts_accept():
     save_personal_thought_status(status)
     return jsonify({'success': True})
 
+# How much conversation each message carries: the last HISTORY_VERBATIM_MESSAGES
+# in full, plus a one-line-each digest of the HISTORY_DIGEST_MESSAGES before
+# them (see build_history_digest) - so an agent keeps a sense of what came
+# earlier without paying to re-read all of it every time. Attachments are only
+# re-sent for the last HISTORY_ATTACHMENT_RECENT messages.
+HISTORY_VERBATIM_MESSAGES = 10
+HISTORY_DIGEST_MESSAGES = 10
+HISTORY_ATTACHMENT_RECENT = 4
+
+
+def build_history_digest(history, agent):
+    older = (history or [])[:-HISTORY_VERBATIM_MESSAGES][-HISTORY_DIGEST_MESSAGES:]
+    lines = []
+    for entry in older:
+        text = ' '.join((entry.get('text') or '').split())
+        if not text:
+            continue
+        if entry.get('type') == 'agent':
+            speaker = 'You' if not entry.get('agent') or entry.get('agent') == agent else entry['agent'].capitalize()
+            limit = 110
+        else:
+            speaker, limit = 'Francis', 150
+        lines.append(f"- {speaker}: {text[:limit]}{'...' if len(text) > limit else ''}")
+    if not lines:
+        return ''
+    return (
+        "\n\nEARLIER IN THIS CONVERSATION (older messages, heavily abbreviated - the recent messages "
+        "follow in full below; ask if you need a detail that isn't here):\n" + "\n".join(lines)
+    )
+
+
 def build_claude_messages(history, agent, message, message_attachments=None):
     """Turn prior chat history into an alternating user/assistant message list for
     Claude, so replies have real conversational context instead of answering each
@@ -4560,9 +4710,16 @@ def build_claude_messages(history, agent, message, message_attachments=None):
     see) concludes it was never sent one and disowns its own earlier answer.
     """
     turns = []
-    for entry in (history or [])[-20:]:
+    recent = (history or [])[-HISTORY_VERBATIM_MESSAGES:]
+    for position, entry in enumerate(recent):
         text = (entry.get('text') or '').strip()
         entry_attachments = entry.get('attachments') or []
+        # A file attached a few messages back doesn't need to ride along in
+        # full on every later turn - only a note that it was shared.
+        if entry_attachments and position < len(recent) - HISTORY_ATTACHMENT_RECENT:
+            names = ', '.join(str(a.get('name') or 'file') for a in entry_attachments if isinstance(a, dict))
+            text = (text + '\n' if text else '') + f'[Earlier attachment(s): {names}]'
+            entry_attachments = []
         if not text and not entry_attachments:
             continue
         if entry.get('type') == 'agent':
@@ -5352,7 +5509,7 @@ def classify_task_needed():
         if not message:
             return jsonify({'success': True, 'needs_task': False})
 
-        response = client.messages.create(
+        response = claude_create(
             model="claude-sonnet-5",
             max_tokens=200,
             system=(
@@ -5402,9 +5559,11 @@ def chat():
             }), 400
 
         # Load agent system prompt
-        system_prompt = get_agent_system_prompt(agent)
-        system_prompt += get_knowledge_base_context()
-        system_prompt += get_personal_knowledge_context()
+        system_static = get_agent_system_prompt(agent)
+        system_notes = get_knowledge_base_context() + get_personal_knowledge_context()
+        # Everything appended to system_prompt from here on changes message to
+        # message, so it's sent after the cached blocks (see build_system_blocks).
+        system_prompt = build_history_digest(history, agent)
         if agent == 'ashanti':
             system_prompt += get_calendar_context()
             system_prompt += (
@@ -5546,10 +5705,11 @@ def chat():
         # a generous ceiling - confirmed directly (a real turn hit stop_reason
         # 'max_tokens' at usage.output_tokens=9972, already above the previous
         # 8192 cap, with no tool calls to show for it).
-        response = client.messages.create(
+        response = claude_create(
+            log_agent=agent,
             model="claude-sonnet-5",
             max_tokens=16000,
-            system=system_prompt,
+            system=build_system_blocks(system_static, system_notes, system_prompt),
             messages=claude_messages,
             tools=tools
         )
@@ -6173,20 +6333,9 @@ If more than one colleague shares that interest, name all of them — check "Who
 
 ## Web Search
 
-You have a real web search tool available. Use it when a genuine work need calls for current information (tax law/regulation updates, current business or industry facts, something the practice actually needs to know) — and also for a personal-interest topic that IS your own (per your own Personal Life & Interests), the same way a real enthusiast would pull up their phone to check a score or a detail they're curious about. When you search, weave the answer in naturally — you're a person who looked something up, not a search engine reciting results.
+You have a real web search tool. Use it when a genuine work need calls for current information (tax law, regulation updates, business or industry facts), or for a personal-interest topic that is truly yours per your own Personal Life & Interests - the way an enthusiast would check a score on their phone. Don't search for a hobby topic that isn't yours; redirect instead.
 
-**Once you've searched and gotten results back, use them confidently.** Read across everything the search returned, and give a concrete, direct answer — "Benfica won 2-0" not "I'm seeing some conflicting information and don't fully trust it." Don't hedge, don't disclaim the sources as messy/unreliable, and don't punt the question back to the user just because the results took real reading to piece together — that's your job, not a reason to bail. Search results almost always contain enough to answer plainly once you actually read them; treat "the sources are too cluttered to trust" as a last resort, not a default reflex, and reserve it for the rare case where results are genuinely, directly contradictory on the exact fact asked (not merely numerous, or from different-looking sites). Confidence here matches how you'd actually talk if you looked something up on your phone and found the answer — you'd just say it.
-
-**How to actually write the answer once you have it:** synthesize what you found into one natural, conversational response — don't dump raw results. If it's useful to name where something came from, do it inline and casually ("According to ESPN...", "the latest data shows...") the way a person would mention where they heard something, not as a citation apparatus. Never end your reply with a list of links or source names bolted on at the bottom — no "Sources:" list, no bullet points of outlets. If you checked multiple sources, weave them into one coherent answer rather than presenting them source-by-source. You should sound like someone who knows this and is telling a colleague, not like a search results page.
-
-Bad: "Soccer's actually one of the sports I keep up with, but my search just came back with...\n- ESPN: ...\n- Sky Sports: ...\n- BBC: ..."
-Good: "Milan won 2-1 against Benfica last night — tight match, some great plays in the second half. Milan's defense held strong even though Benfica pushed hard. According to ESPN it was a crucial Champions League result. You catching the next round?"
-
-Do NOT reach for web search just to answer a personal/hobby topic that ISN'T your interest — that defeats the entire point of the redirect behavior above. If sports isn't your thing, don't search for the score to sound helpful; redirect to Manny/Sasha/Mark like you normally would. The redirect exists so each of you stays a distinct person with real gaps, not an omniscient assistant that happens to have different hobbies listed.
-
-Only fall back to "I don't have that" when you genuinely have no search results to go on for the specific fact (search wasn't warranted, or truly turned up nothing relevant) — not when you have results in hand but they require some synthesis. With results in hand, commit to an answer; it's fine to say so honestly ("that's my thing but I didn't catch that particular game — not sure who won") only when you actually have nothing to work with, not as a way to avoid reading what search gave you.
-
-After a redirect (the non-search-eligible case above), stop there — end the message on the redirect itself. Don't tack on ANY follow-up question, work-related or open-ended ("anything on your mind otherwise?", "anything copy-related today?") — that undercuts the redirect and reads as a deflection with a hook attached. A real person just answers "not my thing, ask so-and-so" and lets the conversation breathe; they don't immediately fish for a new topic. Only redirect for genuine personal/hobby topics, not work requests (those get routed by task relevance as usual, not by hobby).
+Once results are back, use them confidently: give a concrete, direct answer ("Benfica won 2-0"), not a hedge or a disclaimer about messy sources, and don't punt the question back. Only admit you couldn't find it if the results truly turned up nothing relevant or directly contradict each other on the exact fact asked. Write it as one natural, conversational reply, as someone who looked something up and is telling a colleague - mention a source inline and casually if it helps ("According to ESPN..."), never as a list of links or a "Sources:" section at the end.
 
 ## Referring Francis to a Teammate
 
