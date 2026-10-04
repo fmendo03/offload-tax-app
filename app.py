@@ -60,6 +60,10 @@ CORS(app)
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+# The one model every AI call in the app uses - change it here.
+CLAUDE_MODEL = 'claude-sonnet-5-5'
+
+
 # Where every *_FILE below actually lives. Defaults to the app's own
 # directory (today's local-dev behavior, unchanged) - in production this is
 # set to a mounted persistent volume (e.g. Railway), since the rest of the
@@ -463,6 +467,7 @@ usage_log_lock = threading.Lock()
 # USD per million tokens (cache_write is the 5-minute cache), and per web search.
 MODEL_PRICING = {
     'claude-sonnet-5': {'input': 2.00, 'output': 10.00, 'cache_write': 2.50, 'cache_read': 0.20},
+    'claude-sonnet-5-5': {'input': 2.00, 'output': 10.00, 'cache_write': 2.50, 'cache_read': 0.20},
 }
 WEB_SEARCH_COST_EACH = 0.01
 
@@ -1138,7 +1143,7 @@ def merge_into_kb_report(side, new_info, source_label=None):
         )
 
     response = claude_create(
-        model="claude-sonnet-5",
+        model=CLAUDE_MODEL,
         max_tokens=1800,
         messages=[{'role': 'user', 'content': prompt}]
     )
@@ -1277,7 +1282,7 @@ def organize_kb_text(side, raw_text):
         "third-person style, no meta-commentary. Reply with ONLY the organized report in markdown - no preamble."
     )
     response = claude_create(
-        model="claude-sonnet-5",
+        model=CLAUDE_MODEL,
         max_tokens=1800,
         messages=[{'role': 'user', 'content': prompt}]
     )
@@ -1367,7 +1372,7 @@ def kb_ask():
             "(one or two sentences, plain text, no markdown) - don't restate the question or pad the answer."
         )
         response = claude_create(
-            model="claude-sonnet-5",
+            model=CLAUDE_MODEL,
             max_tokens=300,
             messages=[{'role': 'user', 'content': prompt}]
         )
@@ -1416,7 +1421,7 @@ def kb_upload():
         content_blocks = list(blocks) + [{'type': 'text', 'text': instruction}]
 
         response = claude_create(
-            model="claude-sonnet-5",
+            model=CLAUDE_MODEL,
             max_tokens=1800,
             messages=[{'role': 'user', 'content': content_blocks}]
         )
@@ -1475,7 +1480,7 @@ def kb_forget():
         content_blocks = list(blocks) + [{'type': 'text', 'text': instruction}]
 
         response = claude_create(
-            model="claude-sonnet-5",
+            model=CLAUDE_MODEL,
             max_tokens=1800,
             messages=[{'role': 'user', 'content': content_blocks}]
         )
@@ -1689,7 +1694,7 @@ def _finish_connection_sync(side, conn, attachments, new_signature, source_desc)
     content_blocks = overview_blocks + [{'type': 'text', 'text': instruction}]
 
     response = claude_create(
-        model="claude-sonnet-5",
+        model=CLAUDE_MODEL,
         max_tokens=400,
         messages=[{'role': 'user', 'content': content_blocks}]
     )
@@ -3299,7 +3304,7 @@ def calendar_checkins_today():
 
         try:
             response = claude_create(
-                model="claude-sonnet-5",
+                model=CLAUDE_MODEL,
                 max_tokens=150,
                 log_agent='ashanti',
                 system=get_agent_system_prompt('ashanti'),
@@ -3406,7 +3411,7 @@ def categorize_discussion_topic(text, details, existing_categories):
         "No other text, no explanation."
     )
     response = claude_create(
-        model="claude-sonnet-5",
+        model=CLAUDE_MODEL,
         max_tokens=150,
         messages=[{'role': 'user', 'content': prompt}]
     )
@@ -4844,7 +4849,7 @@ def usage_summary():
 
     total_input = sum(e.get('input_tokens', 0) + e.get('cache_write_tokens', 0) + e.get('cache_read_tokens', 0) for e in entries)
     cache_read = sum(e.get('cache_read_tokens', 0) for e in entries)
-    price = MODEL_PRICING['claude-sonnet-5']
+    price = MODEL_PRICING[CLAUDE_MODEL]
     return jsonify({
         'success': True, 'days': days,
         'total_cost': round(sum(e.get('cost', 0) for e in entries), 4),
@@ -5904,8 +5909,9 @@ PAUSE_TASK_TOOL = {
     }
 }
 
-# Triage tool for /classify-task-needed below - forced via tool_choice so the
-# call always returns exactly this shape instead of free text to parse.
+# Triage tool for /classify-task-needed below - the prompt requires the model to
+# call it, so the call returns exactly this shape instead of free text to parse
+# (Sonnet 5.5 doesn't allow forcing a specific tool via tool_choice).
 CLASSIFY_TASK_TOOL = {
     "name": "classify",
     "description": "Classify whether this request needs a background task.",
@@ -5942,17 +5948,16 @@ def classify_task_needed():
             return jsonify({'success': True, 'needs_task': False})
 
         response = claude_create(
-            model="claude-sonnet-5",
+            model=CLAUDE_MODEL,
             max_tokens=200,
             system=(
                 "You triage incoming requests to a team of AI assistants. Decide whether the request "
                 "needs a background task - deep research (several web searches) or generating a "
                 "downloadable file - versus something answerable directly in a normal quick chat reply. "
-                "Call the classify tool with your answer and nothing else."
+                "You MUST answer by calling the classify tool exactly once, with no other output."
             ),
             messages=[{"role": "user", "content": message}],
-            tools=[CLASSIFY_TASK_TOOL],
-            tool_choice={"type": "tool", "name": "classify"}
+            tools=[CLASSIFY_TASK_TOOL]
         )
 
         for block in response.content:
@@ -6145,7 +6150,7 @@ def chat():
             return claude_create(
                 log_agent=agent,
                 log_purpose='chat',
-                model="claude-sonnet-5",
+                model=CLAUDE_MODEL,
                 max_tokens=16000,
                 system=chat_system,
                 messages=claude_messages,
