@@ -4810,6 +4810,75 @@ body.va-open #notification-toasts {
             flex-direction: column;
         }
 
+        /* Agent page: avatar pane on the left, one tabbed pane on the right. */
+        .third-pane.agent-right-pane {
+            flex: 2 1 0;
+            border-right: none;
+        }
+
+        .agent-tabs {
+            display: flex;
+            gap: 2px;
+            padding: 0 12px;
+            background: rgba(255, 255, 255, 0.75);
+            border-bottom: 1px solid #e0e0e0;
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+
+        .agent-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 13px 16px 11px;
+            border: none;
+            border-bottom: 3px solid transparent;
+            background: none;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .agent-tab:hover {
+            color: rgba(0, 0, 0, 0.8);
+        }
+
+        .agent-tab.active {
+            color: #222;
+            border-bottom-color: #667eea;
+        }
+
+        .agent-tab-panel {
+            display: none;
+            flex: 1;
+            min-height: 0;
+            flex-direction: column;
+        }
+
+        .agent-tab-panel.active {
+            display: flex;
+        }
+
+        .agent-tab-panel .main-area {
+            flex: 1;
+            min-height: 0;
+        }
+
+        .agent-tab-list {
+            flex: 1 1 auto;
+            border-bottom: none;
+            padding: 16px 20px;
+        }
+
+        .agent-tab-panel .workspace-preview-panel {
+            flex: 1;
+        }
+
         .workspace-header {
             display: flex;
             align-items: center;
@@ -6752,40 +6821,57 @@ body.va-open #notification-toasts {
                     </div>
                 </div>
 
-                <!-- Third Pane -->
-                <div class="third-pane" id="third-pane">
-                    <div class="workspace-header">Workspace <span class="mini-badge mini-badge-inline" id="workspace-pending-badge"></span></div>
-                    <div class="workspace-tasks-list" id="workspace-tasks-list"></div>
-                    <div class="workspace-preview-panel" id="workspace-preview-panel">
-                        <div class="workspace-preview-empty" id="workspace-preview-empty">Select Preview on a file below to view it here.</div>
-                        <div class="workspace-preview-content" id="workspace-preview-content" style="display: none;"></div>
-                    </div>
-                </div>
-
-                <!-- Main Chat Area -->
-                <div class="main-area">
-                    <div class="chat-header-bar clickable" id="chat-pending-header" title="Click to jump to each notification, one after another">Chat <span class="mini-badge mini-badge-inline" id="chat-pending-badge"></span><span id="chat-pending-position"></span></div>
-                    <div class="chat-content">
-                        <div class="messages-area">
-                            <div class="messages" id="messages"></div>
-                            <button id="selection-reply-btn" class="selection-reply-btn" style="display: none;">&#8617; Reply</button>
-                        </div>
+                <!-- Right pane: one pane, four tabs (Chat / Projects & Tasks / Workspace / Preview).
+                     Keeps the .third-pane class + id because the agent's pastel color is applied to it. -->
+                <div class="third-pane agent-right-pane" id="third-pane">
+                    <div class="agent-tabs" id="agent-tabs" role="tablist">
+                        <button type="button" class="agent-tab active" role="tab" data-agent-tab="chat">Chat <span class="mini-badge mini-badge-inline" id="chat-tab-badge"></span></button>
+                        <button type="button" class="agent-tab" role="tab" data-agent-tab="projects">Projects &amp; Tasks <span class="mini-badge mini-badge-inline" id="projects-tab-badge"></span></button>
+                        <button type="button" class="agent-tab" role="tab" data-agent-tab="workspace">Workspace</button>
+                        <button type="button" class="agent-tab" role="tab" data-agent-tab="preview">Preview</button>
                     </div>
 
-                    <div class="input-area-wrap">
-                        <div id="reply-preview-banner" class="reply-preview-banner" style="display: none;">
-                            <div class="reply-preview-content">
-                                <div class="reply-preview-label">Replying to <span id="reply-preview-speaker"></span></div>
-                                <div class="reply-preview-text" id="reply-preview-text"></div>
+                    <div class="agent-tab-panel active" data-agent-panel="chat">
+                        <div class="main-area">
+                            <div class="chat-header-bar clickable" id="chat-pending-header" title="Click to jump to each notification, one after another">Notifications <span class="mini-badge mini-badge-inline" id="chat-pending-badge"></span><span id="chat-pending-position"></span></div>
+                            <div class="chat-content">
+                                <div class="messages-area">
+                                    <div class="messages" id="messages"></div>
+                                    <button id="selection-reply-btn" class="selection-reply-btn" style="display: none;">&#8617; Reply</button>
+                                </div>
                             </div>
-                            <button id="reply-preview-cancel" class="reply-preview-cancel" title="Cancel reply">&times;</button>
+
+                            <div class="input-area-wrap">
+                                <div id="reply-preview-banner" class="reply-preview-banner" style="display: none;">
+                                    <div class="reply-preview-content">
+                                        <div class="reply-preview-label">Replying to <span id="reply-preview-speaker"></span></div>
+                                        <div class="reply-preview-text" id="reply-preview-text"></div>
+                                    </div>
+                                    <button id="reply-preview-cancel" class="reply-preview-cancel" title="Cancel reply">&times;</button>
+                                </div>
+                                <div id="attachments-preview" class="attachments-preview" style="display: none;"></div>
+                                <div class="input-area">
+                                    <input type="file" id="attach-file-input" style="display: none;" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.eml,.msg">
+                                    <button id="attach-btn" class="attach-btn" title="Attach a file">+</button>
+                                    <textarea placeholder="Type a message..." id="input-box" rows="1"></textarea>
+                                    <button id="send-btn">Send</button>
+                                </div>
+                            </div>
                         </div>
-                        <div id="attachments-preview" class="attachments-preview" style="display: none;"></div>
-                        <div class="input-area">
-                            <input type="file" id="attach-file-input" style="display: none;" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.eml,.msg">
-                            <button id="attach-btn" class="attach-btn" title="Attach a file">+</button>
-                            <textarea placeholder="Type a message..." id="input-box" rows="1"></textarea>
-                            <button id="send-btn">Send</button>
+                    </div>
+
+                    <div class="agent-tab-panel" data-agent-panel="projects">
+                        <div class="workspace-tasks-list agent-tab-list" id="workspace-projects-list"></div>
+                    </div>
+
+                    <div class="agent-tab-panel" data-agent-panel="workspace">
+                        <div class="workspace-tasks-list agent-tab-list" id="workspace-tasks-list"></div>
+                    </div>
+
+                    <div class="agent-tab-panel" data-agent-panel="preview">
+                        <div class="workspace-preview-panel" id="workspace-preview-panel">
+                            <div class="workspace-preview-empty" id="workspace-preview-empty">Select Preview on a file in Workspace or Projects &amp; Tasks to view it here.</div>
+                            <div class="workspace-preview-content" id="workspace-preview-content" style="display: none;"></div>
                         </div>
                     </div>
                 </div>
@@ -8789,16 +8875,21 @@ body.va-open #notification-toasts {
             setMiniBadge(document.getElementById('chat-unread-badge'), getUnreadCount(agent));
         }
 
-        // The "Chat" caption badge - unread messages plus unanswered prompts
+        // The Chat tab badge and the "Notifications" strip - unread messages plus unanswered prompts
         // (About You/firm questions and pending suggestions).
         function updateChatPendingBadge(agent) {
-            setMiniBadge(document.getElementById('chat-pending-badge'), countChatPendingItems(agent));
+            const count = countChatPendingItems(agent);
+            setMiniBadge(document.getElementById('chat-pending-badge'), count);
+            setMiniBadge(document.getElementById('chat-tab-badge'), count);
+            // The strip above the chat only earns its space when there is
+            // something to jump to (the tab itself already says "Chat").
+            document.getElementById('chat-pending-header').style.display = count > 0 ? '' : 'none';
         }
 
-        // The "Workspace" caption badge - tasks waiting on Francis in any way:
+        // The Projects & Tasks tab badge - tasks waiting on Francis in any way:
         // not started yet, still running, or completed but not yet reviewed.
         function updateWorkspacePendingBadge(agent) {
-            setMiniBadge(document.getElementById('workspace-pending-badge'), countWorkspacePendingTasks(agent));
+            setMiniBadge(document.getElementById('projects-tab-badge'), countWorkspacePendingTasks(agent));
         }
 
         function updateAgentContextBadges(agent) {
@@ -9784,8 +9875,9 @@ function renderPreviewPane() {
 // somewhere useful instead of just the general chat.
 function goToAgentTask(agent, taskId) {
     selectAgent(agent);
+    showAgentTab('projects');
     markTaskViewed(agent, taskId);
-    const row = document.querySelector(`#workspace-tasks-list [data-task-id="${taskId}"]`);
+    const row = document.querySelector(`#workspace-projects-list [data-task-id="${taskId}"]`);
     if (row) {
         row.scrollIntoView({ block: 'center', behavior: 'smooth' });
         row.classList.add('just-navigated');
@@ -10724,9 +10816,13 @@ function renderArchivePage() {
 // were never wrapped in a task or project to begin with. Archived/cancelled
 // items are hidden here - they live on the Archived page instead.
 function renderWorkspaceTasks(agent) {
+    // Workspace tab: To-Dos, Discussions and Files. Projects & Tasks tab:
+    // Solo Tasks and Project Tasks (with their files nested underneath).
     const container = document.getElementById('workspace-tasks-list');
-    if (!container) return;
+    const projContainer = document.getElementById('workspace-projects-list');
+    if (!container || !projContainer) return;
     container.innerHTML = '';
+    projContainer.innerHTML = '';
 
     // A completed to-do no longer needs a place in the Workspace - this is a
     // standing invariant (not just something that happens at the moment it's
@@ -10742,12 +10838,17 @@ function renderWorkspaceTasks(agent) {
 
     if (currentAgent === agent) updateWorkspacePendingBadge(agent);
 
-    if (tasks.length === 0 && standaloneFiles.length === 0 && items.length === 0) {
+    const addEmptyNote = (el, text) => {
         const empty = document.createElement('div');
         empty.className = 'workspace-tasks-empty';
-        empty.textContent = 'No tasks yet - accepted projects and files this agent creates will show up here.';
-        container.appendChild(empty);
-        return;
+        empty.textContent = text;
+        el.appendChild(empty);
+    };
+    if (items.length === 0 && standaloneFiles.length === 0) {
+        addEmptyNote(container, 'Nothing here yet - to-dos and topics sent over for discussion, and files this agent creates or you attach, will show up here.');
+    }
+    if (tasks.length === 0) {
+        addEmptyNote(projContainer, 'No tasks yet - accepted projects and tasks will show up here.');
     }
 
     // To-Dos and Discussion Topics sent over for discussion (see
@@ -10776,7 +10877,7 @@ function renderWorkspaceTasks(agent) {
     // collapsible group - there's no project to nest them under.
     const soloTasks = tasks.filter(t => !t.projectId);
     if (soloTasks.length > 0) {
-        const body = appendWorkspaceGroup(container, agent, 'solo', `${TASK_ICON} Solo Tasks`, soloTasks.length);
+        const body = appendWorkspaceGroup(projContainer, agent, 'solo', `${TASK_ICON} Solo Tasks`, soloTasks.length);
         soloTasks.forEach(task => buildTaskRowWithFiles(agent, task, body));
     }
 
@@ -10792,7 +10893,7 @@ function renderWorkspaceTasks(agent) {
 
     const projectTaskCount = Object.values(byProject).reduce((sum, g) => sum + g.items.length, 0);
     if (projectTaskCount > 0) {
-        const body = appendWorkspaceGroup(container, agent, 'projects', `${PROJECT_ICON} Project Tasks`, projectTaskCount);
+        const body = appendWorkspaceGroup(projContainer, agent, 'projects', `${PROJECT_ICON} Project Tasks`, projectTaskCount);
 
         Object.entries(byProject).forEach(([projectId, group]) => {
             const projectGroupKey = `project:${projectId}`;
@@ -11218,6 +11319,7 @@ function showWorkspaceItemPreview(agent, itemId) {
     currentWorkspacePreview = { agent, itemId };
     renderWorkspaceItemPreviewPanel(item);
     renderWorkspaceTasks(agent);
+    showAgentTab('preview');
 }
 
 function renderWorkspaceItemPreviewPanel(item) {
@@ -11675,6 +11777,7 @@ function showWorkspaceFilePreview(agent, fileId) {
     currentWorkspacePreview = { agent, fileId };
     renderWorkspacePreviewPanel(agent, fileId);
     renderWorkspaceTasks(agent);
+    showAgentTab('preview');
 }
 
 // Just the reconstructed body - no toolbar - so other panels (the Projects
@@ -12460,6 +12563,30 @@ function capitalizeAgent(agent) {
         const AGENT_QUICKBAR_PAGES = ['chat', 'projects', 'todos', 'calendar', 'topics', 'archive', 'knowledgebase', 'breakroom'];
 
         // Select an agent
+ // Which tab of the agent's right pane is showing. The chat is display:none
+ // while another tab is up, so its scroll position (and whether it was parked
+ // at the bottom, in which case it follows any new messages) is saved on the
+ // way out and restored on the way back.
+ let agentActiveTab = 'chat';
+ let chatScrollState = null;
+
+ function showAgentTab(tab) {
+    if (!['chat', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
+    if (agentActiveTab === 'chat' && tab !== 'chat') {
+        chatScrollState = {
+            top: messagesContainer.scrollTop,
+            atBottom: messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 40
+        };
+    }
+    document.querySelectorAll('.agent-tab').forEach(b => b.classList.toggle('active', b.dataset.agentTab === tab));
+    document.querySelectorAll('.agent-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.agentPanel === tab));
+    const comingBack = tab === 'chat' && agentActiveTab !== 'chat';
+    agentActiveTab = tab;
+    if (comingBack && chatScrollState) {
+        messagesContainer.scrollTop = chatScrollState.atBottom ? messagesContainer.scrollHeight : chatScrollState.top;
+    }
+ }
+
  function selectAgent(agent) {
     hideHomePage();
 
@@ -12478,6 +12605,11 @@ function capitalizeAgent(agent) {
     // Every send and render below assumes this exists - without it opening
     // the agent throws and typing a message silently fails.
     if (!chatHistory[agent]) chatHistory[agent] = [];
+
+    // Always open an agent on their Chat tab (the chat has to be visible for
+    // displayMessages to scroll it to the latest message).
+    chatScrollState = null;
+    showAgentTab('chat');
 
     flashingAgents.delete(agent);
     updateAgentFlash();
@@ -22026,6 +22158,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
 
         document.getElementById('chat-pending-header').addEventListener('click', jumpToNextChatNotification);
+        document.querySelectorAll('.agent-tab').forEach(btn => btn.addEventListener('click', () => showAgentTab(btn.dataset.agentTab)));
         initAgentSettingsSubtabs();
         initCalendarTodoModal();
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
