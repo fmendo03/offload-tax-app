@@ -5015,6 +5015,38 @@ body.va-open #notification-toasts {
             display: flex;
         }
 
+        /* Suggestions tab - the "Suggestions for the firm / for you" cards */
+        .suggestions-tab-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .suggestions-tab-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            max-width: 760px;
+            margin: 0 auto;
+        }
+
+        .suggestions-tab-cards .message.insight-message {
+            width: 100%;
+            max-width: none;
+            align-self: stretch;
+        }
+
+        .suggestions-tab-empty {
+            display: none;
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 24px 12px;
+            text-align: center;
+            font-size: 13px;
+            color: rgba(0, 0, 0, 0.5);
+        }
+
         .agent-tab-panel .main-area {
             flex: 1;
             min-height: 0;
@@ -6977,6 +7009,7 @@ body.va-open #notification-toasts {
                 <div class="third-pane agent-right-pane" id="third-pane">
                     <div class="agent-tabs" id="agent-tabs" role="tablist">
                         <button type="button" class="agent-tab active" role="tab" data-agent-tab="chat">Chat <span class="mini-badge mini-badge-inline" id="chat-tab-badge"></span></button>
+                        <button type="button" class="agent-tab" role="tab" data-agent-tab="suggestions">Suggestions <span class="mini-badge mini-badge-inline" id="suggestions-tab-badge"></span></button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="projects">Projects &amp; Tasks <span class="mini-badge mini-badge-inline" id="projects-tab-badge"></span></button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="workspace">Workspace</button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="preview">Preview</button>
@@ -7008,6 +7041,13 @@ body.va-open #notification-toasts {
                                     <button id="send-btn">Send</button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="agent-tab-panel" data-agent-panel="suggestions">
+                        <div class="suggestions-tab-scroll">
+                            <div class="suggestions-tab-cards" id="suggestions-tab-cards"></div>
+                            <div class="suggestions-tab-empty" id="suggestions-tab-empty">No suggestions right now - new ones show up here.</div>
                         </div>
                     </div>
 
@@ -8391,15 +8431,24 @@ body.va-open #notification-toasts {
             return (thoughtsData[agent] || []).length + (personalThoughtsData[agent] || []).length;
         }
 
-        // Everything the Chat pane's own badge counts: unread messages plus
-        // unanswered "About you/your firm" questions and pending suggestions.
+        // Everything the Chat tab's own badge counts: unread messages plus
+        // unanswered "About you/your firm" questions and the Ashanti
+        // check-ins. (Suggestions have their own tab - see
+        // countSuggestionItems.)
         function countChatPendingItems(agent) {
             const unreadMessages = Math.max(0, countAgentMessages(agent) - (lastReadCounts[agent] || 0));
-            return unreadMessages + countUnansweredQuestions(agent) + countPendingThoughts(agent) + countPendingCalendarCheckin(agent) + countPendingTodoMorningCheckin(agent);
+            return unreadMessages + countUnansweredQuestions(agent) + countPendingCalendarCheckin(agent) + countPendingTodoMorningCheckin(agent);
         }
 
+        // Pending "Suggestions for the firm / for you" - the Suggestions tab's badge.
+        function countSuggestionItems(agent) {
+            return countPendingThoughts(agent);
+        }
+
+        // The agent's total across every tab - the badge on their card and
+        // next to their name.
         function getUnreadCount(agent) {
-            return countChatPendingItems(agent) + countWorkspacePendingTasks(agent);
+            return countChatPendingItems(agent) + countSuggestionItems(agent) + countWorkspacePendingTasks(agent);
         }
 
         // Caps displayed badge counts at two digits (99+) instead of one (9+).
@@ -9106,9 +9155,11 @@ body.va-open #notification-toasts {
             setMiniBadge(document.getElementById('chat-unread-badge'), getUnreadCount(agent));
         }
 
-        // The Chat tab badge and the "Notifications" strip - unread messages plus unanswered prompts
-        // (About You/firm questions and pending suggestions).
+        // The Chat tab badge and the "Notifications" strip - unread messages plus
+        // unanswered prompts (About You/firm questions, check-ins) - and the
+        // Suggestions tab's badge, refreshed at the same moments.
         function updateChatPendingBadge(agent) {
+            setMiniBadge(document.getElementById('suggestions-tab-badge'), countSuggestionItems(agent));
             const count = countChatPendingItems(agent);
             setMiniBadge(document.getElementById('chat-pending-badge'), count);
             setMiniBadge(document.getElementById('chat-tab-badge'), count);
@@ -13453,7 +13504,7 @@ function capitalizeAgent(agent) {
  let chatScrollState = null;
 
  function showAgentTab(tab) {
-    if (!['chat', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
+    if (!['chat', 'suggestions', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
     if (agentActiveTab === 'chat' && tab !== 'chat') {
         chatScrollState = {
             top: messagesContainer.scrollTop,
@@ -14816,13 +14867,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const personalCard = personalAnchor ? buildPersonalCard(personalAnchor.timestamp) : null;
             if (personalCard) insertCardAtAnchor(personalCard, personalAnchor);
 
+            // Suggestions live in their own tab rather than the conversation.
+            // The anchor is still used for the "when it first showed up" time
+            // on the card; where it sits in the chat no longer matters.
+            const suggestionsEl = document.getElementById('suggestions-tab-cards');
             const thoughtsAnchor = resolveInsightCardAnchor('thoughts', getFlattenedThoughtsItems(thoughtsData).length > 0);
             const thoughtsCard = thoughtsAnchor ? buildThoughtsCard(thoughtsAnchor.timestamp) : null;
-            if (thoughtsCard) insertCardAtAnchor(thoughtsCard, thoughtsAnchor);
+            if (thoughtsCard) suggestionsEl.appendChild(thoughtsCard);
 
             const personalThoughtsAnchor = resolveInsightCardAnchor('personalThoughts', getFlattenedPersonalThoughtsItems(personalThoughtsData).length > 0);
             const personalThoughtsCard = personalThoughtsAnchor ? buildPersonalThoughtsCard(personalThoughtsAnchor.timestamp) : null;
-            if (personalThoughtsCard) insertCardAtAnchor(personalThoughtsCard, personalThoughtsAnchor);
+            if (personalThoughtsCard) suggestionsEl.appendChild(personalThoughtsCard);
+            document.getElementById('suggestions-tab-empty').style.display = (thoughtsCard || personalThoughtsCard) ? 'none' : 'block';
 
             const calendarCheckinAnchor = resolveInsightCardAnchor('calendarCheckin', currentAgent === 'ashanti' && !!calendarCheckinData);
             const calendarCheckinCard = calendarCheckinAnchor ? buildCalendarCheckinCard() : null;
@@ -14834,8 +14890,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // --- Jumping through the Chat header's notifications ----------------
-        // Clicking "Chat (8)" goes to the next of the things that count toward
-        // that 8 - each unanswered question and suggestion, the Ashanti
+        // Clicking the Notifications strip goes to the next of the things that count
+        // toward it - each unanswered question, the Ashanti
         // check-ins, and each to-do on the to-do check-in - top to bottom as
         // they sit in the conversation, wrapping around after the last. The
         // prompt cards page through several items one at a time, so this also
@@ -14846,9 +14902,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const items = [];
             const prompts = [
                 ['learn-message-card', 'learn', getFlattenedLearnItems(learnQuestionsData)],
-                ['personal-message-card', 'personal', getFlattenedPersonalItems(personalQuestionsData)],
-                ['thoughts-message-card', 'thoughts', getFlattenedThoughtsItems(thoughtsData)],
-                ['personal-thoughts-message-card', 'personalThoughts', getFlattenedPersonalThoughtsItems(personalThoughtsData)]
+                ['personal-message-card', 'personal', getFlattenedPersonalItems(personalQuestionsData)]
             ];
             prompts.forEach(([cardId, kind, list]) => list.forEach((_, index) => items.push({ cardId, kind, index })));
             if (agent === 'ashanti' && calendarCheckinData) {
@@ -15054,9 +15108,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         function countPendingPromptItems() {
             return getFlattenedLearnItems(learnQuestionsData).length
-                + getFlattenedPersonalItems(personalQuestionsData).length
-                + getFlattenedThoughtsItems(thoughtsData).length
-                + getFlattenedPersonalThoughtsItems(personalThoughtsData).length;
+                + getFlattenedPersonalItems(personalQuestionsData).length;
         }
 
         function scrollToBottomIfPromptsDone() {
