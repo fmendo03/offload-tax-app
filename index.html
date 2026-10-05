@@ -4810,6 +4810,84 @@ body.va-open #notification-toasts {
             flex-direction: column;
         }
 
+        /* Task plan (what will get done / steps / final output) and the review box */
+        .task-plan-panel {
+            margin: 2px 0 10px 22px;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid #e3e3ea;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        .task-plan-panel.task-plan-static {
+            margin: 12px 0 0;
+        }
+
+        .workspace-project-task-text.has-plan-toggle { cursor: pointer; }
+
+        .task-plan-label {
+            margin: 8px 0 2px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: rgba(0, 0, 0, 0.45);
+        }
+
+        .task-plan-label:first-child {
+            margin-top: 0;
+        }
+
+        .task-plan-panel ol {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .task-plan-panel li {
+            margin-bottom: 2px;
+        }
+
+        .task-plan-note {
+            color: rgba(0, 0, 0, 0.55);
+            font-style: italic;
+        }
+
+        .task-review-box {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #fff8e6;
+            border-left: 4px solid #f5b301;
+            border-radius: 6px;
+            color: #4a3b00;
+        }
+
+        .task-review-head {
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+
+        .task-review-hint {
+            margin-top: 4px;
+            font-size: 11px;
+            color: rgba(74, 59, 0, 0.7);
+        }
+
+        .task-feedback-input {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 8px 0;
+            padding: 8px 10px;
+            border: 1px solid #d8c88a;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 12px;
+            resize: vertical;
+        }
+
         /* Agent page: avatar pane on the left, one tabbed pane on the right. */
         .third-pane.agent-right-pane {
             flex: 2 1 0;
@@ -8367,7 +8445,7 @@ body.va-open #notification-toasts {
         // calls this directly.
         function notifyTaskComplete(agent, taskName) {
             if (!notificationsArmed || isViewingAgentChat(agent)) return;
-            showAgentNotification(agent, 'Task complete', notifyPreview(taskName));
+            showAgentNotification(agent, 'Ready for your review', notifyPreview(taskName));
         }
 
         function showAgentNotification(agent, label, text) {
@@ -9735,6 +9813,13 @@ function appendTaskTreeRow(container, agent, task, taskExpanded) {
     taskRow.appendChild(buildTaskActionsRow(agent, task));
     container.appendChild(taskRow);
 
+    // On this page (every agent's tasks at once) a plan only opens for the
+    // selected task, one in review, or one Francis opened himself - not for
+    // every not-started task, which would make the list endless.
+    const showPlan = taskExpanded || taskPlanOpen[task.id] === true || (task.status === 'in_review' && taskPlanOpen[task.id] !== false);
+    const planPanel = buildTaskPlanPanel(agent, task, showPlan);
+    if (planPanel) container.appendChild(planPanel);
+
     if (taskExpanded) {
         const filesWrap = document.createElement('div');
         filesWrap.className = 'ptree-files';
@@ -10534,7 +10619,8 @@ function buildProjectPreviewForArchive(project) {
 }
 
 function buildTaskPreviewForArchive(task) {
-    return `<div class="archive-detail-list"><p>${escapeHtml(task.task)}</p></div>`;
+    const plan = task.plan ? `<div class="task-plan-panel task-plan-static">${taskPlanSectionHtml(task)}</div>` : '';
+    return `<div class="archive-detail-list"><p>${escapeHtml(task.task)}</p></div>${plan}`;
 }
 
 function openArchiveDetailModal({ name, owners = [], createdAt, archivedAt, cancelled, previewHtml, onUnarchive, onDelete, deleteConfirm }) {
@@ -10963,11 +11049,15 @@ function buildTaskRowWithFiles(agent, task, body) {
     if (task.status === 'completed') text.classList.add('completed');
     text.textContent = `${TASK_ICON} ${projectStepPrefix(task)}${task.name || task.task}`;
     text.title = task.task;
-    text.addEventListener('click', () => markTaskViewed(agent, task.id));
+    text.classList.add('has-plan-toggle');
+    text.addEventListener('click', () => { markTaskViewed(agent, task.id); toggleTaskPlan(agent, task); });
 
     row.appendChild(text);
     row.appendChild(buildTaskActionsRow(agent, task));
     body.appendChild(row);
+
+    const planPanel = buildTaskPlanPanel(agent, task);
+    if (planPanel) body.appendChild(planPanel);
 
     if (!collapsed) {
         files.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
@@ -11033,6 +11123,231 @@ function appendWorkspaceGroup(container, agent, groupKey, label, count) {
 
 function findWorkspaceTaskById(agent, id) {
     return (workspaceTasks[agent] || []).find(t => t.id === id);
+}
+
+// ---- Task plans and review ---------------------------------------------
+// Every task is created with a plan - what will get done, the steps, and the
+// final output (drafted by /tasks/plan). Francis sees it before pressing
+// Start, it goes to the agent with the Start message, and when the agent
+// finishes the task moves to 'in_review' instead of straight to 'completed':
+// it only completes once Francis approves it, or goes back to the agent with
+// his feedback if he asks for changes.
+const taskPlanOpen = {};       // taskId -> bool, overriding the default below
+const taskFeedbackOpen = {};   // taskId -> bool, the "what should change?" box
+const taskFeedbackDraft = {};  // taskId -> text typed so far (survives re-renders)
+
+// Open by default when it needs a decision: before Start, and in review.
+function isTaskPlanOpen(task) {
+    if (taskPlanOpen[task.id] !== undefined) return taskPlanOpen[task.id];
+    return task.status === 'not_started' || task.status === 'in_review';
+}
+
+function toggleTaskPlan(agent, task) {
+    taskPlanOpen[task.id] = !isTaskPlanOpen(task);
+    refreshTaskViewsForAgent(agent);
+}
+
+async function requestTaskPlan(agent, taskId) {
+    const task = findWorkspaceTaskById(agent, taskId);
+    if (!task || task.isFileOnly) return;
+    task.planStatus = 'drafting';
+    // The caller is still wiring the task into its project and saving it -
+    // let that finish before reading the project's steps below.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const project = task.projectId ? projects[task.projectId] : null;
+    try {
+        const response = await fetch('/tasks/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agent,
+                name: task.name,
+                task: task.task,
+                context: task.planContext || 'firm',
+                project_name: project ? project.name : null,
+                project_steps: project ? project.tasks.map(t => ({ agent: t.agent, name: t.name || deriveShortName(t.task) })) : []
+            })
+        });
+        const data = await response.json();
+        if (!data.success || !data.plan) throw new Error(data.error || 'No plan came back');
+        task.plan = data.plan;
+        task.planStatus = 'ready';
+        // A file format named in the plan's final output counts towards "not
+        // done until every requested format has been delivered".
+        const expected = new Set(task.expectedFileTypes || []);
+        detectRequestedFileTypes(data.plan.output).forEach(t => expected.add(t));
+        task.expectedFileTypes = [...expected];
+    } catch (error) {
+        console.error('Could not draft a task plan:', error);
+        task.planStatus = 'failed';
+    }
+    refreshTaskViewsForAgent(agent);
+}
+
+function taskPlanSectionHtml(task) {
+    const plan = task.plan;
+    if (!plan) return '';
+    return `
+        <div class="task-plan-label">What will get done</div>
+        <div>${escapeHtml(plan.goal)}</div>
+        <div class="task-plan-label">Steps</div>
+        <ol>${(plan.steps || []).map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+        <div class="task-plan-label">Final output</div>
+        <div>${escapeHtml(plan.output)}</div>
+    `;
+}
+
+// The plan as plain text for the agent, sent along with Start.
+function buildTaskPlanText(task) {
+    const plan = task.plan;
+    if (!plan) return '';
+    const steps = (plan.steps || []).map((step, i) => `${i + 1}. ${step}`).join('\n');
+    return `\n\nPlan to follow:\nGoal: ${plan.goal}\nSteps:\n${steps}\nFinal output: ${plan.output}\n\nWhen you're done, tell me briefly what you produced - I'll review it before the task is marked complete.`;
+}
+
+function buildTaskReviewBox(agent, task) {
+    const box = document.createElement('div');
+    box.className = 'task-review-box';
+
+    const files = getTaskFiles(agent, task.id);
+    const head = document.createElement('div');
+    head.className = 'task-review-head';
+    head.textContent = '✅ Ready for your review' + (task.revisions ? ` (revision ${task.revisions})` : '');
+    box.appendChild(head);
+
+    const where = document.createElement('div');
+    where.textContent = files.length
+        ? `Deliverable${files.length > 1 ? 's' : ''}: ${files.map(f => f.name).join(', ')} - use Preview on the file${files.length > 1 ? 's' : ''} to look it over.`
+        : `${capitalizeAgent(agent)}'s write-up is in their chat.`;
+    box.appendChild(where);
+
+    const hint = document.createElement('div');
+    hint.className = 'task-review-hint';
+    hint.textContent = 'Approve & Complete to finish the task, or Request Changes to send it back with your notes.';
+    box.appendChild(hint);
+
+    if (taskFeedbackOpen[task.id]) {
+        const input = document.createElement('textarea');
+        input.className = 'task-feedback-input';
+        input.dataset.taskId = task.id;
+        input.rows = 3;
+        input.placeholder = `What should ${capitalizeAgent(agent)} change?`;
+        input.value = taskFeedbackDraft[task.id] || '';
+        input.addEventListener('input', () => { taskFeedbackDraft[task.id] = input.value; });
+
+        const row = document.createElement('div');
+        row.className = 'task-row-actions';
+        const send = document.createElement('button');
+        send.type = 'button';
+        send.className = 'task-action-btn solid-start';
+        send.textContent = `Send to ${capitalizeAgent(agent)}`;
+        send.addEventListener('click', () => requestTaskChanges(agent, task.id, input.value));
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'task-action-btn';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', () => { taskFeedbackOpen[task.id] = false; refreshTaskViewsForAgent(agent); });
+        row.appendChild(send);
+        row.appendChild(cancel);
+        box.appendChild(input);
+        box.appendChild(row);
+    }
+    return box;
+}
+
+// The plan (and, in review, the review box) shown under a task row - in the
+// agent's Projects & Tasks tab and on the Projects page alike. `force` true
+// shows it even when it would normally be collapsed, false hides it, and
+// leaving it out uses the default (open before Start and in review).
+function buildTaskPlanPanel(agent, task, force) {
+    if (task.isFileOnly || force === false) return null;
+    if (!force && !isTaskPlanOpen(task)) return null;
+
+    const panel = document.createElement('div');
+    panel.className = 'task-plan-panel';
+    panel.addEventListener('click', e => e.stopPropagation());
+
+    if (task.plan) {
+        const body = document.createElement('div');
+        body.innerHTML = taskPlanSectionHtml(task);
+        panel.appendChild(body);
+    }
+    if (task.planStatus === 'drafting') {
+        const note = document.createElement('div');
+        note.className = 'task-plan-note';
+        note.textContent = task.plan ? 'Updating the plan...' : 'Drafting a plan...';
+        panel.appendChild(note);
+    } else if (!task.plan) {
+        const note = document.createElement('div');
+        note.className = 'task-plan-note';
+        note.textContent = task.planStatus === 'failed' ? "Couldn't draft a plan. " : 'No plan yet. ';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'task-action-btn';
+        retry.textContent = 'Draft plan';
+        retry.addEventListener('click', () => { requestTaskPlan(agent, task.id); refreshTaskViewsForAgent(agent); });
+        note.appendChild(retry);
+        panel.appendChild(note);
+    }
+    if (task.status === 'in_review') panel.appendChild(buildTaskReviewBox(agent, task));
+    return panel;
+}
+
+// Francis approves the finished work - the only way a reviewed task completes.
+function approveTask(agent, taskId) {
+    const task = findWorkspaceTaskById(agent, taskId);
+    if (!task || task.status !== 'in_review') return;
+    task.status = 'completed';
+    task.completedAt = new Date();
+    task.viewed = true;
+    taskFeedbackOpen[taskId] = false;
+    delete taskFeedbackDraft[taskId];
+    refreshTaskViewsForAgent(agent);
+}
+
+function openTaskFeedback(agent, taskId) {
+    taskFeedbackOpen[taskId] = true;
+    taskPlanOpen[taskId] = true;
+    refreshTaskViewsForAgent(agent);
+    const input = document.querySelector(`.task-feedback-input[data-task-id="${taskId}"]`);
+    if (input) input.focus();
+}
+
+// Sends the work back to the agent with Francis's notes - the same run as
+// Resume, so it goes through the usual Working... -> review cycle again.
+function requestTaskChanges(agent, taskId, feedback) {
+    const task = findWorkspaceTaskById(agent, taskId);
+    feedback = (feedback || '').trim();
+    if (!task || task.status !== 'in_review') return;
+    if (!feedback) { alert('Tell them what should change first.'); return; }
+    task.revisions = (task.revisions || 0) + 1;
+    taskFeedbackOpen[taskId] = false;
+    delete taskFeedbackDraft[taskId];
+    startProjectTask(agent, taskId, 1,
+        `I reviewed "${task.name || task.task}" and I'd like some changes:\n\n${feedback}\n\nPlease revise your work accordingly (recreate any files that need to change) and tell me what you changed.`);
+}
+
+// One-time cleanup: accepted suggestions used to be wrapped in a single-task
+// "project" of their own. A project is only for ordered multi-step work, so
+// those become plain tasks (hand-made projects and real multi-step ones are
+// left alone - this only matches the exact shape the old wrapper created).
+function migrateSingleTaskProjects() {
+    let changed = false;
+    Object.values(projects).forEach(project => {
+        if (!project || project.status !== 'accepted' || !Array.isArray(project.tasks) || project.tasks.length !== 1) return;
+        const entry = project.tasks[0];
+        if (!entry || project.name !== entry.task || project.summary !== project.name) return;
+        const task = findWorkspaceTaskById(entry.agent, entry.taskId);
+        if (!task) return;
+        task.projectId = null;
+        task.projectName = null;
+        delete projects[project.id];
+        changed = true;
+    });
+    if (changed) {
+        saveWorkspaceTasks();
+        saveProjects();
+    }
 }
 
 // A project is an ordered chain: a task's place in project.tasks is its step
@@ -11123,6 +11438,10 @@ function buildTaskActionsRow(agent, task) {
             startBtn.className = 'task-action-btn solid-start';
             startBtn.textContent = 'Resume';
             startBtn.addEventListener('click', stop(() => startProjectTask(agent, task.id)));
+        } else if (task.status === 'in_review') {
+            startBtn.className = 'task-action-btn start';
+            startBtn.textContent = 'In Review';
+            startBtn.disabled = true;
         } else if (task.status === 'in_progress') {
             startBtn.className = 'task-action-btn start working';
             startBtn.innerHTML = 'Working<span class="working-dots"><span>.</span><span>.</span><span>.</span></span>';
@@ -11151,7 +11470,11 @@ function buildTaskActionsRow(agent, task) {
         // never actually started) instead of being stuck done forever.
         const completeBtn = document.createElement('button');
         completeBtn.type = 'button';
-        if (task.status !== 'completed') {
+        if (task.status === 'in_review') {
+            completeBtn.className = 'task-action-btn solid-complete';
+            completeBtn.textContent = 'Approve & Complete';
+            completeBtn.addEventListener('click', stop(() => approveTask(agent, task.id)));
+        } else if (task.status !== 'completed') {
             completeBtn.className = 'task-action-btn solid-complete';
             completeBtn.textContent = 'Mark Complete';
             completeBtn.addEventListener('click', stop(() => markProjectTaskComplete(agent, task.id)));
@@ -11161,6 +11484,15 @@ function buildTaskActionsRow(agent, task) {
             completeBtn.addEventListener('click', stop(() => unmarkProjectTaskComplete(agent, task.id)));
         }
         actions.appendChild(completeBtn);
+
+        if (task.status === 'in_review') {
+            const changesBtn = document.createElement('button');
+            changesBtn.type = 'button';
+            changesBtn.className = 'task-action-btn solid-discuss';
+            changesBtn.textContent = 'Request Changes';
+            changesBtn.addEventListener('click', stop(() => openTaskFeedback(agent, task.id)));
+            actions.appendChild(changesBtn);
+        }
     }
 
     if (task.status === 'completed' && task.resultType === 'connector' && task.connectorUrl) {
@@ -11398,7 +11730,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
         // this same chat history - repeating the full task text would read
         // as "start over" rather than "keep going from where you paused".
         text: continueCount === 0
-            ? `Please go ahead and do this now: ${task.task}${buildPreviousStepsContext(agent, task)}`
+            ? `Please go ahead and do this now: ${task.task}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}`
             : (reminder || `Please continue where you left off.`),
         timestamp: new Date()
     });
@@ -11659,9 +11991,12 @@ function completeProjectTaskFromChat(agent, taskId, createdFiles) {
         }
     }
 
-    task.status = 'completed';
-    task.completedAt = new Date();
+    // The agent is done, but the task isn't complete until Francis has
+    // reviewed it (approveTask) - or sent it back with changes.
+    task.status = 'in_review';
+    task.reviewReadyAt = new Date();
     task.viewed = false;
+    delete taskPlanOpen[taskId];
     refreshTaskViewsForAgent(agent);
     notifyTaskComplete(agent, task.name || task.task);
     return { completed: true };
@@ -12148,7 +12483,7 @@ function detectRequestedFileTypes(text) {
 // Builds one task in the unified shape both the Projects sidebar and the
 // Workspace pane read/mutate (status/result live only in workspaceTasks -
 // the project's own copy just carries the same taskId to look it up by).
-function createProjectTaskEntry(agent, projectId, projectName, taskText, createdAt, taskName) {
+function createProjectTaskEntry(agent, projectId, projectName, taskText, createdAt, taskName, planContext) {
     const task = {
         kind: 'project',
         id: makeTaskId(),
@@ -12173,6 +12508,11 @@ function createProjectTaskEntry(agent, projectId, projectName, taskText, created
     };
     if (!workspaceTasks[agent]) workspaceTasks[agent] = [];
     workspaceTasks[agent].push(task);
+    // Every task gets a plan (see requestTaskPlan) - 'personal' for the
+    // "Suggestions for you" side, so it's tailored to that side's notes.
+    task.plan = null;
+    task.planContext = planContext || 'firm';
+    requestTaskPlan(agent, task.id);
     return task;
 }
 
@@ -12180,8 +12520,8 @@ function createProjectTaskEntry(agent, projectId, projectName, taskText, created
 // no project to point back to (projectId/projectName stay null). Everything
 // else about it (status lifecycle, Start/Edit/Archive, files it produces)
 // works exactly the same as a project task.
-function createTaskEntry(agent, taskText, createdAt, taskName) {
-    return createProjectTaskEntry(agent, null, null, taskText, createdAt, taskName);
+function createTaskEntry(agent, taskText, createdAt, taskName, planContext) {
+    return createProjectTaskEntry(agent, null, null, taskText, createdAt, taskName, planContext);
 }
 
 // Accepting a project sends each listed teammate's task into their own
@@ -12403,6 +12743,7 @@ function saveTaskModal() {
     if (taskId) {
         const task = findWorkspaceTaskById(origAgent, taskId);
         if (!task) { closeTaskModal(); return; }
+        const textChanged = task.task !== taskText;
         task.task = taskText;
         task.name = taskName || deriveShortName(taskText);
         if (project) {
@@ -12411,6 +12752,7 @@ function saveTaskModal() {
             saveProjects();
         }
         refreshTaskViewsForAgent(origAgent);
+        if (textChanged) requestTaskPlan(origAgent, task.id);
     } else if (project) {
         const created = createProjectTaskEntry(agent, projectId, project.name, taskText, new Date(), taskName || null);
         created.attachments = [...taskModalAttachments];
@@ -12437,6 +12779,7 @@ function saveTaskModal() {
 function applyProjectTaskUpdate(taskAgent, taskId, newText, newName) {
     const task = findWorkspaceTaskById(taskAgent, taskId);
     if (!task) return;
+    const textChanged = task.task !== newText;
     task.task = newText;
     task.name = newName || deriveShortName(newText);
 
@@ -12447,6 +12790,7 @@ function applyProjectTaskUpdate(taskAgent, taskId, newText, newName) {
         saveProjects();
     }
     refreshTaskViewsForAgent(taskAgent);
+    if (textChanged) requestTaskPlan(taskAgent, task.id);
 }
 
 // "Discuss with {Agent}" on a task's Edit modal - sends whatever's currently
@@ -13487,7 +13831,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         let generatedFilesForChat = createdFiles.length ? createdFiles : null;
         if (taskId && createdFiles.length) {
             const completedTask = findWorkspaceTaskById(agent, taskId);
-            displayText = `I've completed the "${completedTask ? (completedTask.name || completedTask.task) : 'task'}" task.`;
+            displayText = `I've finished "${completedTask ? (completedTask.name || completedTask.task) : 'the task'}" - it's ready for your review.`;
             generatedFilesForChat = null;
         } else {
             displayText = (data.response || '').trim()
@@ -14452,26 +14796,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // Accepting any suggestion - for the firm or for you - turns it into a
-        // real task the agent will do: a single-task project (so it shows in
-        // Projects, same as a multi-agent proposal) with one task in that
-        // agent's own Workspace, sitting "not started" until Francis clicks
-        // Start.
-        function createTaskFromSuggestion(agent, idea) {
-            const projectId = makeTaskId();
-            const createdAt = new Date();
-            const task = createProjectTaskEntry(agent, projectId, idea, idea, createdAt);
-            projects[projectId] = {
-                id: projectId,
-                name: idea,
-                summary: idea,
-                tasks: [{ agent, task: idea, taskId: task.id }],
-                groupId: null,
-                status: 'accepted',
-                createdAt,
-                acceptedAt: createdAt
-            };
+        // task for that agent: it lands in their Projects & Tasks tab and on
+        // the Projects page (which lists every agent's tasks), comes with a
+        // drafted plan, and sits "not started" until Francis clicks Start.
+        // `side` is 'firm' or 'personal', which picks the notes the plan is
+        // tailored to.
+        function createTaskFromSuggestion(agent, idea, side) {
+            createTaskEntry(agent, idea, new Date(), null, side);
             saveWorkspaceTasks();
-            saveProjects();
             displayProjectsList();
 
             // Re-selecting the agent you're already chatting with would redraw
@@ -14490,7 +14822,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             } catch (error) {
                 console.error('Failed to accept thought:', error);
             }
-            createTaskFromSuggestion(agent, idea);
+            createTaskFromSuggestion(agent, idea, 'firm');
             loadThoughtsSection();
         }
 
@@ -14599,7 +14931,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             } catch (error) {
                 console.error('Failed to accept personal thought:', error);
             }
-            createTaskFromSuggestion(agent, idea);
+            createTaskFromSuggestion(agent, idea, 'personal');
             loadPersonalThoughtsSection();
         }
 
@@ -22368,6 +22700,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             loadArchiveColumnWidths();
             window.addEventListener('resize', applyArchiveColumnWidths);
             migrateTaskData();
+            migrateSingleTaskProjects();
             loadInsightCardAnchors();
             loadTopicsCollapsedState();
             loadWorkspaceGroupsCollapsed();

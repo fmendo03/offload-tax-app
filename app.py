@@ -6317,6 +6317,87 @@ CLASSIFY_TASK_TOOL = {
 }
 
 
+# --- Task plans ---------------------------------------------------------
+# Every task gets a short plan when it is created: what will get done, the
+# steps the agent will take, and what the final output is. Francis sees it on
+# the task before pressing Start; it is handed to the agent when the task
+# runs, and the agent's finished work then goes to Francis for review before
+# the task counts as complete. One small call per task.
+TASK_PLAN_CAPABILITIES = (
+    "The agent can research with web search, look things up in the firm's uploaded library, "
+    "write in chat, and create files (Word, Excel, PowerPoint, PDF or HTML). It cannot send emails "
+    "or messages, post anywhere, log in to any account, run code, or change anything outside this "
+    "app. Plan only what the agent can actually do here; if the real-world follow-through is up to "
+    "Francis, say so in the final output (for example, \"Francis then posts it\")."
+)
+
+
+def _first_json_object(text):
+    decoder = json.JSONDecoder()
+    pos = text.find('{')
+    while pos != -1:
+        try:
+            value, _ = decoder.raw_decode(text[pos:])
+            if isinstance(value, dict):
+                return value
+        except ValueError:
+            pass
+        pos = text.find('{', pos + 1)
+    raise ValueError('The model did not return a plan.')
+
+
+@app.route('/tasks/plan', methods=['POST'])
+def tasks_plan():
+    try:
+        data = request.json or {}
+        agent = data.get('agent')
+        task_text = str(data.get('task') or '').strip()[:3000]
+        task_name = str(data.get('name') or '').strip()[:200]
+        if agent not in ALL_AGENTS or not task_text:
+            return jsonify({'success': False, 'error': 'An agent and a task are required.'}), 400
+
+        side = 'personal' if data.get('context') == 'personal' else 'firm'
+        notes = str(load_kb_notes().get(side) or '').strip()[:1500]
+        role = get_agent_role_summary(agent)
+
+        project_line = ''
+        steps = [x for x in (data.get('project_steps') or []) if isinstance(x, dict)]
+        if data.get('project_name') and steps:
+            listing = "; ".join(f"{i + 1}. {str(x.get('name') or '')[:80]} ({str(x.get('agent') or '')})" for i, x in enumerate(steps[:12]))
+            project_line = (
+                f"\nThis task is one step in the project \"{str(data['project_name'])[:120]}\", whose steps run in "
+                f"order: {listing}. Plan only this task's own step, building on the earlier steps' output."
+            )
+
+        prompt = (
+            f"Write a short work plan for {agent.capitalize()}, one of Francis's AI assistants"
+            f"{' (' + role + ')' if role else ''}.\n\n"
+            f"Task: {task_name + ' - ' if task_name else ''}{task_text}{project_line}\n\n"
+            + (f"What Francis has told us about his {'life' if side == 'personal' else 'firm'} (use it only to tailor the plan - "
+               f"never restate these facts inside the steps, and never invent details beyond them):\n{notes}\n\n" if notes else '')
+            + TASK_PLAN_CAPABILITIES + "\n\n"
+            "Return ONLY a JSON object with these keys:\n"
+            "- goal: one or two sentences on what will get done and why it is worth doing.\n"
+            "- steps: 3 to 6 short, concrete steps in the order the agent will take them, each starting with a verb.\n"
+            "- output: one or two sentences on exactly what Francis receives at the end - the deliverable and its "
+            "format (for example, a two-page Word document, or a short written summary in chat)."
+        )
+        response = claude_create(
+            log_agent=agent, log_purpose='task_plan', model=CLAUDE_MODEL, max_tokens=900,
+            messages=[{'role': 'user', 'content': prompt}]
+        )
+        raw = _first_json_object("".join(b.text for b in response.content if getattr(b, 'type', None) == 'text'))
+        goal = str(raw.get('goal') or '').strip()
+        plan_steps = [str(x).strip() for x in (raw.get('steps') or []) if str(x).strip()][:7]
+        output = str(raw.get('output') or '').strip()
+        if not (goal and plan_steps and output):
+            raise ValueError('The plan came back incomplete.')
+        return jsonify({'success': True, 'plan': {'goal': goal, 'steps': plan_steps, 'output': output}})
+    except Exception as e:
+        print(f"Task plan error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/classify-task-needed', methods=['POST'])
 def classify_task_needed():
     try:
@@ -6476,7 +6557,10 @@ def chat():
                 "web searches partway through research, or because there's more to generate than "
                 "comfortably fits in one reply - call pause_task with a short note on what's done and "
                 "what's left (e.g. \"PDF and Word doc are done, PowerPoint is next\"), rather than ending "
-                "the turn without having either fully finished or explicitly paused."
+                "the turn without having either fully finished or explicitly paused. Francis's message may "
+                "include a plan for the task - follow its steps and deliver its stated final output. When you "
+                "finish, say briefly what you produced and where to find it; Francis reviews the work before "
+                "the task counts as complete, so don't call it final or ask him to mark it complete."
             )
 
         # Tools: quick replies and referrals always available. propose_task lets
