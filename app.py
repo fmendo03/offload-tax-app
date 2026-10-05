@@ -4839,7 +4839,11 @@ def suggestions_reorder():
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    # no-cache = the browser re-checks on every load, so an update to the page
+    # shows up on a normal refresh instead of an old copy being reused.
+    response = send_from_directory('.', 'index.html')
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
 
 @app.route('/avatars/<path:filename>')
 def avatars(filename):
