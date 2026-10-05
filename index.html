@@ -8592,6 +8592,41 @@ body.va-open #notification-toasts {
             }
         }
 
+        // Two short chimes for the mics - a rising pair when one starts
+        // listening, a falling pair when it stops - deliberately different
+        // from the notification pop above. Same synthesized-audio approach
+        // (and the same silent-until-first-click browser rule).
+        function playMicTone(on) {
+            try {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                if (!notifyAudioCtx) notifyAudioCtx = new Ctx();
+                const ctx = notifyAudioCtx;
+                if (ctx.state === 'suspended') ctx.resume();
+                const notes = on ? [[523, 0], [784, 0.09]] : [[659, 0], [392, 0.09]];
+                const t0 = ctx.currentTime;
+                notes.forEach(([freq, offset]) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    const t = t0 + offset;
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.0001, t);
+                    gain.gain.exponentialRampToValueAtTime(0.22, t + 0.012);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(t);
+                    osc.stop(t + 0.12);
+                });
+            } catch (e) {
+                // audio unavailable - the mic still works, just silently
+            }
+        }
+
+        // A mic switches itself off after this long without hearing speech.
+        const VOICE_SILENCE_MS = 5000;
+
         // --- Voice dictation ---------------------------------------------------
         // One floating mic that attaches to whichever text field is focused -
         // the chat box, every form, inline edits, modals, including fields
@@ -8603,7 +8638,7 @@ body.va-open #notification-toasts {
         // without it the mic simply never appears. Dictates in the browser's
         // own language.
         const getSpeechRecognitionCtor = () => window.SpeechRecognition || window.webkitSpeechRecognition;
-        const voice = { btn: null, target: null, rec: null, listening: false, before: '', after: '', finalText: '' };
+        const voice = { btn: null, target: null, rec: null, listening: false, before: '', after: '', finalText: '', lastWritten: '', silenceTimer: null, discard: false };
 
         function isVoiceEligible(el) {
             if (!el || el.disabled || el.readOnly) return false;
@@ -8652,6 +8687,7 @@ body.va-open #notification-toasts {
             if (!el || !document.contains(el)) { stopVoice(); return; }
             const spoken = voice.finalText + (interim || '');
             el.value = voice.before + spoken + voice.after;
+            voice.lastWritten = el.value;
             const caret = (voice.before + spoken).length;
             try { el.setSelectionRange(caret, caret); } catch (e) { /* not supported for this type */ }
             el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -8668,12 +8704,22 @@ body.va-open #notification-toasts {
             voice.after = el.value.slice(end);
             if (voice.after && !/^\s/.test(voice.after)) voice.after = ' ' + voice.after;
             voice.finalText = '';
+            voice.lastWritten = el.value;   // what the field holds right now - anything else later means it was changed under us
 
             const rec = new (getSpeechRecognitionCtor())();
             rec.continuous = true;
             rec.interimResults = true;
             rec.lang = navigator.language || 'en-US';
+            voice.discard = false;
+            rec.onstart = () => { playMicTone(true); voiceArmSilence(); };
+            rec.onspeechstart = voiceArmSilence;
             rec.onresult = (e) => {
+                if (voice.discard) return;
+                // The field changed under us (the message was sent and the box
+                // cleared, or you started typing) - dictation is over, and
+                // writing our old text back would undo that.
+                if (voice.target && voice.target.value !== voice.lastWritten) { stopVoice(true); return; }
+                voiceArmSilence();
                 voice.finalText = joinSpeechResults(e.results);
                 writeVoiceText('');
             };
@@ -8685,20 +8731,38 @@ body.va-open #notification-toasts {
                 }
             };
             rec.onend = () => {
+                voiceClearSilence();
                 voice.listening = false;
                 voice.rec = null;
                 if (voice.btn) voice.btn.classList.remove('listening');
-                writeVoiceText('');
+                playMicTone(false);
+                if (!voice.discard && voice.target && voice.target.value === voice.lastWritten) writeVoiceText('');
+                voice.discard = false;
                 if (!isVoiceEligible(document.activeElement)) hideVoiceBtn();
             };
             voice.rec = rec;
             voice.listening = true;
             voice.btn.classList.add('listening');
-            try { rec.start(); } catch (err) { voice.listening = false; voice.btn.classList.remove('listening'); }
+            try { rec.start(); } catch (err) { voice.listening = false; voice.rec = null; voice.btn.classList.remove('listening'); }
         }
 
-        function stopVoice() {
-            if (voice.rec) voice.rec.stop();
+        function voiceClearSilence() {
+            if (voice.silenceTimer) { clearTimeout(voice.silenceTimer); voice.silenceTimer = null; }
+        }
+
+        // Restarted by every sign of speech; if none comes for VOICE_SILENCE_MS
+        // the mic turns itself off (keeping what was said).
+        function voiceArmSilence() {
+            voiceClearSilence();
+            voice.silenceTimer = setTimeout(() => stopVoice(), VOICE_SILENCE_MS);
+        }
+
+        // discard = stop right now without writing anything more into the
+        // field (used when the message has been sent).
+        function stopVoice(discard) {
+            if (!voice.rec) return;
+            if (discard) { voice.discard = true; voice.rec.abort(); }
+            else voice.rec.stop();
         }
 
         if (getSpeechRecognitionCtor()) {
@@ -8842,7 +8906,7 @@ body.va-open #notification-toasts {
             return routeVoiceMessage(text).agent;
         }
 
-        const va = { fab: null, panel: null, rec: null, listening: false, timer: null, base: '' };
+        const va = { fab: null, panel: null, rec: null, listening: false, timer: null, base: '', silenceTimer: null };
 
         function vaEl(id) { return document.getElementById(id); }
 
@@ -8867,8 +8931,19 @@ body.va-open #notification-toasts {
             if (va.rec) va.rec.stop();
         }
 
+        function vaClearSilence() {
+            if (va.silenceTimer) { clearTimeout(va.silenceTimer); va.silenceTimer = null; }
+        }
+
+        function vaArmSilence() {
+            vaClearSilence();
+            va.silenceTimer = setTimeout(() => vaStopListening(), VOICE_SILENCE_MS);
+        }
+
         function vaClose() {
             vaCancelTimer();
+            vaClearSilence();
+            if (va.listening) playMicTone(false);
             if (va.rec) { va.rec.onend = null; va.rec.stop(); va.rec = null; }
             va.listening = false;
             va.fab.classList.remove('listening');
@@ -8889,7 +8964,10 @@ body.va-open #notification-toasts {
             rec.continuous = true;
             rec.interimResults = true;
             rec.lang = navigator.language || 'en-US';
+            rec.onstart = () => { playMicTone(true); vaArmSilence(); };
+            rec.onspeechstart = vaArmSilence;
             rec.onresult = (e) => {
+                vaArmSilence();
                 ta.value = va.base + joinSpeechResults(e.results);
                 ta.scrollTop = ta.scrollHeight;
                 vaRefreshRecipient();
@@ -8902,9 +8980,11 @@ body.va-open #notification-toasts {
                 }
             };
             rec.onend = () => {
+                vaClearSilence();
                 va.listening = false;
                 va.rec = null;
                 va.fab.classList.remove('listening');
+                playMicTone(false);
                 if (ta.value.trim()) vaStartSendCountdown();
                 else vaSetStatus("Didn't catch that - tap the mic to try again.");
             };
@@ -8912,7 +8992,7 @@ body.va-open #notification-toasts {
             va.listening = true;
             va.fab.classList.add('listening');
             vaSetStatus('Listening…');
-            try { rec.start(); } catch (err) { va.listening = false; va.fab.classList.remove('listening'); }
+            try { rec.start(); } catch (err) { va.listening = false; va.rec = null; va.fab.classList.remove('listening'); }
         }
 
         function vaStartSendCountdown() {
@@ -13998,6 +14078,8 @@ async function sendMessage() {
     sendingByContext[contextKey] = true;
     inputBox.value = '';
     autoGrowInputBox();
+    // Sent - the mic that was dictating into this box is done too.
+    if (voice.listening && voice.target === inputBox) stopVoice(true);
     clearAttachedReply();
     clearPendingAttachments();
 
