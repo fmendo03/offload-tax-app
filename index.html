@@ -5197,6 +5197,223 @@ body.va-open #notification-toasts {
             resize: vertical;
         }
 
+        /* Workspace: the viewer with the Note and Edit tools */
+        .ws-viewer {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            background: #f7f7f9;
+        }
+
+        .ws-toolbar {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 8px 14px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .ws-file-info { flex: 1; min-width: 120px; }
+        .ws-file-title { font-weight: 700; font-size: 13px; color: #222; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ws-file-sub { font-size: 11px; color: #888; }
+        .ws-tools { display: flex; gap: 4px; padding: 3px; background: #f0f1f6; border-radius: 8px; }
+
+        .ws-tool-btn {
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #555;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .ws-tool-btn:hover { background: #e4e6f2; }
+        .ws-tool-btn.active { background: #667eea; color: white; }
+
+        .ws-notes-toggle {
+            border: 1px solid #d8d8e6;
+            background: white;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #444;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .ws-count {
+            display: inline-block;
+            min-width: 16px;
+            padding: 0 5px;
+            margin-left: 4px;
+            border-radius: 9px;
+            background: #f5b301;
+            color: #3a2d00;
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .ws-tool-hint {
+            flex-shrink: 0;
+            padding: 0 14px;
+            font-size: 11px;
+            color: #666;
+            min-height: 0;
+        }
+
+        .ws-tool-hint:not(:empty) { padding: 5px 14px; background: #fff8e6; border-bottom: 1px solid #f0e2b0; }
+
+        .ws-viewer-body { flex: 1; min-height: 0; display: flex; }
+        .ws-doc-scroll { flex: 1; min-width: 0; overflow: auto; padding: 14px; }
+        .ws-doc-wrap { position: relative; min-height: 100%; }
+        .ws-doc-content { position: relative; }
+        .ws-doc-content .wp-pdf-frame { width: 100%; min-height: 520px; border: none; background: white; }
+        .ws-doc-content .wp-preview-body { background: white; border-radius: 6px; }
+
+        .ws-tool-note .ws-doc-content { cursor: crosshair; }
+        .ws-tool-note .ws-doc-content .wp-doc-preview { cursor: crosshair; }
+        .ws-tool-edit .wp-doc-preview { outline: 2px dashed #667eea; outline-offset: 4px; cursor: text; }
+        .ws-tool-edit .wp-table-preview td { cursor: text; }
+        .ws-tool-edit .wp-table-preview td:focus { outline: 2px solid #667eea; }
+
+        .ws-capture { display: none; position: absolute; inset: 0; z-index: 2; cursor: crosshair; }
+        .ws-overlay { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+        .ws-popover-layer { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+
+        .ws-hl { position: absolute; pointer-events: none; border-radius: 2px; }
+        .ws-hl-note { background: rgba(245, 179, 1, 0.32); }
+        .ws-hl-edit { background: #667eea; border-radius: 2px; }
+        .ws-hl-cell { background: rgba(245, 179, 1, 0.22); outline: 2px solid #f5b301; }
+        .ws-hl-edit-cell { background: rgba(102, 126, 234, 0.16); outline: 2px solid #667eea; }
+
+        .ws-pin {
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+            padding: 0;
+            font-size: 11px;
+            line-height: 18px;
+            text-align: center;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        .ws-pin-note { background: #f5b301; }
+        .ws-pin-edit { background: #667eea; color: white; font-weight: 700; }
+        .ws-pin.sent { opacity: 0.55; }
+
+        .flash { animation: ws-flash 1.4s ease-out; }
+        @keyframes ws-flash {
+            0% { box-shadow: 0 0 0 0 rgba(245, 179, 1, 0.95), 0 1px 4px rgba(0, 0, 0, 0.35); background-color: rgba(245, 179, 1, 0.7); }
+            100% { box-shadow: 0 0 0 16px rgba(245, 179, 1, 0), 0 1px 4px rgba(0, 0, 0, 0.35); }
+        }
+
+        .ws-popover {
+            position: absolute;
+            width: 280px;
+            padding: 10px;
+            background: white;
+            border: 1px solid #d8d8e6;
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+            pointer-events: auto;
+        }
+
+        .ws-popover-label { font-size: 11px; color: #777; margin-bottom: 6px; font-style: italic; }
+        .ws-popover textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ccd; border-radius: 6px; font-family: inherit; font-size: 12px; resize: vertical; }
+        .ws-popover-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+        .ws-tip {
+            position: absolute;
+            max-width: 290px;
+            padding: 8px 10px;
+            background: #2b2b33;
+            color: #f3f3f3;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.45;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            word-break: break-word;
+        }
+
+        .ws-tip div { margin-top: 4px; }
+        .ws-tip span, .ws-note-was span, .ws-note-now span { display: inline-block; min-width: 38px; font-size: 10px; font-weight: 700; text-transform: uppercase; opacity: 0.65; }
+        .ws-tip-was { color: #ffb8b8; }
+        .ws-tip-now { color: #b8f0c4; }
+
+        .ws-notes-pane {
+            flex: 0 0 270px;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-left: 1px solid #e0e0e0;
+        }
+
+        .ws-notes-hidden .ws-notes-pane { display: none; }
+
+        .ws-notes-head {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: rgba(0, 0, 0, 0.55);
+            border-bottom: 1px solid #eee;
+        }
+
+        .ws-notes-head button { border: none; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: #999; }
+        .ws-notes-list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+        .ws-notes-empty { padding: 10px; font-size: 12px; color: #888; line-height: 1.5; }
+        .ws-notes-foot { flex-shrink: 0; padding: 10px; border-top: 1px solid #eee; }
+        .ws-notes-foot button { width: 100%; }
+
+        .ws-note-item {
+            padding: 8px 10px;
+            border: 1px solid #e6e6ee;
+            border-left: 4px solid #f5b301;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            background: #fffdf5;
+        }
+
+        .ws-note-item.ws-note-edit { border-left-color: #667eea; background: #f7f8ff; }
+        .ws-note-item.sent { opacity: 0.6; }
+        .ws-note-item:hover { border-color: #b9bde8; }
+        .ws-note-top { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+        .ws-note-top strong { flex: 1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #555; }
+        .ws-note-chip { font-size: 10px; padding: 0 6px; border-radius: 8px; background: #e6f4ea; color: #1a6b1a; }
+        .ws-note-chip.warn { background: #fdecea; color: #b3261e; }
+        .ws-note-del { border: none; background: none; cursor: pointer; font-size: 16px; line-height: 1; color: #bbb; }
+        .ws-note-del:hover { color: #c0392b; }
+        .ws-note-quote { font-style: italic; color: #777; margin-bottom: 3px; }
+        .ws-note-text { color: #333; line-height: 1.45; word-break: break-word; }
+        .ws-note-was { color: #a33; }
+        .ws-note-now { color: #1a6b1a; margin-top: 2px; }
+
+        .workspace-output-task {
+            margin: 8px 0 2px;
+            font-size: 12px;
+            font-weight: 700;
+            color: rgba(0, 0, 0, 0.6);
+        }
+
         .agent-tab-panel .main-area {
             flex: 1;
             min-height: 0;
@@ -7163,7 +7380,6 @@ body.va-open #notification-toasts {
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="topics" title="Discussion Topics">Topics</button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="projects">Projects &amp; Tasks <span class="mini-badge mini-badge-inline" id="projects-tab-badge"></span></button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="workspace">Workspace</button>
-                        <button type="button" class="agent-tab" role="tab" data-agent-tab="preview">Preview</button>
                     </div>
 
                     <div class="agent-tab-panel active" data-agent-panel="chat">
@@ -7227,12 +7443,40 @@ body.va-open #notification-toasts {
 
                     <div class="agent-tab-panel" data-agent-panel="workspace">
                         <div class="workspace-tasks-list agent-tab-list" id="workspace-tasks-list"></div>
-                    </div>
 
-                    <div class="agent-tab-panel" data-agent-panel="preview">
-                        <div class="workspace-preview-panel" id="workspace-preview-panel">
-                            <div class="workspace-preview-empty" id="workspace-preview-empty">Select Preview on a file in Workspace or Projects &amp; Tasks to view it here.</div>
-                            <div class="workspace-preview-content" id="workspace-preview-content" style="display: none;"></div>
+                        <!-- Opening a file shows it here with the Note and Edit tools and the
+                             Review notes pane (see the "Workspace: review an agent's output"
+                             section of the script). -->
+                        <div class="ws-viewer" id="workspace-viewer" style="display: none;">
+                            <div class="ws-toolbar">
+                                <button type="button" class="task-action-btn" id="ws-back-btn">&larr; Files</button>
+                                <div class="ws-file-info">
+                                    <div class="ws-file-title" id="ws-file-title"></div>
+                                    <div class="ws-file-sub" id="ws-file-sub"></div>
+                                </div>
+                                <div class="ws-tools">
+                                    <button type="button" class="ws-tool-btn" data-tool="note" title="Note - leave a note for the agent on any spot or highlighted wording">&#128221; Note</button>
+                                    <button type="button" class="ws-tool-btn" data-tool="edit" title="Edit - change the text yourself; each change is marked for the agent">&#9998; Edit</button>
+                                </div>
+                                <button type="button" class="task-action-btn" id="ws-download-btn">Download</button>
+                                <button type="button" class="ws-notes-toggle" id="ws-notes-toggle" title="Show or hide the review notes">Review notes <span class="ws-count" id="ws-notes-count" style="display: none;">0</span></button>
+                            </div>
+                            <div class="ws-tool-hint" id="ws-tool-hint"></div>
+                            <div class="ws-viewer-body">
+                                <div class="ws-doc-scroll" id="ws-doc-scroll">
+                                    <div class="ws-doc-wrap" id="ws-doc-wrap">
+                                        <div class="ws-doc-content" id="ws-doc-content"></div>
+                                        <div class="ws-capture" id="ws-capture"></div>
+                                        <div class="ws-overlay" id="ws-overlay"></div>
+                                        <div class="ws-popover-layer" id="ws-popover-layer"></div>
+                                    </div>
+                                </div>
+                                <div class="ws-notes-pane" id="ws-notes-pane">
+                                    <div class="ws-notes-head"><span>Review notes</span><button type="button" id="ws-notes-hide" title="Hide this pane">&times;</button></div>
+                                    <div class="ws-notes-list" id="ws-notes-list"></div>
+                                    <div class="ws-notes-foot"><button type="button" class="task-action-btn solid-start" id="ws-send-btn">Nothing new to send</button></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -10336,6 +10580,7 @@ function goToAgentTask(agent, taskId) {
 function buildPreviewFileHtml(file) {
     const toolbar = buildWorkspacePreviewToolbar(file, `
         <div class="task-row-actions">
+            <button type="button" class="task-action-btn solid-start" id="preview-file-workspace-btn">Open in Workspace</button>
             <button type="button" class="task-action-btn" id="preview-file-download-btn">Download</button>
             <button type="button" class="task-action-btn solid-archive" id="preview-file-archive-btn">Archive</button>
         </div>
@@ -10344,6 +10589,9 @@ function buildPreviewFileHtml(file) {
 }
 
 function wirePreviewFileButtons(agent, fileId) {
+    const workspaceBtn = document.getElementById('preview-file-workspace-btn');
+    if (workspaceBtn) workspaceBtn.addEventListener('click', () => openFileInWorkspace(agent, fileId));
+
     const downloadBtn = document.getElementById('preview-file-download-btn');
     if (downloadBtn) downloadBtn.addEventListener('click', () => { downloadWorkspaceFileTask(agent, fileId); markFileViewed(agent, fileId); });
 
@@ -11289,20 +11537,27 @@ function renderWorkspaceTasks(agent) {
         empty.textContent = text;
         el.appendChild(empty);
     };
-    if (items.length === 0 && standaloneFiles.length === 0) {
-        addEmptyNote(container, 'Nothing here yet - files you attach in chat and topics you send over for discussion will show up here.');
+    // The Workspace lists what agents produced (grouped under the task they
+    // came from) and the files Francis shared; opening one shows it with the
+    // review tools.
+    const outputTasks = tasks.filter(t => getTaskFiles(agent, t.id).some(f => f.role !== 'input'));
+    if (outputTasks.length === 0 && standaloneFiles.length === 0) {
+        addEmptyNote(container, 'Nothing here yet - the files agents produce for your tasks, and files you share, open here so you can review them with notes and edits.');
     }
     if (tasks.length === 0) {
         addEmptyNote(projContainer, 'No tasks yet - accepted projects and tasks will show up here.');
     }
 
-    // Discussion Topics sent over for discussion (see discussTopicWithAgent)
-    // are lightweight references dropped in for a chat-based discussion, as
-    // opposed to actual work (Tasks and Projects, on their own tab).
-    const discussionItems = items.filter(i => i.kind === 'discussion');
-    if (discussionItems.length > 0) {
-        const body = appendWorkspaceGroup(container, agent, 'discussions', '\u{1F4AC} Discussions', discussionItems.length);
-        discussionItems.forEach(item => body.appendChild(buildWorkspaceItemRow(agent, item)));
+    if (outputTasks.length > 0) {
+        const total = outputTasks.reduce((sum, t) => sum + getTaskFiles(agent, t.id).filter(f => f.role !== 'input').length, 0);
+        const body = appendWorkspaceGroup(container, agent, 'outputs', `${FILE_ICON} Agent outputs`, total);
+        outputTasks.forEach(task => {
+            const head = document.createElement('div');
+            head.className = 'workspace-output-task';
+            head.textContent = `${TASK_ICON} ${task.name || task.task} - ${String(task.status).replace('_', ' ')}`;
+            body.appendChild(head);
+            getTaskFiles(agent, task.id).filter(f => f.role !== 'input').forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
+        });
     }
 
     if (standaloneFiles.length > 0) {
@@ -12490,11 +12745,10 @@ function buildFileActionsRow(agent, file) {
     actions.className = 'task-row-actions';
     const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
 
-    const isPreviewing = currentWorkspacePreview && currentWorkspacePreview.agent === agent && currentWorkspacePreview.fileId === file.id;
     const previewBtn = document.createElement('button');
     previewBtn.type = 'button';
     previewBtn.className = 'task-action-btn';
-    previewBtn.textContent = isPreviewing ? 'Close Preview' : 'Preview';
+    previewBtn.textContent = 'Preview';
     previewBtn.addEventListener('click', stop(() => {
         showWorkspaceFilePreview(agent, file.id);
         markFileViewed(agent, file.id);
@@ -12545,94 +12799,16 @@ function buildWorkspaceFileRow(agent, file) {
         tag.textContent = 'provided by you';
         row.appendChild(tag);
     }
+    const noteCount = getFileAnnotations(agent, file.id).length;
+    if (noteCount) {
+        const tag = document.createElement('span');
+        tag.className = 'workspace-input-tag';
+        tag.textContent = `\uD83D\uDCDD ${noteCount}`;
+        tag.title = `${noteCount} review note${noteCount === 1 ? '' : 's'} or edit${noteCount === 1 ? '' : 's'} on this file`;
+        row.appendChild(tag);
+    }
     row.appendChild(buildFileActionsRow(agent, file));
     return row;
-}
-
-// A Discussion Topic sent over to this agent (see
-// discussTopicWithAgent) - not a real file, just a
-// reference card. Click the row (or its Preview button) to show its details
-// in the Workspace preview panel below; Remove only unlinks it here, the
-// actual topic is untouched.
-function buildWorkspaceItemRow(agent, item) {
-    const row = document.createElement('div');
-    row.className = 'workspace-task-row workspace-file-row';
-    row.dataset.replySource = `discussion topic \u201C${item.title}\u201D`;
-
-    const text = document.createElement('span');
-    text.className = 'workspace-file-text';
-    text.textContent = `\u{1F4AC} ${item.title}`;
-    text.addEventListener('click', () => { if (hasTextSelection()) return; showWorkspaceItemPreview(agent, item.id); });
-    row.appendChild(text);
-
-    row.appendChild(buildWorkspaceItemActionsRow(agent, item));
-    return row;
-}
-
-function buildWorkspaceItemActionsRow(agent, item) {
-    const actions = document.createElement('div');
-    actions.className = 'task-row-actions';
-    const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
-
-    const isPreviewing = currentWorkspacePreview && currentWorkspacePreview.agent === agent && currentWorkspacePreview.itemId === item.id;
-    const previewBtn = document.createElement('button');
-    previewBtn.type = 'button';
-    previewBtn.className = 'task-action-btn';
-    previewBtn.textContent = isPreviewing ? 'Close Preview' : 'Preview';
-    previewBtn.addEventListener('click', stop(() => showWorkspaceItemPreview(agent, item.id)));
-    actions.appendChild(previewBtn);
-
-    // Just unlinks it from this Workspace - the Discussion Topic itself is
-    // untouched.
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'task-action-btn solid-archive';
-    removeBtn.textContent = 'Remove';
-    removeBtn.addEventListener('click', stop(() => removeWorkspaceItem(agent, item.id)));
-    actions.appendChild(removeBtn);
-
-    return actions;
-}
-
-// Toggle, same as showWorkspaceFilePreview: clicking Preview on the item
-// that's already showing closes it instead of re-rendering the same content.
-function showWorkspaceItemPreview(agent, itemId) {
-    if (currentWorkspacePreview && currentWorkspacePreview.agent === agent && currentWorkspacePreview.itemId === itemId) {
-        clearWorkspacePreview();
-        renderWorkspaceTasks(agent);
-        return;
-    }
-    const item = (workspaceItems[agent] || []).find(i => i.id === itemId);
-    if (!item) return;
-    if (workspacePreviewEditCleanup) { workspacePreviewEditCleanup(); workspacePreviewEditCleanup = null; }
-    currentWorkspacePreview = { agent, itemId };
-    renderWorkspaceItemPreviewPanel(item);
-    renderWorkspaceTasks(agent);
-    showAgentTab('preview');
-}
-
-function renderWorkspaceItemPreviewPanel(item) {
-    const emptyEl = document.getElementById('workspace-preview-empty');
-    const contentEl = document.getElementById('workspace-preview-content');
-    if (!emptyEl || !contentEl) return;
-
-    const points = (item.details || '').split('\n').map(l => l.trim()).filter(Boolean);
-    const listHtml = points.length
-        ? `<ul>${points.map(p => `<li>${escapeHtml(p.replace(/^[-*•]\s*/, ''))}</li>`).join('')}</ul>`
-        : '<p style="color:#999;">No details added.</p>';
-    const kindLabel = 'Discussion Item';
-
-    emptyEl.style.display = 'none';
-    contentEl.style.display = 'flex';
-    contentEl.style.flexDirection = 'column';
-    contentEl.style.gap = '10px';
-    contentEl.style.padding = '16px';
-    contentEl.dataset.replySource = `discussion topic \u201C${item.title}\u201D`;
-    contentEl.innerHTML = `
-        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:#999;">${escapeHtml(kindLabel)}</div>
-        <div style="font-size:15px; font-weight:700; color:#222;">${escapeHtml(item.title)}</div>
-        <div style="font-size:13px; color:#444; line-height:1.6;">${listHtml}</div>
-    `;
 }
 
 function markTaskViewed(agent, id) {
@@ -13074,63 +13250,803 @@ function downloadWorkspaceFileTask(agent, fileId) {
     document.body.removeChild(link);
 }
 
-function clearWorkspacePreview() {
-    currentWorkspacePreview = null;
-    if (workspacePreviewEditCleanup) { workspacePreviewEditCleanup(); workspacePreviewEditCleanup = null; }
-    const emptyEl = document.getElementById('workspace-preview-empty');
-    const contentEl = document.getElementById('workspace-preview-content');
-    if (emptyEl) emptyEl.style.display = 'flex';
-    if (contentEl) {
-        contentEl.style.display = 'none';
-        contentEl.innerHTML = '';
-        delete contentEl.dataset.replySource;
-    }
+// ---- Workspace: review an agent's output with the Note and Edit tools -----
+// The Workspace tab lists the files agents produced (and files you shared);
+// opening one shows it here with a tools bar. A selected tool takes over the
+// preview: Note drops a note icon where you click (or on the wording you
+// highlight) to say what should change; Edit lets you change the text
+// yourself and marks each change with a review icon that remembers what was
+// there before. Everything is listed in the Review notes pane, and
+// "Send to <agent>" tells the agent exactly where each note/change is.
+//
+// The markers are drawn on a separate overlay layer (never inside the document),
+// so they don't disturb the text being edited or saved.
+const WS_TOOL_HINTS = {
+    note: 'Note - click anywhere to drop a note, or drag across wording to highlight it, then say what should change there.',
+    edit: 'Edit - click into the text and change it yourself. A review icon marks each change so the agent knows what it was before.'
+};
+let wsTool = 'view';   // 'view' | 'note' | 'edit'
+let wsNotesPaneHidden = false;
+let workspaceNotes = {};   // agent -> fileId -> [annotation]
+const wsState = { agent: null, fileId: null, kind: 'point', canEdit: false, baseline: null, bytesDirty: false, layoutQueued: false, commitTimer: null, popover: null, resizeObserver: null };
+
+function loadWorkspaceNotes() {
+    try { workspaceNotes = JSON.parse(localStorage.getItem('workspaceNotes') || '{}') || {}; } catch (e) { workspaceNotes = {}; }
+    try { wsNotesPaneHidden = localStorage.getItem('wsNotesPaneHidden') === '1'; } catch (e) { wsNotesPaneHidden = false; }
 }
 
-// (Re)renders the currently-previewed file and wires its click-in/click-out
-// editing fresh - called on first showing a file and again after every save,
-// since the body is rebuilt from the file's own (possibly just-edited) data.
-function renderWorkspacePreviewPanel(agent, fileId) {
-    const file = findWorkspaceFileById(agent, fileId);
-    if (!file) { clearWorkspacePreview(); return; }
+function saveWorkspaceNotes() {
+    try { localStorage.setItem('workspaceNotes', JSON.stringify(workspaceNotes)); } catch (e) { /* storage unavailable */ }
+}
 
-    const emptyEl = document.getElementById('workspace-preview-empty');
-    const contentEl = document.getElementById('workspace-preview-content');
-    emptyEl.style.display = 'none';
-    contentEl.style.display = 'flex';
-    contentEl.innerHTML = buildWorkspacePreviewHtml(file);
-    const previewTask = file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
-    contentEl.dataset.replySource = `file \u201C${file.name}\u201D` + (previewTask ? ` (from task \u201C${previewTask.name || previewTask.task}\u201D)` : '');
+function getFileAnnotations(agent, fileId) {
+    return ((workspaceNotes[agent] || {})[fileId]) || [];
+}
 
-    if (workspacePreviewEditCleanup) { workspacePreviewEditCleanup(); workspacePreviewEditCleanup = null; }
-    workspacePreviewEditCleanup = wireFilePreviewEditing(contentEl, agent, fileId, () => {
-        renderWorkspacePreviewPanel(agent, fileId);
-        if (currentAgent === agent) renderWorkspaceTasks(agent);
-        renderProjectsPane();
-        renderPreviewPane();
+function ensureFileAnnotations(agent, fileId) {
+    if (!workspaceNotes[agent]) workspaceNotes[agent] = {};
+    if (!workspaceNotes[agent][fileId]) workspaceNotes[agent][fileId] = [];
+    return workspaceNotes[agent][fileId];
+}
+
+const wsEl = (id) => document.getElementById(id);
+const wsFile = () => (wsState.agent ? findWorkspaceFileById(wsState.agent, wsState.fileId) : null);
+const wsAnns = () => ensureFileAnnotations(wsState.agent, wsState.fileId);
+
+// ---- document structure helpers (text documents) ----
+// A "block" is a heading, paragraph or single bullet - the unit notes and
+// edits are tracked against.
+function getDocBlocks(docEl) {
+    const blocks = [];
+    Array.from(docEl.children).forEach(child => {
+        if (child.tagName === 'UL' || child.tagName === 'OL') blocks.push(...Array.from(child.children));
+        else blocks.push(child);
+    });
+    return blocks;
+}
+
+function wsTextOffset(block, container, offset) {
+    const r = document.createRange();
+    r.selectNodeContents(block);
+    r.setEnd(container, offset);
+    return r.toString().length;
+}
+
+function wsRangeFromOffsets(block, start, end) {
+    const range = document.createRange();
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let pos = 0;
+    let startSet = false;
+    let node;
+    while ((node = walker.nextNode())) {
+        const len = node.nodeValue.length;
+        if (!startSet && start <= pos + len) { range.setStart(node, Math.max(0, start - pos)); startSet = true; }
+        if (startSet && end <= pos + len) { range.setEnd(node, Math.max(0, end - pos)); return range; }
+        pos += len;
+    }
+    range.selectNodeContents(block);
+    if (!startSet) range.collapse(true);
+    return range;
+}
+
+function wsBlockForNode(node, blocks) {
+    const el = node && node.nodeType === 1 ? node : (node ? node.parentElement : null);
+    return blocks.find(b => b === el || b.contains(el)) || null;
+}
+
+function wsCaretFromPoint(x, y) {
+    if (document.caretRangeFromPoint) {
+        const r = document.caretRangeFromPoint(x, y);
+        return r ? { node: r.startContainer, offset: r.startOffset } : null;
+    }
+    if (document.caretPositionFromPoint) {
+        const p = document.caretPositionFromPoint(x, y);
+        return p ? { node: p.offsetNode, offset: p.offset } : null;
+    }
+    return null;
+}
+
+function wsTableMatrix(tableEl) {
+    return Array.from(tableEl.querySelectorAll('tr')).map(tr => Array.from(tr.children).map(td => td.textContent.trim()));
+}
+
+// ---- opening / closing the viewer ----
+function openWorkspaceViewer(agent, fileId) {
+    if (wsState.fileId && (wsState.agent !== agent || wsState.fileId !== fileId)) commitViewerEdits(true);
+    wsState.agent = agent;
+    wsState.fileId = fileId;
+    wsTool = 'view';
+    closeWsPopover();
+    wsEl('workspace-tasks-list').style.display = 'none';
+    wsEl('workspace-viewer').style.display = 'flex';
+    renderWorkspaceViewer();
+}
+
+function hideWorkspaceViewer() {
+    if (wsState.fileId) commitViewerEdits(true);
+    closeWsPopover();
+    wsState.agent = null;
+    wsState.fileId = null;
+    wsState.baseline = null;
+    wsTool = 'view';
+    const viewer = wsEl('workspace-viewer');
+    if (viewer) viewer.style.display = 'none';
+    const list = wsEl('workspace-tasks-list');
+    if (list) list.style.display = '';
+    if (wsState.resizeObserver) wsState.resizeObserver.disconnect();
+}
+
+function renderWorkspaceViewer() {
+    const file = wsFile();
+    if (!file) { hideWorkspaceViewer(); return; }
+    const task = file.taskId ? findWorkspaceTaskById(wsState.agent, file.taskId) : null;
+    wsEl('ws-file-title').textContent = file.name;
+    wsEl('ws-file-sub').textContent = task ? `from task “${task.name || task.task}”` : (file.role === 'input' ? 'provided by you' : 'shared by you');
+
+    const content = wsEl('ws-doc-content');
+    content.innerHTML = buildWorkspacePreviewBody(file);
+    wsEl('ws-doc-wrap').dataset.replySource = `file “${file.name}”` + (task ? ` (from task “${task.name || task.task}”)` : '');
+
+    const docEl = content.querySelector('.wp-doc-preview');
+    const tableEl = content.querySelector('.wp-table-preview');
+    wsState.kind = docEl ? 'text' : (tableEl ? 'table' : 'point');
+    wsState.canEdit = !!((docEl && isFileContentEditable(file)) || (tableEl && file.content));
+    wsState.baseline = null;
+    const editTarget = docEl || tableEl;
+    if (editTarget) {
+        editTarget.addEventListener('input', onWsEditInput);
+        editTarget.addEventListener('focusout', () => { if (wsTool === 'edit') commitViewerEdits(false); });
+    }
+    content.querySelectorAll('img').forEach(img => img.addEventListener('load', scheduleWsLayout));
+
+    if (wsState.resizeObserver) wsState.resizeObserver.disconnect();
+    if (window.ResizeObserver) {
+        wsState.resizeObserver = new ResizeObserver(scheduleWsLayout);
+        wsState.resizeObserver.observe(content);
+    }
+    wsEl('workspace-viewer').classList.toggle('ws-notes-hidden', wsNotesPaneHidden);
+    applyWsTool();
+    renderNotesPane();
+    scheduleWsLayout();
+}
+
+// ---- tools ----
+function setWsTool(tool) {
+    if (tool === wsTool) tool = 'view';
+    if (tool === 'edit' && !wsState.canEdit) {
+        wsEl('ws-tool-hint').textContent = "Editing isn't available for this kind of file (PDF, slides or a web page) - leave a Note and the agent will make the change.";
+        return;
+    }
+    if (wsTool === 'edit') commitViewerEdits(true);
+    flushWsPopover();
+    wsTool = tool;
+    if (tool === 'edit') wsState.baseline = wsSnapshot();
+    applyWsTool();
+}
+
+function wsSnapshot() {
+    const content = wsEl('ws-doc-content');
+    if (wsState.kind === 'text') {
+        const docEl = content.querySelector('.wp-doc-preview');
+        return docEl ? getDocBlocks(docEl).map(b => b.textContent) : null;
+    }
+    if (wsState.kind === 'table') {
+        const tableEl = content.querySelector('.wp-table-preview');
+        return tableEl ? wsTableMatrix(tableEl) : null;
+    }
+    return null;
+}
+
+function applyWsTool() {
+    const viewer = wsEl('workspace-viewer');
+    viewer.classList.toggle('ws-tool-note', wsTool === 'note');
+    viewer.classList.toggle('ws-tool-edit', wsTool === 'edit');
+    viewer.querySelectorAll('.ws-tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === wsTool));
+    wsEl('ws-tool-hint').textContent = WS_TOOL_HINTS[wsTool] || '';
+    const content = wsEl('ws-doc-content');
+    const editable = wsTool === 'edit';
+    const docEl = content.querySelector('.wp-doc-preview');
+    if (docEl) docEl.contentEditable = editable ? 'true' : 'false';
+    content.querySelectorAll('.wp-table-preview td').forEach(td => { td.contentEditable = editable ? 'true' : 'false'; });
+    // Pages that can't be clicked into (PDF/web page frames) get a transparent
+    // layer so a click can still drop a note on them.
+    wsEl('ws-capture').style.display = (wsTool === 'note' && wsState.kind === 'point') ? 'block' : 'none';
+}
+
+function onWsEditInput() {
+    scheduleWsLayout();
+    clearTimeout(wsState.commitTimer);
+    wsState.commitTimer = setTimeout(() => commitViewerEdits(false), 900);
+}
+
+// ---- edits: compare against the snapshot, record what was there before ----
+function wsDiffBlocks(before, now) {
+    if (before.length === now.length) {
+        const changes = [];
+        now.forEach((text, i) => { if (before[i] !== text) changes.push({ index: i, before: before[i], after: text, delta: 0, oldLen: 1 }); });
+        return changes;
+    }
+    let s = 0;
+    while (s < before.length && s < now.length && before[s] === now[s]) s++;
+    let eb = before.length;
+    let en = now.length;
+    while (eb > s && en > s && before[eb - 1] === now[en - 1]) { eb--; en--; }
+    return [{ index: s, before: before.slice(s, eb).join('\n'), after: now.slice(s, en).join('\n'), delta: now.length - before.length, oldLen: eb - s }];
+}
+
+function wsSameAnchor(a, b) {
+    return a.kind === b.kind && (a.kind === 'text' ? a.block === b.block : a.row === b.row && a.col === b.col);
+}
+
+function recordWsEdit(list, anchor, before, after, change) {
+    // Blocks were added or removed: keep the other markers in step.
+    if (change && change.delta) {
+        list.forEach(a => {
+            if (a.anchor.kind === 'text' && a.anchor.block >= change.index + change.oldLen) a.anchor.block += change.delta;
+        });
+    }
+    const existing = list.find(a => a.type === 'edit' && a.status !== 'sent' && wsSameAnchor(a.anchor, anchor));
+    if (existing) {
+        // Keep what it said the FIRST time - that's what the agent needs to remember.
+        if (existing.before === after) list.splice(list.indexOf(existing), 1);
+        else { existing.after = after; existing.anchor.quote = after.slice(0, 200); }
+        return;
+    }
+    if (before === after) return;
+    list.push({
+        id: makeTaskId(), type: 'edit', status: 'open', createdAt: new Date().toISOString(),
+        anchor: Object.assign({ quote: after.slice(0, 200) }, anchor), before, after
     });
 }
 
-// Shows a generated file's preview in the Workspace pane's bottom panel without
-// downloading or opening it elsewhere. PDFs render natively via an iframe; the
+function commitViewerEdits(final) {
+    clearTimeout(wsState.commitTimer);
+    const file = wsFile();
+    if (!file || !wsState.baseline) return;
+    const content = wsEl('ws-doc-content');
+    const list = wsAnns();
+    let changed = false;
+
+    if (wsState.kind === 'text') {
+        const docEl = content.querySelector('.wp-doc-preview');
+        if (docEl) {
+            const now = getDocBlocks(docEl).map(b => b.textContent);
+            wsDiffBlocks(wsState.baseline, now).forEach(ch => {
+                recordWsEdit(list, { kind: 'text', block: ch.index, start: 0, end: ch.after.length }, ch.before, ch.after, ch);
+                changed = true;
+            });
+            if (changed) { wsState.baseline = now; file.content = htmlToMarkdown(docEl); }
+        }
+    } else if (wsState.kind === 'table') {
+        const tableEl = content.querySelector('.wp-table-preview');
+        if (tableEl) {
+            const now = wsTableMatrix(tableEl);
+            now.forEach((row, r) => row.forEach((text, c) => {
+                const was = (wsState.baseline[r] || [])[c];
+                if (was !== undefined && was !== text) {
+                    recordWsEdit(list, { kind: 'cell', row: r, col: c }, was, text);
+                    changed = true;
+                }
+            }));
+            if (changed) {
+                wsState.baseline = now;
+                file.content = now.map(row => row.map(cell => cell.replace(/\|/g, '/')).join(' | ')).join('\n');
+            }
+        }
+    }
+    if (changed) {
+        wsState.bytesDirty = true;
+        saveWorkspaceFiles();
+        saveWorkspaceNotes();
+        renderNotesPane();
+        scheduleWsLayout();
+    }
+    if (final && wsState.bytesDirty) { wsState.bytesDirty = false; regenerateFileBytes(file); }
+}
+
+// The downloadable file is rebuilt from the edited text, so Download always
+// matches what the Workspace shows.
+async function regenerateFileBytes(file) {
+    if (!file || !file.fileType || !file.content) return;
+    try {
+        const response = await fetch('/files/regenerate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_type: file.fileType, content: file.content, theme: file.theme, primary_color: file.primaryColor, accent_color: file.accentColor })
+        });
+        const data = await response.json();
+        if (data.success) { file.data = data.data; saveWorkspaceFiles(); }
+    } catch (error) {
+        console.error('Could not rebuild the edited file:', error);
+    }
+}
+
+// ---- notes: click or highlight, then say what should change ----
+function wsRelRect(rect) {
+    const wrap = wsEl('ws-doc-wrap').getBoundingClientRect();
+    return { left: rect.left - wrap.left, top: rect.top - wrap.top, right: rect.right - wrap.left, bottom: rect.bottom - wrap.top, width: rect.width, height: rect.height };
+}
+
+function wsAnchorFromEvent(e) {
+    const content = wsEl('ws-doc-content');
+    const sel = window.getSelection();
+    const selText = sel.toString().trim();
+    const hasSel = !!(selText && sel.rangeCount && content.contains(sel.anchorNode));
+    const wrapRect = wsEl('ws-doc-wrap').getBoundingClientRect();
+    const fraction = (cx, cy) => ({ kind: 'point', x: +((cx - wrapRect.left) / wrapRect.width).toFixed(4), y: +((cy - wrapRect.top) / wrapRect.height).toFixed(4) });
+
+    if (wsState.kind === 'text') {
+        const docEl = content.querySelector('.wp-doc-preview');
+        const blocks = docEl ? getDocBlocks(docEl) : [];
+        if (hasSel) {
+            const range = sel.getRangeAt(0);
+            const block = wsBlockForNode(range.startContainer, blocks);
+            if (block) {
+                const start = wsTextOffset(block, range.startContainer, range.startOffset);
+                let end = block.contains(range.endContainer) ? wsTextOffset(block, range.endContainer, range.endOffset) : block.textContent.length;
+                if (end <= start) end = block.textContent.length;
+                return { anchor: { kind: 'text', block: blocks.indexOf(block), start, end, quote: block.textContent.slice(start, end) }, rect: wsRelRect(range.getBoundingClientRect()) };
+            }
+        }
+        const caret = wsCaretFromPoint(e.clientX, e.clientY);
+        const block = caret ? wsBlockForNode(caret.node, blocks) : null;
+        if (block) {
+            const off = wsTextOffset(block, caret.node, caret.offset);
+            return { anchor: { kind: 'text', block: blocks.indexOf(block), start: off, end: off, quote: '' }, rect: wsRelRect({ left: e.clientX, top: e.clientY, right: e.clientX, bottom: e.clientY + 4, width: 0, height: 4 }) };
+        }
+    } else if (wsState.kind === 'table') {
+        const startEl = hasSel ? (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement) : e.target;
+        const td = startEl && startEl.closest ? startEl.closest('td') : null;
+        if (td) {
+            const tr = td.parentElement;
+            const row = Array.from(content.querySelectorAll('tr')).indexOf(tr);
+            const col = Array.from(tr.children).indexOf(td);
+            return { anchor: { kind: 'cell', row, col, quote: hasSel ? selText : td.textContent.trim().slice(0, 120) }, rect: wsRelRect(td.getBoundingClientRect()) };
+        }
+    }
+    const point = fraction(e.clientX, e.clientY);
+    if (hasSel) point.quote = selText.slice(0, 200);
+    return { anchor: point, rect: wsRelRect({ left: e.clientX, top: e.clientY, right: e.clientX, bottom: e.clientY + 4, width: 0, height: 4 }) };
+}
+
+function onWsNoteMouseUp(e) {
+    if (wsTool !== 'note') return;
+    if (e.target.closest('.ws-pin, .ws-popover, .ws-tip')) return;
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    const target = e.target;
+    // Let the browser finish the selection before reading it.
+    setTimeout(() => {
+        const made = wsAnchorFromEvent({ clientX, clientY, target });
+        if (made) openWsNoteEditor({ anchor: made.anchor }, made.rect);
+    }, 0);
+}
+
+function closeWsPopover() {
+    if (wsState.popover) { wsState.popover.remove(); wsState.popover = null; }
+}
+
+// A note in progress is kept when you move on (empty ones are dropped).
+function flushWsPopover() {
+    const pop = wsState.popover;
+    if (!pop) return;
+    const text = pop.querySelector('textarea').value.trim();
+    if (text && pop._save) pop._save(text);
+    closeWsPopover();
+}
+
+function openWsNoteEditor(draft, rect, existing) {
+    flushWsPopover();
+    const layer = wsEl('ws-popover-layer');
+    const pop = document.createElement('div');
+    pop.className = 'ws-popover';
+    const label = document.createElement('div');
+    label.className = 'ws-popover-label';
+    const quote = existing ? existing.anchor.quote : (draft.anchor && draft.anchor.quote);
+    label.textContent = quote ? `“${quote.slice(0, 80)}${quote.length > 80 ? '…' : ''}”` : 'Note for this spot';
+    const input = document.createElement('textarea');
+    input.rows = 3;
+    input.placeholder = 'What should change here?';
+    input.value = existing ? existing.text : '';
+    const actions = document.createElement('div');
+    actions.className = 'ws-popover-actions';
+
+    const save = (text) => {
+        if (existing) { existing.text = text; if (existing.status === 'sent') existing.status = 'open'; }
+        else {
+            const ann = { id: makeTaskId(), type: 'note', status: 'open', createdAt: new Date().toISOString(), anchor: draft.anchor, text };
+            wsAnns().push(ann);
+            wsState.justAdded = ann.id;
+        }
+        saveWorkspaceNotes();
+        window.getSelection().removeAllRanges();
+        renderNotesPane();
+        scheduleWsLayout();
+    };
+    pop._save = save;
+    const mk = (text, cls, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = text; b.addEventListener('click', fn); return b; };
+    actions.appendChild(mk('Save note', 'task-action-btn solid-start', () => {
+        const text = input.value.trim();
+        if (!text) { input.focus(); return; }
+        pop._save = null;
+        save(text);
+        closeWsPopover();
+    }));
+    actions.appendChild(mk('Cancel', 'task-action-btn', () => { pop._save = null; window.getSelection().removeAllRanges(); closeWsPopover(); }));
+    if (existing) {
+        actions.appendChild(mk('Delete', 'task-action-btn solid-archive', () => { pop._save = null; deleteWsAnnotation(existing.id); closeWsPopover(); }));
+    }
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { pop._save = null; closeWsPopover(); }
+        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); actions.firstChild.click(); }
+    });
+    pop.appendChild(label);
+    pop.appendChild(input);
+    pop.appendChild(actions);
+    const wrapWidth = wsEl('ws-doc-wrap').clientWidth;
+    pop.style.left = `${Math.max(8, Math.min(rect.left, wrapWidth - 292))}px`;
+    pop.style.top = `${rect.bottom + 8}px`;
+    layer.appendChild(pop);
+    wsState.popover = pop;
+    input.focus();
+}
+
+function deleteWsAnnotation(id) {
+    const list = wsAnns();
+    const i = list.findIndex(a => a.id === id);
+    if (i >= 0) list.splice(i, 1);
+    saveWorkspaceNotes();
+    renderNotesPane();
+    scheduleWsLayout();
+}
+
+// ---- drawing the markers ----
+function scheduleWsLayout() {
+    if (wsState.layoutQueued) return;
+    wsState.layoutQueued = true;
+    requestAnimationFrame(() => { wsState.layoutQueued = false; layoutWsAnnotations(); });
+}
+
+// Where an annotation sits right now (re-found by its quoted text if the
+// document changed), as overlay-relative rectangles plus a pin position.
+function locateWsAnnotation(ann, blocks, content) {
+    const a = ann.anchor;
+    if (a.kind === 'text') {
+        let block = blocks[a.block];
+        const text = block ? block.textContent : '';
+        const wanted = ann.type === 'note' ? a.quote : '';
+        if (!block || (wanted && text.slice(a.start, a.end) !== wanted)) {
+            // moved or reworded: look for the quoted text elsewhere
+            const key = ann.type === 'edit' ? (a.quote || '').slice(0, 60) : a.quote;
+            const found = key ? blocks.findIndex(b => b.textContent.includes(key)) : -1;
+            if (found < 0) { if (!block || ann.type === 'note') return null; }
+            else {
+                block = blocks[found];
+                a.block = found;
+                if (ann.type === 'note') { a.start = block.textContent.indexOf(a.quote); a.end = a.start + a.quote.length; }
+            }
+        }
+        const blockRect = wsRelRect(block.getBoundingClientRect());
+        if (ann.type === 'edit') {
+            return { rects: [{ cls: 'ws-hl-edit', left: blockRect.left - 8, top: blockRect.top, width: 3, height: blockRect.height }], pin: { left: blockRect.right - 10, top: blockRect.top - 10 } };
+        }
+        const range = wsRangeFromOffsets(block, a.start, a.end);
+        const rects = Array.from(range.getClientRects()).filter(r => r.width > 1).map(r => wsRelRect(r));
+        if (a.end > a.start && rects.length) {
+            return { rects: rects.map(r => ({ cls: 'ws-hl-note', left: r.left, top: r.top, width: r.width, height: r.height })), pin: { left: rects[0].left - 10, top: rects[0].top - 12 } };
+        }
+        const caret = range.getBoundingClientRect();
+        const c = caret && (caret.width || caret.height) ? wsRelRect(caret) : blockRect;
+        return { rects: [], pin: { left: c.left - 8, top: c.top - 12 } };
+    }
+    if (a.kind === 'cell') {
+        const rows = content.querySelectorAll('tr');
+        const td = rows[a.row] && rows[a.row].children[a.col];
+        if (!td) return null;
+        const r = wsRelRect(td.getBoundingClientRect());
+        return { rects: [{ cls: ann.type === 'edit' ? 'ws-hl-edit-cell' : 'ws-hl-cell', left: r.left, top: r.top, width: r.width, height: r.height }], pin: { left: r.right - 12, top: r.top - 10 } };
+    }
+    const wrap = wsEl('ws-doc-wrap');
+    return { rects: [], pin: { left: a.x * wrap.clientWidth - 11, top: a.y * wrap.clientHeight - 11 } };
+}
+
+function layoutWsAnnotations() {
+    const overlay = wsEl('ws-overlay');
+    if (!overlay || !wsState.fileId) return;
+    overlay.innerHTML = '';
+    const content = wsEl('ws-doc-content');
+    const docEl = content.querySelector('.wp-doc-preview');
+    const blocks = docEl ? getDocBlocks(docEl) : [];
+    const wrapWidth = wsEl('ws-doc-wrap').clientWidth;
+    const lostBefore = wsAnns().map(a => (a.lost ? 1 : 0)).join('');
+    wsAnns().forEach(ann => {
+        let place = null;
+        try { place = locateWsAnnotation(ann, blocks, content); } catch (e) { place = null; }
+        ann.lost = !place;
+        if (!place) return;
+        place.rects.forEach(r => {
+            const hl = document.createElement('div');
+            hl.className = `ws-hl ${r.cls}`;
+            hl.dataset.ann = ann.id;
+            hl.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;`;
+            overlay.appendChild(hl);
+        });
+        const pin = document.createElement('button');
+        pin.type = 'button';
+        pin.className = `ws-pin ws-pin-${ann.type}` + (ann.status === 'sent' ? ' sent' : '');
+        pin.dataset.ann = ann.id;
+        pin.textContent = ann.type === 'note' ? '📝' : '✎';
+        pin.style.left = `${Math.max(0, Math.min(place.pin.left, wrapWidth - 22))}px`;
+        pin.style.top = `${Math.max(0, place.pin.top)}px`;
+        pin.addEventListener('mouseenter', () => showWsTip(ann, pin));
+        pin.addEventListener('mouseleave', hideWsTip);
+        pin.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (ann.type === 'note') openWsNoteEditor({}, { left: parseFloat(pin.style.left), bottom: parseFloat(pin.style.top) + 22 }, ann);
+            else jumpToWsNoteItem(ann.id);
+        });
+        overlay.appendChild(pin);
+        if (wsState.justAdded === ann.id) { wsState.justAdded = null; flashWsAnnotation(ann.id); }
+    });
+    if (wsState.flashId) { const id = wsState.flashId; wsState.flashId = null; flashWsAnnotation(id); }
+    if (lostBefore !== wsAnns().map(a => (a.lost ? 1 : 0)).join('')) renderNotesPane();   // a marker's spot was lost or found
+}
+
+function flashWsAnnotation(id) {
+    wsEl('ws-overlay').querySelectorAll(`[data-ann="${id}"]`).forEach(el => {
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+    });
+}
+
+// ---- hover details ----
+function showWsTip(ann, pin) {
+    hideWsTip();
+    const tip = document.createElement('div');
+    tip.className = 'ws-tip';
+    tip.id = 'ws-tip';
+    const clip = (t) => (t.length > 260 ? t.slice(0, 260) + '…' : t);
+    if (ann.type === 'note') {
+        tip.innerHTML = `<strong>Note</strong>${ann.status === 'sent' ? ' <em>(sent)</em>' : ''}<div>${escapeHtml(ann.text)}</div>`;
+    } else {
+        tip.innerHTML = `<strong>Edited by you</strong>${ann.status === 'sent' ? ' <em>(sent)</em>' : ''}`
+            + `<div class="ws-tip-was"><span>Before</span> ${ann.before ? escapeHtml(clip(ann.before)) : '<em>(nothing - text was added)</em>'}</div>`
+            + `<div class="ws-tip-now"><span>Now</span> ${ann.after ? escapeHtml(clip(ann.after)) : '<em>(removed)</em>'}</div>`;
+    }
+    const wrapWidth = wsEl('ws-doc-wrap').clientWidth;
+    tip.style.left = `${Math.max(8, Math.min(parseFloat(pin.style.left) - 4, wrapWidth - 300))}px`;
+    tip.style.top = `${parseFloat(pin.style.top) + 26}px`;
+    wsEl('ws-popover-layer').appendChild(tip);
+}
+
+function hideWsTip() {
+    const tip = wsEl('ws-tip');
+    if (tip) tip.remove();
+}
+
+// ---- the Review notes pane ----
+function renderNotesPane() {
+    const file = wsFile();
+    const list = wsEl('ws-notes-list');
+    if (!file || !list) return;
+    const anns = wsAnns();
+    const open = anns.filter(a => a.status !== 'sent').length;
+    wsEl('ws-notes-count').textContent = anns.length;
+    wsEl('ws-notes-count').style.display = anns.length ? '' : 'none';
+    list.innerHTML = '';
+    if (!anns.length) {
+        const empty = document.createElement('div');
+        empty.className = 'ws-notes-empty';
+        empty.textContent = 'No notes or changes yet. Pick the Note tool to ask for a change, or the Edit tool to change the text yourself.';
+        list.appendChild(empty);
+    }
+    anns.forEach(ann => {
+        const item = document.createElement('div');
+        item.className = `ws-note-item ws-note-${ann.type}` + (ann.status === 'sent' ? ' sent' : '');
+        item.dataset.ann = ann.id;
+        const top = document.createElement('div');
+        top.className = 'ws-note-top';
+        const icon = document.createElement('span');
+        icon.className = 'ws-note-icon';
+        icon.textContent = ann.type === 'note' ? '📝' : '✎';
+        const kind = document.createElement('strong');
+        kind.textContent = ann.type === 'note' ? 'Note' : 'Edit';
+        top.appendChild(icon);
+        top.appendChild(kind);
+        if (ann.status === 'sent') {
+            const chip = document.createElement('span');
+            chip.className = 'ws-note-chip';
+            chip.textContent = 'Sent';
+            top.appendChild(chip);
+        }
+        if (ann.lost) {
+            const chip = document.createElement('span');
+            chip.className = 'ws-note-chip warn';
+            chip.textContent = 'spot changed';
+            top.appendChild(chip);
+        }
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'ws-note-del';
+        del.title = ann.type === 'note' ? 'Delete this note' : 'Forget this edit marker (the text stays as you changed it)';
+        del.textContent = '×';
+        del.addEventListener('click', (e) => { e.stopPropagation(); deleteWsAnnotation(ann.id); });
+        top.appendChild(del);
+        item.appendChild(top);
+
+        const a = ann.anchor;
+        const where = ann.type === 'note' && a.quote ? `“${a.quote.slice(0, 90)}${a.quote.length > 90 ? '…' : ''}”` : '';
+        if (where) { const q = document.createElement('div'); q.className = 'ws-note-quote'; q.textContent = where; item.appendChild(q); }
+        const body = document.createElement('div');
+        body.className = 'ws-note-text';
+        if (ann.type === 'note') body.textContent = ann.text;
+        else {
+            const clip = (t) => (t.length > 140 ? t.slice(0, 140) + '…' : t);
+            body.innerHTML = `<div class="ws-note-was"><span>Was</span> ${ann.before ? escapeHtml(clip(ann.before)) : '<em>(nothing)</em>'}</div><div class="ws-note-now"><span>Now</span> ${ann.after ? escapeHtml(clip(ann.after)) : '<em>(removed)</em>'}</div>`;
+        }
+        item.appendChild(body);
+        item.addEventListener('click', () => jumpToWsAnnotation(ann.id));
+        list.appendChild(item);
+    });
+
+    const send = wsEl('ws-send-btn');
+    send.textContent = open ? `Send ${open} to ${capitalizeAgent(wsState.agent)}` : `Nothing new to send`;
+    send.disabled = !open;
+}
+
+function jumpToWsNoteItem(id) {
+    if (wsNotesPaneHidden) toggleWsNotesPane(true);
+    const item = wsEl('ws-notes-list').querySelector(`[data-ann="${id}"]`);
+    if (item) {
+        item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        item.classList.remove('flash');
+        void item.offsetWidth;
+        item.classList.add('flash');
+    }
+}
+
+// Click a note in the pane -> take you to that spot in the file.
+function jumpToWsAnnotation(id) {
+    const pin = wsEl('ws-overlay').querySelector(`.ws-pin[data-ann="${id}"]`);
+    if (!pin) { wsEl('ws-tool-hint').textContent = "That spot has moved or been reworded, so it can't be found in the file any more."; return; }
+    pin.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    wsState.flashId = id;   // re-applied if the overlay is redrawn in the next moment
+    flashWsAnnotation(id);
+}
+
+function toggleWsNotesPane(show) {
+    wsNotesPaneHidden = show === undefined ? !wsNotesPaneHidden : !show;
+    try { localStorage.setItem('wsNotesPaneHidden', wsNotesPaneHidden ? '1' : '0'); } catch (e) { /* storage unavailable */ }
+    wsEl('workspace-viewer').classList.toggle('ws-notes-hidden', wsNotesPaneHidden);
+    scheduleWsLayout();
+}
+
+// ---- telling the agent ----
+function wsDocBlocksInfo(file) {
+    if (!file.content || !isFileContentEditable(file)) return [];
+    const tmp = document.createElement('div');
+    tmp.innerHTML = buildWorkspaceDocPreview(file);
+    const root = tmp.firstElementChild;
+    return root ? getDocBlocks(root).map(b => ({ heading: /^H[1-6]$/.test(b.tagName), text: b.textContent })) : [];
+}
+
+function describeWsLocation(file, ann, blocksInfo) {
+    const a = ann.anchor;
+    if (a.kind === 'text') {
+        let section = '';
+        for (let i = Math.min(a.block, blocksInfo.length) - 1; i >= 0; i--) { if (blocksInfo[i] && blocksInfo[i].heading) { section = blocksInfo[i].text; break; } }
+        const here = blocksInfo[a.block] ? blocksInfo[a.block].text : '';
+        const inBlock = a.block < blocksInfo.length && here ? `in the ${blocksInfo[a.block].heading ? 'heading' : 'paragraph/bullet'} “${here.slice(0, 80)}${here.length > 80 ? '…' : ''}”` : `in block ${a.block + 1}`;
+        return inBlock + (section && section !== here ? ` (under “${section}”)` : '');
+    }
+    if (a.kind === 'cell') {
+        const header = (file.content || '').split('\n')[0] ? file.content.split('\n')[0].split('|').map(c => c.trim())[a.col] : '';
+        return `in row ${a.row + 1}, column ${a.col + 1}${header ? ` (“${header}”)` : ''}`;
+    }
+    return `near the spot ${Math.round(a.x * 100)}% across and ${Math.round(a.y * 100)}% down the ${file.fileType === 'pptx' ? 'slides' : 'page'}`;
+}
+
+function buildWsReviewMessage(file, task, notes, edits) {
+    const info = wsDocBlocksInfo(file);
+    const lines = [`Review of "${file.name}"${task ? ` (task "${task.name || task.task}")` : ''}.`];
+    if (notes.length) {
+        lines.push('', 'CHANGES I WANT (my notes on the file):');
+        notes.forEach((n, i) => {
+            const q = n.anchor.quote ? ` - highlighted: "${n.anchor.quote}"` : '';
+            lines.push(`${i + 1}. ${describeWsLocation(file, n, info)}${q}\n   ${n.text}`);
+        });
+    }
+    if (edits.length) {
+        lines.push('', "EDITS I MADE MYSELF (already applied to the file - here's what was there before, so you can push back if you disagree):");
+        edits.forEach((e, i) => {
+            lines.push(`${i + 1}. ${describeWsLocation(file, e, info)}\n   Before: ${e.before || '(nothing - I added this)'}\n   Now: ${e.after || '(I removed this)'}`);
+        });
+    }
+    if (file.content && file.content.length <= 12000) lines.push('', 'The file as it reads now (with my edits applied):', file.content);
+    return lines.join('\n');
+}
+
+async function sendWorkspaceReview() {
+    const agent = wsState.agent;
+    const file = wsFile();
+    if (!file) return;
+    flushWsPopover();
+    if (wsTool === 'edit') commitViewerEdits(true);
+    const open = wsAnns().filter(a => a.status !== 'sent');
+    if (!open.length) return;
+    const notes = open.filter(a => a.type === 'note');
+    const edits = open.filter(a => a.type === 'edit');
+    const task = file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
+    const message = buildWsReviewMessage(file, task, notes, edits);
+    open.forEach(a => { a.status = 'sent'; a.sentAt = new Date().toISOString(); });
+    saveWorkspaceNotes();
+    renderNotesPane();
+    scheduleWsLayout();
+
+    // Notes on a task's finished work are change requests - the agent revises
+    // it. Edits alone only need acknowledging.
+    if (notes.length && task && task.status === 'in_review') {
+        requestTaskChanges(agent, task.id, message);
+        return;
+    }
+    if (!chatHistory[agent]) chatHistory[agent] = [];
+    chatHistory[agent].push({
+        type: 'user',
+        text: message + '\n\n' + (notes.length
+            ? "Please acknowledge in a few sentences what you understand I want changed. If it needs the file remade, propose a task for it."
+            : "Please acknowledge in a sentence or two that you've seen my edits and what they change. If you disagree with one, say why - don't undo them."),
+        reviewNotes: true,
+        timestamp: new Date()
+    });
+    saveToLocalStorage(agent);
+    if (currentAgent === agent) displayMessages(agent);
+    await runOneOnOneAgentTurn(agent, [], undefined, undefined, undefined, undefined);
+}
+
+// ---- wiring (once, at startup) ----
+function initWorkspaceViewer() {
+    wsEl('ws-back-btn').addEventListener('click', () => { clearWorkspacePreview(); if (currentAgent) renderWorkspaceTasks(currentAgent); });
+    wsEl('workspace-viewer').querySelectorAll('.ws-tool-btn').forEach(b => b.addEventListener('click', () => setWsTool(b.dataset.tool)));
+    wsEl('ws-notes-toggle').addEventListener('click', () => toggleWsNotesPane());
+    wsEl('ws-notes-hide').addEventListener('click', () => toggleWsNotesPane(false));
+    wsEl('ws-send-btn').addEventListener('click', sendWorkspaceReview);
+    wsEl('ws-download-btn').addEventListener('click', () => { if (wsState.fileId) { commitViewerEdits(true); downloadWorkspaceFileTask(wsState.agent, wsState.fileId); } });
+    const wrap = wsEl('ws-doc-wrap');
+    wrap.addEventListener('mouseup', onWsNoteMouseUp);
+    window.addEventListener('resize', scheduleWsLayout);
+}
+
+// Closes the Workspace viewer (back to the list of files).
+function clearWorkspacePreview() {
+    currentWorkspacePreview = null;
+    workspacePreviewEditCleanup = null;
+    hideWorkspaceViewer();
+}
+
+// Refreshes the open file after something else (a rename on the Projects
+// page) changed it.
+function renderWorkspacePreviewPanel(agent, fileId) {
+    if (wsState.agent === agent && wsState.fileId === fileId) renderWorkspaceViewer();
+}
+
+// Opens a file in the Workspace tab: PDFs render natively via an iframe; the
 // other types are reconstructed from the same plain-text content the file was
 // generated from (styled with that file's theme colors), since there's no
 // lightweight way to render real docx/xlsx/pptx binaries in-browser.
 function showWorkspaceFilePreview(agent, fileId) {
-    // Toggle: clicking Preview on the file that's already showing closes it
-    // instead of just re-rendering the same content.
-    if (currentWorkspacePreview && currentWorkspacePreview.agent === agent && currentWorkspacePreview.fileId === fileId) {
-        clearWorkspacePreview();
-        renderWorkspaceTasks(agent);
-        return;
-    }
-
     const file = findWorkspaceFileById(agent, fileId);
     if (!file) return;
     currentWorkspacePreview = { agent, fileId };
-    renderWorkspacePreviewPanel(agent, fileId);
+    showAgentTab('workspace');
+    openWorkspaceViewer(agent, fileId);
     renderWorkspaceTasks(agent);
-    showAgentTab('preview');
+}
+
+// From the Projects page: jump to the agent's Workspace with the file open.
+function openFileInWorkspace(agent, fileId) {
+    selectAgent(agent);
+    showWorkspaceFilePreview(agent, fileId);
 }
 
 // Just the reconstructed body - no toolbar - so other panels (the Projects
@@ -13211,7 +14127,9 @@ function wireFilePreviewEditing(containerEl, agent, fileId, onSaved) {
     const file = findWorkspaceFileById(agent, fileId);
     if (!file) return () => {};
 
-    const contentEditable = isFileContentEditable(file) && !!bodyEditEl;
+    // Changing a file's text now happens in the Workspace (Edit tool), where each
+    // change is recorded for the agent - not by clicking into a preview.
+    const contentEditable = false;
     if (bodyWrapEl) bodyWrapEl.classList.toggle('wp-editable', contentEditable);
 
     let editingName = false;
@@ -13946,7 +14864,7 @@ function capitalizeAgent(agent) {
  let chatScrollState = null;
 
  function showAgentTab(tab) {
-    if (!['chat', 'messages', 'topics', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
+    if (!['chat', 'messages', 'topics', 'projects', 'workspace'].includes(tab)) tab = 'chat';
     if (agentActiveTab === 'chat' && tab !== 'chat') {
         chatScrollState = {
             top: messagesContainer.scrollTop,
@@ -15048,7 +15966,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // agent knows exactly what is being referred to - for example:
         //   Projects & Tasks tab > task "Welcome email" (not started) > plan > Steps
         // Chat messages keep their plain "speaker" label and the "Reply" wording.
-        const AGENT_TAB_LABELS = { chat: 'Chat', messages: 'Messages', topics: 'Topics', projects: 'Projects & Tasks', workspace: 'Workspace', preview: 'Preview' };
+        const AGENT_TAB_LABELS = { chat: 'Chat', messages: 'Messages', topics: 'Topics', projects: 'Projects & Tasks', workspace: 'Workspace' };
 
         // A click that ends a text selection shouldn't also fire the row's own
         // click action (which would re-render and wipe the selection).
@@ -15084,6 +16002,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 return { speaker: agentClass ? capitalizeAgent(agentClass.replace('agent-', '')) : 'You', fromChat: true };
             }
             if (!currentAgent || !startEl.closest('#third-pane') || startEl.closest('input, textarea')) return null;
+            // With the Note or Edit tool selected, selecting text is how a note is made.
+            if (wsTool !== 'view' && startEl.closest('#workspace-viewer')) return null;
             const panel = startEl.closest('.agent-tab-panel');
             const tab = panel ? panel.dataset.agentPanel : null;
             if (!tab || tab === 'chat') return null;
@@ -23694,6 +24614,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('chat-pending-header').addEventListener('click', jumpToNextChatNotification);
         document.querySelectorAll('.agent-tab').forEach(btn => btn.addEventListener('click', () => showAgentTab(btn.dataset.agentTab)));
         initAgentSettingsSubtabs();
+        initWorkspaceViewer();
         initCalendarTodoModal();
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
         initNewTodoRecurrenceUi();
@@ -23878,6 +24799,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             initializeWorkspaceTasks();
             initializeWorkspaceFiles();
             initializeWorkspaceItems();
+            loadWorkspaceNotes();
             initializeKbFiles();
             loadArchiveColumnWidths();
             window.addEventListener('resize', applyArchiveColumnWidths);

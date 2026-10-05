@@ -6200,6 +6200,28 @@ def generate_file_bytes(file_type, content, theme=DEFAULT_THEME, primary_color=N
         return content.encode('utf-8')
     raise ValueError(f"Unsupported file_type: {file_type}")
 
+# Rebuilds a file's downloadable bytes from its (possibly hand-edited) text, so
+# a download always matches what the Workspace shows after Francis edits it
+# there. Same generator create_file uses - no model involved.
+@app.route('/files/regenerate', methods=['POST'])
+def files_regenerate():
+    try:
+        data = request.json or {}
+        file_type = str(data.get('file_type') or '').strip().lower()
+        content = str(data.get('content') or '')
+        if file_type not in FILE_TYPE_MIME or not content.strip():
+            return jsonify({'success': False, 'error': 'Unsupported file type or empty content'}), 400
+        if len(content) > 400000:
+            return jsonify({'success': False, 'error': 'That file is too large to rebuild'}), 400
+        theme = str(data.get('theme') or '').strip().lower() or DEFAULT_THEME
+        raw = generate_file_bytes(file_type, content, theme, str(data.get('primary_color') or '').strip() or None,
+                                  str(data.get('accent_color') or '').strip() or None)
+        return jsonify({'success': True, 'data': base64.b64encode(raw).decode('ascii')})
+    except Exception as e:
+        print(f"File regenerate error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # Acted on by the frontend: renders as a downloadable file chip on the agent's
 # message instead of (or alongside) plain chat text.
 CREATE_FILE_TOOL = {
