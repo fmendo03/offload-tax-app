@@ -5285,6 +5285,7 @@ body.va-open #notification-toasts {
         .ws-tool-edit .wp-slide-heading, .ws-tool-edit .wp-slide-subtitle, .ws-tool-edit .wp-slide-bullets { outline: 1px dashed #667eea; outline-offset: 3px; cursor: text; }
         .ws-tool-edit .wp-slide-heading:focus, .ws-tool-edit .wp-slide-subtitle:focus, .ws-tool-edit .wp-slide-bullets:focus { outline: 2px solid #667eea; }
         .ws-code-view { margin: 0; padding: 14px 16px; font-family: Consolas, Menlo, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: #2b2b2b; }
+        .ws-tool-edit .ws-code-view { outline: 2px dashed #667eea; outline-offset: 4px; cursor: text; }
         .ws-code-hit { background: #fff3a8; outline: 2px solid #f5b301; border-radius: 2px; }
         .ws-view-toggle { display: inline-flex; border: 1px solid #c9cde0; border-radius: 6px; overflow: hidden; }
         .ws-view-toggle button { border: none; background: #f0f1f8; padding: 5px 10px; font-size: 12px; cursor: pointer; color: #333; }
@@ -13455,14 +13456,14 @@ function renderWorkspaceViewer() {
     // A PDF made by the team keeps its source text, so Edit works on that text
     // and the PDF is rebuilt from it; slides are edited right on the slides.
     const pdfHasText = file.fileType === 'pdf' && !!file.content;
-    wsState.canEdit = !!(pdfHasText || (docEl && isFileContentEditable(file)) || slidesEl || (tableEl && file.content));
+    wsState.canEdit = !!(pdfHasText || (docEl && isFileContentEditable(file)) || slidesEl || (tableEl && file.content) || (wsIsHtmlFile(file) && !!file.data));
     wsState.baseline = null;
     wsState.domPlaces = {};
     wsState.frameSig = '';
     wsState.offView = new Set();
     wsState.otherPage = new Set();
     wsState.flashDom = null;
-    const editTarget = docEl || tableEl || (slidesEl ? slidesEl.parentElement : null);
+    const editTarget = docEl || tableEl || codeEl || (slidesEl ? slidesEl.parentElement : null);
     if (editTarget) {
         editTarget.addEventListener('input', onWsEditInput);
         editTarget.addEventListener('focusout', () => { if (wsTool === 'edit') commitViewerEdits(false); });
@@ -13507,7 +13508,8 @@ function setWsTool(tool) {
     flushWsPopover();
     wsTool = tool;
     // A PDF is edited through its text: switch to the text version first.
-    if (tool === 'edit' && file && file.fileType === 'pdf' && !wsState.altView) { wsState.altView = true; renderWorkspaceViewer(); }
+    if (tool === 'edit' && file && wsHasAltView(file) && !wsState.altView) { wsState.altView = true; wsState.codeHit = null; renderWorkspaceViewer(); }
+    if (tool === 'edit' && wsState.kind === 'code') wsState.codeHit = null;
     if (tool === 'edit') wsState.baseline = wsSnapshot();
     applyWsTool();
 }
@@ -13528,7 +13530,7 @@ function setWsAltView(showText) {
     flushWsPopover();
     const pending = commitViewerEdits(true);
     if (!showText && wsTool === 'edit') wsTool = 'view';
-    if (showText && file.fileType !== 'pdf' && wsTool !== 'view') wsTool = 'view';   // a web page's code is only for reading
+    if (showText && wsTool !== 'view' && wsTool !== 'edit') wsTool = 'view';
     wsState.altView = !!showText;
     if (!showText) wsState.codeHit = null;
     renderWorkspaceViewer();
@@ -13548,6 +13550,10 @@ function wsSnapshot() {
         const tableEl = content.querySelector('.wp-table-preview');
         return tableEl ? wsTableMatrix(tableEl) : null;
     }
+    if (wsState.kind === 'code') {
+        const pre = content.querySelector('.ws-code-view');
+        return pre ? pre.textContent.split('\n') : null;
+    }
     return null;
 }
 
@@ -13563,6 +13569,11 @@ function applyWsTool() {
     const editable = wsTool === 'edit';
     content.querySelectorAll('.wp-doc-preview, .wp-slide-heading, .wp-slide-subtitle, .wp-slide-bullets').forEach(el => { el.contentEditable = editable ? 'true' : 'false'; });
     content.querySelectorAll('.wp-table-preview td').forEach(td => { td.contentEditable = editable ? 'true' : 'false'; });
+    content.querySelectorAll('.ws-code-view').forEach(pre => {
+        try { pre.contentEditable = editable ? 'plaintext-only' : 'false'; } catch (e) { pre.contentEditable = editable ? 'true' : 'false'; }
+        pre.spellcheck = false;
+    });
+    if (wsTool === 'edit' && wsState.kind === 'code') wsEl('ws-tool-hint').textContent = 'Edit - change the HTML yourself. Each changed line is marked so the agent knows what it was before. Switch to Page to see the result.';
     // Pages that can't be clicked into (PDF frames) get a transparent layer so
     // a click can still drop a note on them. Web pages handle clicks themselves.
     wsEl('ws-capture').style.display = (wsTool === 'note' && wsState.kind === 'point') ? 'block' : 'none';
@@ -13600,7 +13611,7 @@ function wsDiffBlocks(before, now) {
 }
 
 function wsSameAnchor(a, b) {
-    return a.kind === b.kind && (a.kind === 'text' ? a.block === b.block : a.row === b.row && a.col === b.col);
+    return a.kind === b.kind && (a.kind === 'text' ? a.block === b.block : a.kind === 'code' ? a.line === b.line : a.row === b.row && a.col === b.col);
 }
 
 function recordWsEdit(list, anchor, before, after, change) {
@@ -13608,6 +13619,7 @@ function recordWsEdit(list, anchor, before, after, change) {
     if (change && change.delta) {
         list.forEach(a => {
             if (a.anchor.kind === 'text' && a.anchor.block >= change.index + change.oldLen) a.anchor.block += change.delta;
+            if (a.anchor.kind === 'code' && a.anchor.line >= change.index + change.oldLen) a.anchor.line += change.delta;
         });
     }
     const existing = list.find(a => a.type === 'edit' && a.status !== 'sent' && wsSameAnchor(a.anchor, anchor));
@@ -13631,6 +13643,7 @@ function commitViewerEdits(final) {
     const content = wsEl('ws-doc-content');
     const list = wsAnns();
     let changed = false;
+    let skipRebuild = false;
 
     if (wsState.kind === 'text') {
         const docEl = content.querySelector('.wp-doc-preview');
@@ -13642,6 +13655,23 @@ function commitViewerEdits(final) {
                 changed = true;
             });
             if (changed) { wsState.baseline = now; file.content = docEl ? htmlToMarkdown(docEl) : wsSlidesToContent(content); }
+        }
+    } else if (wsState.kind === 'code') {
+        const pre = content.querySelector('.ws-code-view');
+        if (pre) {
+            const now = pre.textContent.split('\n');
+            wsDiffBlocks(wsState.baseline, now).forEach(ch => {
+                recordWsEdit(list, { kind: 'code', line: ch.index }, ch.before, ch.after, ch);
+                changed = true;
+            });
+            if (changed) {
+                wsState.baseline = now;
+                const text = now.join('\n');
+                // The file IS its text, so the saved copy is updated right away.
+                file.data = btoa(Array.from(new TextEncoder().encode(text), b => String.fromCharCode(b)).join(''));
+                if (file.content !== undefined && file.content !== null) file.content = text;
+                skipRebuild = true;
+            }
         }
     } else if (wsState.kind === 'table') {
         const tableEl = content.querySelector('.wp-table-preview');
@@ -13661,7 +13691,7 @@ function commitViewerEdits(final) {
         }
     }
     if (changed) {
-        wsState.bytesDirty = true;
+        if (!skipRebuild) wsState.bytesDirty = true;
         saveWorkspaceFiles();
         saveWorkspaceNotes();
         renderNotesPane();
@@ -13879,6 +13909,19 @@ function locateWsAnnotation(ann, blocks, content) {
         const c = caret && (caret.width || caret.height) ? wsRelRect(caret) : blockRect;
         return { rects: [], pin: { left: c.left - 8, top: c.top - 12 } };
     }
+    if (a.kind === 'code') {
+        const pre = content.querySelector('.ws-code-view');
+        if (!pre) return 'pending';
+        const lines = pre.textContent.split('\n');
+        const line = Math.min(a.line, lines.length - 1);
+        let offset = 0;
+        for (let i = 0; i < line; i++) offset += lines[i].length + 1;
+        const rects = Array.from(wsRangeFromOffsets(pre, offset, offset + Math.max(1, lines[line].length)).getClientRects()).filter(r => r.width > 0 || r.height > 0).map(r => wsRelRect(r));
+        if (!rects.length) return null;
+        const top = rects[0].top;
+        const bottom = rects[rects.length - 1].bottom;
+        return { rects: [{ cls: 'ws-hl-edit', left: rects[0].left - 8, top, width: 3, height: bottom - top }], pin: { left: wsRelRect(pre.getBoundingClientRect()).right - 26, top: top - 4 } };
+    }
     if (a.kind === 'cell') {
         const rows = content.querySelectorAll('tr');
         const td = rows[a.row] && rows[a.row].children[a.col];
@@ -13896,7 +13939,7 @@ function locateWsAnnotation(ann, blocks, content) {
 function wsAnnOnThisView(ann) {
     const file = wsFile();
     const k = ann.anchor.kind;
-    if (file && wsIsHtmlFile(file)) return wsState.kind === 'html' && k === 'dom';
+    if (file && wsIsHtmlFile(file)) return (k === 'dom' && wsState.kind === 'html') || (k === 'code' && wsState.kind === 'code');
     if (file && file.fileType === 'pdf' && file.content) return (k === 'point') !== !!wsState.altView;
     return k !== 'dom';
 }
@@ -14334,7 +14377,7 @@ function renderNotesPane() {
             top.appendChild(chip);
         }
         const elsewhere = wsState.otherPage.has(ann.id) ? 'on another page'
-            : (wsState.offView.has(ann.id) ? (wsState.kind === 'code' ? 'on the page view' : wsState.kind === 'html' ? 'not tied to a page' : (ann.anchor.kind === 'point' ? 'on the PDF page' : 'in the text view')) : '');
+            : (wsState.offView.has(ann.id) ? (wsState.kind === 'code' ? 'on the page view' : wsState.kind === 'html' ? (ann.anchor.kind === 'code' ? 'in the code view' : 'not tied to a page') : (ann.anchor.kind === 'point' ? 'on the PDF page' : 'in the text view')) : '');
         if (elsewhere) {
             const chip = document.createElement('span');
             chip.className = 'ws-note-chip away';
@@ -14387,7 +14430,7 @@ function jumpToWsAnnotation(id) {
     const file = wsFile();
     if (ann && file) {
         if (!wsAnnOnThisView(ann)) {
-            const switchTo = file.fileType === 'pdf' ? ann.anchor.kind !== 'point' : (ann.anchor.kind === 'dom' ? false : null);
+            const switchTo = file.fileType === 'pdf' ? ann.anchor.kind !== 'point' : (ann.anchor.kind === 'dom' ? false : (ann.anchor.kind === 'code' ? true : null));
             if (wsHasAltView(file) && switchTo !== null) {
                 setWsAltView(switchTo);
                 setTimeout(() => jumpToWsAnnotation(id), 80);
@@ -14406,6 +14449,7 @@ function jumpToWsAnnotation(id) {
             return;
         }
     }
+    layoutWsAnnotations();   // markers are drawn on a frame delay - make sure they're current (e.g. right after a view switch)
     const pin = wsEl('ws-overlay').querySelector(`.ws-pin[data-ann="${id}"]`);
     if (!pin) { wsEl('ws-tool-hint').textContent = "That spot has moved or been reworded, so it can't be found in the file any more."; return; }
     pin.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -14440,6 +14484,7 @@ function wsDocBlocksInfo(file) {
 
 function describeWsLocation(file, ann, blocksInfo) {
     const a = ann.anchor;
+    if (a.kind === 'code') return `in the page's HTML code, at line ${a.line + 1}`;
     if (a.kind === 'dom') {
         const c = a.context || {};
         return `on the web page${c.hash ? ` (page ${c.hash})` : ''}${c.heading ? `, in the section “${c.heading}”` : ''}${c.text ? `, at the element reading “${c.text}”` : ''}`;
