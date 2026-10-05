@@ -3362,6 +3362,26 @@ def find_topic_category(data, topic_id):
     return None, None
 
 
+# The page is organized by agent, so a topic is filed under an agent and its
+# category is only a label (shown as a small tag). Finds that agent's category
+# with this name (creating it if needed); with no name it uses "General".
+def get_or_create_agent_category(store, agent, name=None):
+    wanted = (name or 'General').strip() or 'General'
+    for cat in store['categories']:
+        if cat['agent'] == agent and cat['name'].strip().lower() == wanted.lower():
+            return cat
+    category = {
+        'id': uuid.uuid4().hex,
+        'userId': current_user_id(),
+        'name': wanted,
+        'agent': agent,
+        'createdAt': now_local().isoformat(),
+        'topics': []
+    }
+    store['categories'].append(category)
+    return category
+
+
 # Pulls just the "Core Role" blurb out of an agent's system prompt (skipping
 # personality traits, formatting rules, etc.) so the categorizer below has
 # enough to match a topic's subject matter without a giant prompt.
@@ -3562,15 +3582,19 @@ def discussion_topics_create_topic():
     try:
         data = request.json or {}
         category_id = data.get('category_id')
+        agent = data.get('agent')
         text = str(data.get('text', '')).strip()
         details = str(data.get('details', '') or '').strip()
-        if not category_id or not text:
-            return jsonify({'success': False, 'error': 'Missing category_id or text'}), 400
+        if not text or not (category_id or agent in ALL_AGENTS):
+            return jsonify({'success': False, 'error': 'Missing text, and either a category or an agent'}), 400
         with discussion_topics_lock:
             store = load_discussion_topics()
-            category = next((c for c in store['categories'] if c['id'] == category_id), None)
-            if not category:
-                return jsonify({'success': False, 'error': 'Category not found'}), 404
+            if category_id:
+                category = next((c for c in store['categories'] if c['id'] == category_id), None)
+                if not category:
+                    return jsonify({'success': False, 'error': 'Category not found'}), 404
+            else:
+                category = get_or_create_agent_category(store, agent)
             topic = {
                 'id': uuid.uuid4().hex,
                 'userId': current_user_id(),
@@ -3583,7 +3607,7 @@ def discussion_topics_create_topic():
             }
             category['topics'].append(topic)
             save_discussion_topics(store)
-        return jsonify({'success': True, 'data': store})
+        return jsonify({'success': True, 'data': store, 'category_id': category['id'], 'topic_id': topic['id']})
     except Exception as e:
         print(f"Discussion topics create topic error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3609,7 +3633,14 @@ def discussion_topics_update_topic(topic_id):
                 topic['discussedAt'] = now_local().isoformat() if topic['discussed'] else None
             if 'attachments' in data:
                 topic['attachments'] = data['attachments'] or []
-            if 'category_id' in data and data['category_id'] and data['category_id'] != current_category['id']:
+            if data.get('agent') in ALL_AGENTS and data['agent'] != current_category['agent']:
+                # Handing it to another agent: it keeps its category label there.
+                new_category = get_or_create_agent_category(store, data['agent'], current_category['name'])
+                current_category['topics'] = [t for t in current_category['topics'] if t['id'] != topic_id]
+                new_category['topics'].append(topic)
+                if not current_category['topics']:
+                    store['categories'] = [c for c in store['categories'] if c['id'] != current_category['id']]
+            elif 'category_id' in data and data['category_id'] and data['category_id'] != current_category['id']:
                 new_category = next((c for c in store['categories'] if c['id'] == data['category_id']), None)
                 if not new_category:
                     return jsonify({'success': False, 'error': 'Category not found'}), 404

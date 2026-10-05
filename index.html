@@ -3207,7 +3207,7 @@
             resize: vertical;
         }
 
-        #topics-new-category {
+        #topics-new-agent {
             flex: 0 0 170px;
         }
 
@@ -5072,6 +5072,129 @@ body.va-open #notification-toasts {
             text-align: center;
             font-size: 13px;
             color: rgba(0, 0, 0, 0.5);
+        }
+
+        /* Discussion Topics: agent sections on the main page, the Topics tab on an agent page */
+        .topics-agent-group {
+            border-left: 4px solid var(--agent-color, #ccc);
+        }
+
+        .topics-agent-avatar {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid var(--agent-color, #ccc);
+            background: #f2f2f2;
+        }
+
+        .topics-agent-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: 50% 12%;
+            transform: scale(1.9);
+            transform-origin: 50% 18%;
+        }
+
+        .topics-empty-note {
+            padding: 8px 4px;
+            font-size: 12px;
+            color: #999;
+        }
+
+        .topics-item .topics-category-agent-badge { flex-shrink: 0; }
+
+        .topics-tab-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .agent-topics-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 760px;
+            margin: 0 auto;
+        }
+
+        .agent-topics-empty {
+            display: none;
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 24px 12px;
+            text-align: center;
+            font-size: 13px;
+            color: rgba(0, 0, 0, 0.5);
+        }
+
+        .topics-tab-scroll .topics-discussed-section {
+            max-width: 760px;
+            margin: 16px auto 0;
+        }
+
+        .agent-topic-card {
+            background: white;
+            border: 1px solid #e6e6ee;
+            border-left: 4px solid #667eea;
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .agent-topic-card.discussed {
+            opacity: 0.75;
+            margin-top: 10px;
+        }
+
+        .agent-topic-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .agent-topic-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: #222;
+        }
+
+        .agent-topic-card.discussed .agent-topic-title {
+            text-decoration: line-through;
+            color: #777;
+        }
+
+        .agent-topic-points {
+            margin: 8px 0 4px;
+            padding-left: 20px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #444;
+        }
+
+        .topics-tab-add {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px 20px;
+            background: white;
+            border-top: 1px solid #e6e6e6;
+        }
+
+        .topics-tab-add input,
+        .topics-tab-add textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 13px;
+            resize: vertical;
         }
 
         .agent-tab-panel .main-area {
@@ -7037,6 +7160,7 @@ body.va-open #notification-toasts {
                     <div class="agent-tabs" id="agent-tabs" role="tablist">
                         <button type="button" class="agent-tab active" role="tab" data-agent-tab="chat">Chat <span class="mini-badge mini-badge-inline" id="chat-tab-badge"></span></button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="messages">Messages <span class="mini-badge mini-badge-inline" id="messages-tab-badge"></span></button>
+                        <button type="button" class="agent-tab" role="tab" data-agent-tab="topics" title="Discussion Topics">Topics</button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="projects">Projects &amp; Tasks <span class="mini-badge mini-badge-inline" id="projects-tab-badge"></span></button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="workspace">Workspace</button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="preview">Preview</button>
@@ -7075,6 +7199,25 @@ body.va-open #notification-toasts {
                         <div class="messages-tab-scroll">
                             <div class="messages-tab-cards" id="messages-tab-cards"></div>
                             <div class="messages-tab-empty" id="messages-tab-empty">Nothing waiting on you right now - new questions and suggestions show up here.</div>
+                        </div>
+                    </div>
+
+                    <div class="agent-tab-panel" data-agent-panel="topics">
+                        <div class="topics-tab-scroll">
+                            <div class="agent-topics-list" id="agent-topics-list"></div>
+                            <div class="agent-topics-empty" id="agent-topics-empty"></div>
+                            <div class="topics-discussed-section" id="agent-topics-discussed-section" style="display:none;">
+                                <div class="topics-discussed-header" id="agent-topics-discussed-toggle">
+                                    <span class="topics-discussed-chevron" id="agent-topics-discussed-chevron">&#9656;</span>
+                                    <span id="agent-topics-discussed-title">Already Discussed</span>
+                                </div>
+                                <div class="topics-discussed-list" id="agent-topics-discussed-list" style="display:none;"></div>
+                            </div>
+                        </div>
+                        <div class="topics-tab-add">
+                            <input type="text" id="agent-topics-new-title" placeholder="New topic">
+                            <textarea id="agent-topics-new-details" rows="2" placeholder="Details - what should be discussed? (one point per line)"></textarea>
+                            <button type="button" class="task-action-btn solid-complete" id="agent-topics-add-btn">Add Topic</button>
                         </div>
                     </div>
 
@@ -7389,7 +7532,7 @@ body.va-open #notification-toasts {
                     <div class="topics-new-bar">
                         <div class="topics-new-bar-row">
                             <input type="text" id="topics-new-input" placeholder="Topic">
-                            <select id="topics-new-category" title="Category"></select>
+                            <select id="topics-new-agent" title="Which agent this topic is for"></select>
                             <button type="button" class="task-action-btn solid-complete" id="topics-new-btn">Add New Topic</button>
                         </div>
                         <textarea id="topics-new-details" rows="2" placeholder="Details - what should be discussed? (one point per line)"></textarea>
@@ -7400,7 +7543,6 @@ body.va-open #notification-toasts {
                 <div class="preview-pane">
                     <div class="split-pane-header">
                         <h2>Topic Details</h2>
-                        <button type="button" class="task-action-btn solid-complete" id="topics-add-category-btn">+ Add Category</button>
                     </div>
                     <div class="split-pane-scroll" id="topics-preview-body">
                         <div class="page-empty" id="topics-preview-empty">Select a topic on the left to view its details here.</div>
@@ -7814,27 +7956,6 @@ body.va-open #notification-toasts {
                     </div>
                 </div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Discussion Topics: Add/Edit Category Modal -->
-    <div id="topics-category-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 12px; padding: 26px; max-width: 400px; width: 90%; max-height: 85vh; overflow-y: auto;">
-            <h3 id="topics-category-modal-title" style="margin: 0 0 16px;">Add Category</h3>
-            <input type="hidden" id="topics-category-id">
-            <div class="calendar-form-row">
-                <label for="topics-category-name">Category name</label>
-                <input type="text" id="topics-category-name" placeholder="e.g. Tax Planning">
-            </div>
-            <div class="calendar-form-row">
-                <label for="topics-category-agent">Responsible agent</label>
-                <select id="topics-category-agent"></select>
-            </div>
-            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
-                <button id="topics-category-delete-btn" type="button" style="padding: 10px 20px; background: #fbeaea; color: #c0392b; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none;">Delete</button>
-                <button id="topics-category-cancel-btn" type="button" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
-                <button id="topics-category-save-btn" type="button" style="padding: 10px 20px; background: #1F3A5F; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Save</button>
             </div>
         </div>
     </div>
@@ -13825,7 +13946,7 @@ function capitalizeAgent(agent) {
  let chatScrollState = null;
 
  function showAgentTab(tab) {
-    if (!['chat', 'messages', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
+    if (!['chat', 'messages', 'topics', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
     if (agentActiveTab === 'chat' && tab !== 'chat') {
         chatScrollState = {
             top: messagesContainer.scrollTop,
@@ -13836,6 +13957,7 @@ function capitalizeAgent(agent) {
     document.querySelectorAll('.agent-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.agentPanel === tab));
     const comingBack = tab === 'chat' && agentActiveTab !== 'chat';
     agentActiveTab = tab;
+    if (tab === 'topics') loadTopicsData();   // fresh from the server, and re-renders both places that show them
     if (comingBack && chatScrollState) {
         messagesContainer.scrollTop = chatScrollState.atBottom ? messagesContainer.scrollHeight : chatScrollState.top;
     }
@@ -14926,7 +15048,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // agent knows exactly what is being referred to - for example:
         //   Projects & Tasks tab > task "Welcome email" (not started) > plan > Steps
         // Chat messages keep their plain "speaker" label and the "Reply" wording.
-        const AGENT_TAB_LABELS = { chat: 'Chat', messages: 'Messages', projects: 'Projects & Tasks', workspace: 'Workspace', preview: 'Preview' };
+        const AGENT_TAB_LABELS = { chat: 'Chat', messages: 'Messages', topics: 'Topics', projects: 'Projects & Tasks', workspace: 'Workspace', preview: 'Preview' };
 
         // A click that ends a text selection shouldn't also fire the row's own
         // click action (which would re-render and wipe the selection).
@@ -18673,15 +18795,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // --- Discussion Topics ------------------------------------------
-        // An ongoing list of things to bring up with the team, grouped into
-        // categories - each category names one agent responsible for that
-        // subject matter, so every topic under it shares that "Discuss with
-        // X" target (see /discussion-topics/* in app.py). Marking a topic
+        // An ongoing list of things to bring up with the team, organized by
+        // agent - each topic belongs to the agent it's for, which is also its
+        // "Discuss with X" target (see /discussion-topics/* in app.py). Each
+        // agent's page has a Topics tab showing just theirs. Marking a topic
         // discussed doesn't delete it - it moves into the grayed-out/struck-
         // through section at the bottom, Discuss button still live in case
         // it needs to come back up.
         let topicsData = { categories: [] };
-        let topicsEditingCategoryId = null;
         let topicsDiscussedExpanded = false;
         let topicsCollapsedCategories = {};
         let selectedTopicId = null;
@@ -18738,14 +18859,32 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             recordNavHistory({ kind: 'topics' });
         }
 
+        // The page is organized by agent: one section per agent that has
+        // topics, listing that agent's topics. A topic's category survives only
+        // as a small label on its row (see get_or_create_agent_category in
+        // app.py).
+        function getAgentTopicEntries(agent) {
+            const entries = [];
+            (topicsData.categories || []).forEach(cat => {
+                if (cat.agent !== agent) return;
+                (cat.topics || []).forEach(topic => entries.push({ topic, category: cat }));
+            });
+            return entries;
+        }
+
         function renderTopicsPage() {
             const container = document.getElementById('topics-categories');
             container.innerHTML = '';
             const categories = topicsData.categories || [];
-            document.getElementById('topics-empty').style.display = categories.length ? 'none' : 'block';
 
-            categories.forEach(cat => container.appendChild(buildTopicsCategoryEl(cat)));
-            populateTopicsNewCategorySelect();
+            let totalTopics = 0;
+            agents.forEach(agent => {
+                const entries = getAgentTopicEntries(agent);
+                totalTopics += entries.length;
+                if (entries.length) container.appendChild(buildTopicsAgentGroupEl(agent, entries));
+            });
+            document.getElementById('topics-empty').style.display = totalTopics ? 'none' : 'block';
+            populateTopicsNewAgentSelect();
 
             const allDiscussed = [];
             categories.forEach(cat => {
@@ -18762,47 +18901,47 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             discussedList.style.display = topicsDiscussedExpanded ? 'block' : 'none';
             discussedList.innerHTML = '';
             allDiscussed.forEach(({ topic, category }) => {
-                discussedList.appendChild(buildTopicItemEl(topic, category));
+                discussedList.appendChild(buildTopicItemEl(topic, category, true));
             });
 
             renderTopicsPreviewPane();
+            renderAgentTopicsTab();
         }
 
-        function buildTopicsCategoryEl(category) {
-            const collapsed = !!topicsCollapsedCategories[category.id];
-            const activeTopics = (category.topics || []).filter(t => !t.discussed);
+        function buildTopicsAgentGroupEl(agent, entries) {
+            const key = `agent:${agent}`;
+            const collapsed = !!topicsCollapsedCategories[key];
+            const activeTopics = entries.filter(e => !e.topic.discussed);
 
             const wrap = document.createElement('div');
-            wrap.className = 'topics-category' + (collapsed ? ' collapsed' : '');
+            wrap.className = 'topics-category topics-agent-group' + (collapsed ? ' collapsed' : '');
+            wrap.style.setProperty('--agent-color', agentColors[agent]);
 
             const header = document.createElement('div');
             header.className = 'topics-category-header';
             header.innerHTML = `
                 <span class="topics-category-chevron">&#9656;</span>
-                <span class="topics-category-name">${escapeHtml(category.name)}</span>
-                <span class="topics-category-agent-badge">${capitalizeAgent(category.agent)}</span>
+                <span class="topics-agent-avatar"><img src="avatars/${agent}.png" alt=""></span>
+                <span class="topics-category-name">${escapeHtml(capitalizeAgent(agent))}</span>
+                <span class="topics-category-agent-badge">${escapeHtml(agentInfo[agent].role)}</span>
                 <span class="topics-category-count">${activeTopics.length}</span>
             `;
-            const actions = document.createElement('div');
-            actions.className = 'topics-category-header-actions';
-            const editBtn = document.createElement('button');
-            editBtn.type = 'button';
-            editBtn.className = 'topics-category-edit-btn';
-            editBtn.textContent = '✎';
-            editBtn.title = 'Edit category';
-            editBtn.addEventListener('click', (e) => { e.stopPropagation(); openCategoryModal(category); });
-            actions.appendChild(editBtn);
-            header.appendChild(actions);
-
             header.addEventListener('click', () => {
-                topicsCollapsedCategories[category.id] = !collapsed;
+                topicsCollapsedCategories[key] = !collapsed;
                 saveTopicsCollapsedState();
                 renderTopicsPage();
             });
 
             const body = document.createElement('div');
             body.className = 'topics-category-body';
-            activeTopics.forEach(topic => body.appendChild(buildTopicItemEl(topic, category)));
+            if (activeTopics.length) {
+                activeTopics.forEach(({ topic, category }) => body.appendChild(buildTopicItemEl(topic, category)));
+            } else {
+                const none = document.createElement('div');
+                none.className = 'topics-empty-note';
+                none.textContent = `Nothing queued for ${capitalizeAgent(agent)}.`;
+                body.appendChild(none);
+            }
 
             wrap.appendChild(header);
             wrap.appendChild(body);
@@ -18811,12 +18950,27 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         // List rows are just the title - clicking one selects it and shows
         // everything else (details, badges, actions) in the preview pane.
-        function buildTopicItemEl(topic, category) {
+        function buildTopicItemEl(topic, category, showAgent) {
             const row = document.createElement('div');
             row.className = 'topics-item'
                 + (topic.discussed ? ' discussed' : '')
                 + (topic.id === selectedTopicId ? ' selected' : '');
-            row.textContent = topic.text;
+            const text = document.createElement('span');
+            text.className = 'topics-item-text';
+            text.textContent = topic.text;
+            row.appendChild(text);
+            if (showAgent) {
+                const agentTag = document.createElement('span');
+                agentTag.className = 'topics-category-agent-badge';
+                agentTag.textContent = capitalizeAgent(category.agent);
+                row.appendChild(agentTag);
+            }
+            if (category.name !== 'General') {
+                const tag = document.createElement('span');
+                tag.className = 'topics-item-category-tag';
+                tag.textContent = category.name;
+                row.appendChild(tag);
+            }
             row.addEventListener('click', () => selectTopic(topic.id));
             return row;
         }
@@ -18856,23 +19010,26 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const tags = document.createElement('div');
             tags.className = 'topics-preview-tags';
 
-            const categorySelect = document.createElement('select');
-            categorySelect.className = 'topics-category-select';
-            categorySelect.title = 'Change category';
-            (topicsData.categories || []).forEach(c => {
+            // Which agent this topic is for - changing it hands the topic over.
+            const agentSelect = document.createElement('select');
+            agentSelect.className = 'topics-category-select';
+            agentSelect.title = 'Which agent this topic is for';
+            agents.forEach(a => {
                 const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.name;
-                if (c.id === category.id) opt.selected = true;
-                categorySelect.appendChild(opt);
+                opt.value = a;
+                opt.textContent = capitalizeAgent(a);
+                if (a === category.agent) opt.selected = true;
+                agentSelect.appendChild(opt);
             });
-            categorySelect.addEventListener('change', () => moveTopicToCategory(topic.id, categorySelect.value));
-            tags.appendChild(categorySelect);
+            agentSelect.addEventListener('change', () => moveTopicToAgent(topic.id, agentSelect.value));
+            tags.appendChild(agentSelect);
 
-            const agentBadge = document.createElement('span');
-            agentBadge.className = 'topics-category-agent-badge';
-            agentBadge.textContent = capitalizeAgent(category.agent);
-            tags.appendChild(agentBadge);
+            if (category.name !== 'General') {
+                const categoryTag = document.createElement('span');
+                categoryTag.className = 'topics-category-agent-badge';
+                categoryTag.textContent = category.name;
+                tags.appendChild(categoryTag);
+            }
 
             if (!editingThis) {
                 const editTopicBtn = document.createElement('button');
@@ -19031,8 +19188,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             selectAgent(category.agent);
             const item = upsertWorkspaceItem(category.agent, 'discussion', topic.id, topic.text, topic.details || '');
             renderWorkspaceTasks(category.agent);
-            showWorkspaceItemPreview(category.agent, item.id);
-            attachedReplyQuote = { speaker: category.name, text: topic.text, agent: category.agent, itemId: item.id };
+            attachedReplyQuote = { speaker: category.name === 'General' ? 'Discussion topic' : `Discussion topic - ${category.name}`, text: topic.text, agent: category.agent, itemId: item.id };
             replyPreviewSpeaker.textContent = attachedReplyQuote.speaker;
             replyPreviewText.textContent = attachedReplyQuote.text;
             replyPreviewBanner.style.display = 'flex';
@@ -19081,10 +19237,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const itemDetails = [topic.details || '', durationLine].filter(Boolean).join('\n');
             const item = upsertWorkspaceItem('ashanti', 'discussion', topic.id, topic.text, itemDetails);
             renderWorkspaceTasks('ashanti');
-            showWorkspaceItemPreview('ashanti', item.id);
             pendingChatCalendarPrefill['ashanti'] = { title: topic.text, description: itemDetails };
             attachedReplyQuote = {
-                speaker: `${category.name} (add to calendar)`,
+                speaker: category.name === 'General' ? 'Discussion topic (add to calendar)' : `Discussion topic - ${category.name} (add to calendar)`,
                 text: quoteText,
                 agent: 'ashanti',
                 itemId: item.id
@@ -19095,51 +19250,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             inputBox.focus();
         }
 
-        async function createCategory(name, agent) {
-            const response = await fetch('/discussion-topics/categories', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, agent })
-            });
-            const data = await response.json();
-            if (data.success) { topicsData = data.data; renderTopicsPage(); }
-            return data;
-        }
-
-        async function updateCategory(id, payload) {
-            const response = await fetch(`/discussion-topics/categories/${id}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json();
-            if (data.success) { topicsData = data.data; renderTopicsPage(); }
-            return data;
-        }
-
-        async function deleteCategory(id) {
-            const response = await fetch(`/discussion-topics/categories/${id}`, { method: 'DELETE' });
-            const data = await response.json();
-            if (data.success) { topicsData = data.data; renderTopicsPage(); }
-            return data;
-        }
-
-        // Files a freshly-typed topic either into the category Francis
-        // explicitly picked in the dropdown, or - if he left it on
-        // "Auto-detect" - under whichever category actually matches its
-        // subject matter (see /discussion-topics/auto-add), an existing one
-        // if it fits, otherwise a brand-new category the backend names and
-        // assigns an agent to. Auto-detect takes a moment (one LLM call), so
-        // the button shows a brief loading state either way. Both fields are
-        // required - there's no such thing as a topic with no discussion
-        // points once it's got its own detail view.
+        // Files a freshly-typed topic either under the agent Francis picked in
+        // the dropdown, or - if he left it on "Auto-detect" - under whichever
+        // agent's domain it actually matches (see /discussion-topics/auto-add;
+        // one LLM call, so the button shows a brief loading state either way).
+        // Both fields are required - there's no such thing as a topic with no
+        // discussion points once it's got its own detail view.
         async function submitNewTopic() {
             const input = document.getElementById('topics-new-input');
             const detailsInput = document.getElementById('topics-new-details');
-            const categorySelect = document.getElementById('topics-new-category');
+            const agentSelect = document.getElementById('topics-new-agent');
             const text = input.value.trim();
             const details = detailsInput.value.trim();
-            const categoryId = categorySelect.value;
+            const agent = agentSelect.value;
             if (!text || !details) {
                 alert('Please fill in both the topic and its details.');
                 return;
@@ -19147,38 +19270,29 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const btn = document.getElementById('topics-new-btn');
             input.disabled = true;
             detailsInput.disabled = true;
-            categorySelect.disabled = true;
+            agentSelect.disabled = true;
             btn.disabled = true;
-            btn.textContent = categoryId ? 'Adding…' : 'Filing…';
+            btn.textContent = agent ? 'Adding…' : 'Filing…';
             try {
                 const response = await fetch(
-                    categoryId
-                        ? '/discussion-topics/topics'
-                        : '/discussion-topics/auto-add',
+                    agent ? '/discussion-topics/topics' : '/discussion-topics/auto-add',
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(categoryId
-                            ? { category_id: categoryId, text, details, attachments: newTopicAttachments }
+                        body: JSON.stringify(agent
+                            ? { agent, text, details, attachments: newTopicAttachments }
                             : { text, details, attachments: newTopicAttachments })
                     }
                 );
                 const data = await response.json();
                 if (data.success) {
                     topicsData = data.data;
-                    // Make sure the category it landed in is expanded and the
-                    // new topic is selected, so it's immediately visible
-                    // instead of needing to be hunted down.
-                    const landedCategoryId = categoryId || data.category_id;
-                    delete topicsCollapsedCategories[landedCategoryId];
+                    // Make sure the agent's section is open and the new topic
+                    // is selected, so it's immediately visible.
+                    const landed = (topicsData.categories || []).find(c => c.id === data.category_id);
+                    if (landed) delete topicsCollapsedCategories[`agent:${landed.agent}`];
                     saveTopicsCollapsedState();
-                    if (categoryId) {
-                        const category = topicsData.categories.find(c => c.id === categoryId);
-                        const newest = category && category.topics[category.topics.length - 1];
-                        selectedTopicId = newest ? newest.id : null;
-                    } else {
-                        selectedTopicId = data.topic_id;
-                    }
+                    selectedTopicId = data.topic_id;
                     renderTopicsPage();
                     input.value = '';
                     detailsInput.value = '';
@@ -19193,7 +19307,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
             input.disabled = false;
             detailsInput.disabled = false;
-            categorySelect.disabled = false;
+            agentSelect.disabled = false;
             btn.disabled = false;
             btn.textContent = 'Add New Topic';
             input.focus();
@@ -19210,20 +19324,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return data;
         }
 
-        // Moves a topic to a different existing category (e.g. it was
-        // auto-filed somewhere that doesn't quite fit) - re-selects it
-        // afterward since renderTopicsPage would otherwise lose the
-        // selection when the topic moves out of its old category's list.
-        async function moveTopicToCategory(topicId, categoryId) {
-            const data = await updateTopic(topicId, { category_id: categoryId });
-            if (data.success) {
-                delete topicsCollapsedCategories[categoryId];
-                saveTopicsCollapsedState();
-                selectedTopicId = topicId;
-                renderTopicsPage();
-            }
-        }
-
         async function deleteTopic(id) {
             const response = await fetch(`/discussion-topics/topics/${id}`, { method: 'DELETE' });
             const data = await response.json();
@@ -19231,59 +19331,146 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             return data;
         }
 
-        // Lets Francis file a new topic straight into an existing category
-        // instead of always waiting on the auto-add LLM call - "Auto-detect"
-        // (the default) keeps the old behavior. Re-populated on every
-        // renderTopicsPage so a category added/renamed/deleted elsewhere
-        // stays in sync, while preserving whatever's currently picked.
-        function populateTopicsNewCategorySelect() {
-            const select = document.getElementById('topics-new-category');
+        // Hands a topic to a different agent (e.g. it was auto-filed with the
+        // wrong one) - it keeps its category label there. Re-selects it
+        // afterward since the topic moves to another agent's section.
+        async function moveTopicToAgent(topicId, agent) {
+            const data = await updateTopic(topicId, { agent });
+            if (data.success) {
+                delete topicsCollapsedCategories[`agent:${agent}`];
+                saveTopicsCollapsedState();
+                selectedTopicId = topicId;
+                renderTopicsPage();
+            }
+        }
+
+        // The new-topic form's agent picker: "Auto-detect" (the default) lets
+        // the backend choose, or file it straight under one agent. Re-populated
+        // on every render while preserving whatever's currently picked.
+        function populateTopicsNewAgentSelect() {
+            const select = document.getElementById('topics-new-agent');
             if (!select) return;
             const previous = select.value;
-            const categories = topicsData.categories || [];
-            select.innerHTML = '<option value="">Auto-detect category</option>'
-                + categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-            if (categories.some(c => c.id === previous)) select.value = previous;
+            select.innerHTML = '<option value="">Auto-detect agent</option>'
+                + agents.map(a => `<option value="${a}">${escapeHtml(capitalizeAgent(a))}</option>`).join('');
+            if (agents.includes(previous)) select.value = previous;
         }
 
-        function populateTopicsCategoryAgentSelect() {
-            const select = document.getElementById('topics-category-agent');
-            select.innerHTML = agents.map(a => `<option value="${a}">${capitalizeAgent(a)}</option>`).join('');
+        // --- Topics tab on each agent's page ---------------------------------
+        // The same topics as the Discussion Topics page, just this agent's:
+        // read, Discuss (drops the topic into the chat as a quote), mark
+        // discussed, and add one for them.
+        let agentTopicsDiscussedExpanded = false;
+
+        function buildAgentTopicCard(agent, topic, category) {
+            const card = document.createElement('div');
+            card.className = 'agent-topic-card' + (topic.discussed ? ' discussed' : '');
+            card.dataset.replySource = `discussion topic “${topic.text}”`;
+
+            const head = document.createElement('div');
+            head.className = 'agent-topic-head';
+            const title = document.createElement('div');
+            title.className = 'agent-topic-title';
+            title.textContent = topic.text;
+            head.appendChild(title);
+            if (category.name !== 'General') {
+                const tag = document.createElement('span');
+                tag.className = 'topics-category-agent-badge';
+                tag.textContent = category.name;
+                head.appendChild(tag);
+            }
+            card.appendChild(head);
+
+            const points = (topic.details || '').split('\n').map(l => l.trim()).filter(Boolean);
+            if (points.length) {
+                const list = document.createElement('ul');
+                list.className = 'agent-topic-points';
+                points.forEach(p => {
+                    const li = document.createElement('li');
+                    li.textContent = p.replace(/^[-*•]\s*/, '');
+                    list.appendChild(li);
+                });
+                card.appendChild(list);
+            }
+
+            const actions = document.createElement('div');
+            actions.className = 'task-row-actions';
+            const discuss = document.createElement('button');
+            discuss.type = 'button';
+            discuss.className = 'task-action-btn solid-complete';
+            discuss.textContent = `Discuss with ${capitalizeAgent(agent)}`;
+            discuss.addEventListener('click', () => discussTopicWithAgent(topic, category));
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'task-action-btn';
+            toggle.textContent = topic.discussed ? 'Mark Not Discussed' : 'Mark Discussed';
+            toggle.addEventListener('click', () => updateTopic(topic.id, { discussed: !topic.discussed }));
+            actions.appendChild(discuss);
+            actions.appendChild(toggle);
+            card.appendChild(actions);
+            return card;
         }
 
-        function openCategoryModal(category) {
-            topicsEditingCategoryId = category ? category.id : null;
-            document.getElementById('topics-category-modal-title').textContent = category ? 'Edit Category' : 'Add Category';
-            populateTopicsCategoryAgentSelect();
-            document.getElementById('topics-category-name').value = category ? category.name : '';
-            document.getElementById('topics-category-agent').value = category ? category.agent : agents[0];
-            document.getElementById('topics-category-delete-btn').style.display = category ? 'inline-block' : 'none';
-            document.getElementById('topics-category-modal').style.display = 'flex';
+        function renderAgentTopicsTab() {
+            const list = document.getElementById('agent-topics-list');
+            if (!list) return;
+            list.innerHTML = '';
+            const agent = currentAgent;
+            if (!agent) return;
+
+            const entries = getAgentTopicEntries(agent);
+            const active = entries.filter(e => !e.topic.discussed);
+            const discussed = entries.filter(e => e.topic.discussed)
+                .sort((a, b) => (b.topic.discussedAt || '').localeCompare(a.topic.discussedAt || ''));
+
+            active.forEach(({ topic, category }) => list.appendChild(buildAgentTopicCard(agent, topic, category)));
+            const empty = document.getElementById('agent-topics-empty');
+            empty.textContent = `No discussion topics for ${capitalizeAgent(agent)} yet - add one below.`;
+            empty.style.display = active.length ? 'none' : 'block';
+
+            const section = document.getElementById('agent-topics-discussed-section');
+            const discussedList = document.getElementById('agent-topics-discussed-list');
+            section.style.display = discussed.length ? 'block' : 'none';
+            document.getElementById('agent-topics-discussed-title').textContent = `Already Discussed (${discussed.length})`;
+            document.getElementById('agent-topics-discussed-chevron').classList.toggle('expanded', agentTopicsDiscussedExpanded);
+            discussedList.style.display = agentTopicsDiscussedExpanded ? 'block' : 'none';
+            discussedList.innerHTML = '';
+            discussed.forEach(({ topic, category }) => discussedList.appendChild(buildAgentTopicCard(agent, topic, category)));
         }
 
-        function closeCategoryModal() {
-            document.getElementById('topics-category-modal').style.display = 'none';
-            topicsEditingCategoryId = null;
-        }
-
-        async function saveCategoryModal() {
-            const name = document.getElementById('topics-category-name').value.trim();
-            if (!name) { alert('Please enter a category name.'); return; }
-            const agent = document.getElementById('topics-category-agent').value;
-            const data = topicsEditingCategoryId
-                ? await updateCategory(topicsEditingCategoryId, { name, agent })
-                : await createCategory(name, agent);
-            if (!data.success) { alert(data.error || 'Could not save category.'); return; }
-            closeCategoryModal();
-        }
-
-        function deleteCategoryModal() {
-            if (!topicsEditingCategoryId) return;
-            const category = (topicsData.categories || []).find(c => c.id === topicsEditingCategoryId);
-            confirmPermanentDelete((category && category.name) || 'this category', async () => {
-                await deleteCategory(topicsEditingCategoryId);
-                closeCategoryModal();
-            });
+        async function addAgentTopic() {
+            const agent = currentAgent;
+            const titleInput = document.getElementById('agent-topics-new-title');
+            const detailsInput = document.getElementById('agent-topics-new-details');
+            const text = titleInput.value.trim();
+            const details = detailsInput.value.trim();
+            if (!agent) return;
+            if (!text || !details) {
+                alert('Please fill in both the topic and its details.');
+                return;
+            }
+            const btn = document.getElementById('agent-topics-add-btn');
+            btn.disabled = true;
+            try {
+                const response = await fetch('/discussion-topics/topics', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent, text, details })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    topicsData = data.data;
+                    titleInput.value = '';
+                    detailsInput.value = '';
+                    renderTopicsPage();
+                } else {
+                    alert(data.error || 'Could not add that topic - try again.');
+                }
+            } catch (error) {
+                console.error('Failed to add topic:', error);
+                alert('Could not add that topic - check the app is running and try again.');
+            }
+            btn.disabled = false;
         }
 
         // --- To-Do -------------------------------------------------------
@@ -23484,13 +23671,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
 
         document.getElementById('topics-nav-btn').addEventListener('click', showTopicsPage);
-        document.getElementById('topics-add-category-btn').addEventListener('click', () => openCategoryModal(null));
-        document.getElementById('topics-category-cancel-btn').addEventListener('click', closeCategoryModal);
-        document.getElementById('topics-category-save-btn').addEventListener('click', saveCategoryModal);
-        document.getElementById('topics-category-delete-btn').addEventListener('click', deleteCategoryModal);
-        document.getElementById('topics-category-modal').addEventListener('click', (e) => {
-            if (e.target.id === 'topics-category-modal') closeCategoryModal();
-        });
         document.getElementById('topics-calendar-cancel-btn').addEventListener('click', closeTopicCalendarModal);
         document.getElementById('topics-calendar-confirm-btn').addEventListener('click', confirmTopicCalendarModal);
         document.getElementById('topics-calendar-modal').addEventListener('click', (e) => {
@@ -23501,6 +23681,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderTopicsPage();
         });
         document.getElementById('topics-new-btn').addEventListener('click', submitNewTopic);
+        document.getElementById('agent-topics-add-btn').addEventListener('click', addAgentTopic);
+        document.getElementById('agent-topics-discussed-toggle').addEventListener('click', () => {
+            agentTopicsDiscussedExpanded = !agentTopicsDiscussedExpanded;
+            renderAgentTopicsTab();
+        });
         document.getElementById('topics-new-attachments-zone').appendChild(buildAttachmentDropzone(newTopicAttachments, refreshNewTopicAttachments));
         document.getElementById('topics-new-input').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') submitNewTopic();
