@@ -4901,6 +4901,16 @@ body.va-open #notification-toasts {
 
         .workspace-project-task-text.has-plan-toggle { cursor: pointer; }
 
+        .workspace-input-tag {
+            flex-shrink: 0;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: #eef0ff;
+            color: #4b58c4;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
         .task-plan-editable { cursor: text; }
 
         .task-plan-edit-field {
@@ -9369,6 +9379,7 @@ function createWorkspaceFile(agent, taskId, fileData) {
         data: fileData.data,
         fileType: fileData.fileType || null,
         content: fileData.content || null,
+        role: fileData.role || null,   // 'input' = given to the agent for this task; otherwise it came from the agent
         theme: fileData.theme || null,
         primaryColor: fileData.primaryColor || null,
         accentColor: fileData.accentColor || null,
@@ -10045,7 +10056,7 @@ function appendTaskTreeRow(container, agent, task, taskExpanded) {
         const filesWrap = document.createElement('div');
         filesWrap.className = 'ptree-files';
         const files = getTaskFiles(agent, task.id);
-        if (files.length === 0) {
+        if (files.length === 0 && !(task.attachments || []).length) {
             const emptyFiles = document.createElement('div');
             emptyFiles.className = 'ptree-files-empty';
             emptyFiles.textContent = 'No files linked to this task yet.';
@@ -10053,6 +10064,7 @@ function appendTaskTreeRow(container, agent, task, taskExpanded) {
         } else {
             files.forEach(file => filesWrap.appendChild(buildPtreeFileRow(agent, file)));
         }
+        (task.attachments || []).forEach(att => filesWrap.appendChild(buildTaskAttachmentRow(att)));
         container.appendChild(filesWrap);
     }
 }
@@ -11283,6 +11295,7 @@ function buildTaskRowWithFiles(agent, task, body) {
 
     if (!collapsed) {
         files.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
+        (task.attachments || []).forEach(att => body.appendChild(buildTaskAttachmentRow(att)));
     }
 }
 
@@ -11683,6 +11696,87 @@ async function openSocialPublishModal(agent, taskId) {
     document.body.appendChild(overlay);
 }
 
+// ---- Files provided for a task ------------------------------------------
+// A file Francis shares just to be read or mined for information needs no task
+// (it stays in the chat, and in Workspace as a reference). A file the agent is
+// supposed to DO something with belongs to a task: it's attached under that
+// task (role 'input', so it isn't mistaken for the task's output) and handed
+// to the agent when the task starts.
+function dataUrlToBase64(dataUrl) {
+    return String(dataUrl || '').split(',')[1] || '';
+}
+
+// `attachments` are chat-shaped ({name, mimeType, dataUrl}). moveFromAgent: if
+// the same file is already sitting loose in that agent's Workspace as a
+// reference copy, it moves into the task instead of existing twice.
+function attachInputFilesToTask(agent, task, attachments, moveFromAgent) {
+    (attachments || []).forEach(att => {
+        const data = dataUrlToBase64(att.dataUrl);
+        if (!data) return;
+        if (getTaskFiles(agent, task.id).some(f => f.role === 'input' && f.name === att.name && f.data === data)) return;
+        createWorkspaceFile(agent, task.id, { name: att.name, mimeType: att.mimeType, data, role: 'input' });
+        if (moveFromAgent && workspaceFiles[moveFromAgent]) {
+            workspaceFiles[moveFromAgent] = workspaceFiles[moveFromAgent].filter(f => !(f.taskId == null && f.name === att.name && f.data === data));
+        }
+    });
+    saveWorkspaceFiles();
+}
+
+// When a task is proposed in a chat where Francis recently attached files,
+// those files are what the task is about - they go under it.
+function attachRecentChatFilesToTask(chatAgent, msgIndex, taskAgent, task) {
+    const recent = (chatHistory[chatAgent] || []).slice(Math.max(0, msgIndex - 6), msgIndex);
+    const atts = [];
+    recent.forEach(m => {
+        // A message's files only ever go to one task.
+        if (m.type === 'user' && m.attachments && m.attachments.length && !m.attachmentsUsed) {
+            atts.push(...m.attachments);
+            m.attachmentsUsed = true;
+        }
+    });
+    if (atts.length) attachInputFilesToTask(taskAgent, task, atts, chatAgent);
+}
+
+// Everything the agent is given when the task starts, chat-shaped: files
+// attached under the task, plus any added through the task's Edit window
+// (those live on the server).
+async function gatherTaskInputAttachments(agent, task) {
+    const items = [];
+    getTaskFiles(agent, task.id).filter(f => f.role === 'input' && f.data).forEach(f => {
+        items.push({ name: f.name, mimeType: f.mimeType, dataUrl: `data:${f.mimeType};base64,${f.data}` });
+    });
+    for (const att of (task.attachments || [])) {
+        try {
+            const response = await fetch(itemAttachmentUrl(att.id));
+            if (!response.ok) continue;
+            const blob = await response.blob();
+            items.push({ name: att.name, mimeType: att.mimeType || blob.type || 'application/octet-stream', dataUrl: await readFileAsDataUrl(blob) });
+        } catch (error) {
+            console.error('Could not load a task attachment:', error);
+        }
+    }
+    return items;
+}
+
+// A file added through a task's Edit window, shown under the task like the
+// others.
+function buildTaskAttachmentRow(att) {
+    const row = document.createElement('div');
+    row.className = 'workspace-task-row workspace-file-row';
+    const link = document.createElement('a');
+    link.className = 'workspace-file-text';
+    link.href = itemAttachmentUrl(att.id);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `📎 ${att.name}`;
+    row.appendChild(link);
+    const tag = document.createElement('span');
+    tag.className = 'workspace-input-tag';
+    tag.textContent = 'provided by you';
+    row.appendChild(tag);
+    return row;
+}
+
 // ---- Task plans and review ---------------------------------------------
 // Every task is created with a plan - what will get done, the steps, and the
 // final output (drafted by /tasks/plan). Francis sees it before pressing
@@ -11723,6 +11817,7 @@ async function requestTaskPlan(agent, taskId) {
                 name: task.name,
                 task: task.task,
                 context: task.planContext || 'firm',
+                files: getTaskFiles(agent, task.id).filter(f => f.role === 'input').map(f => f.name).concat((task.attachments || []).map(a => a.name)),
                 project_name: project ? project.name : null,
                 project_steps: project ? project.tasks.map(t => ({ agent: t.agent, name: t.name || deriveShortName(t.task) })) : []
             })
@@ -11768,7 +11863,7 @@ function buildTaskReviewBox(agent, task) {
     const box = document.createElement('div');
     box.className = 'task-review-box';
 
-    const files = getTaskFiles(agent, task.id);
+    const files = getTaskFiles(agent, task.id).filter(f => f.role !== 'input');
     const head = document.createElement('div');
     head.className = 'task-review-head';
     head.textContent = '✅ Ready for your review' + (task.revisions ? ` (revision ${task.revisions})` : '');
@@ -12323,6 +12418,12 @@ function buildWorkspaceFileRow(agent, file) {
         markTaskViewed(agent, file.taskId);
     });
     row.appendChild(text);
+    if (file.role === 'input') {
+        const tag = document.createElement('span');
+        tag.className = 'workspace-input-tag';
+        tag.textContent = 'provided by you';
+        row.appendChild(tag);
+    }
     row.appendChild(buildFileActionsRow(agent, file));
     return row;
 }
@@ -12455,14 +12556,18 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
     refreshTaskViewsForAgent(agent);
 
     if (!chatHistory[agent]) chatHistory[agent] = [];
+    // The files Francis gave this task ride along on the start message (and so
+    // stay with the conversation for later turns).
+    const inputFiles = continueCount === 0 ? await gatherTaskInputAttachments(agent, task) : [];
     chatHistory[agent].push({
         type: 'user',
         // A resumed turn already has its own prior progress/explanation in
         // this same chat history - repeating the full task text would read
         // as "start over" rather than "keep going from where you paused".
         text: continueCount === 0
-            ? `Please go ahead and do this now: ${task.task}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}`
+            ? `Please go ahead and do this now: ${task.task}${inputFiles.length ? `\n\nFiles provided for this task (attached): ${inputFiles.map(f => f.name).join(', ')}` : ''}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}`
             : (reminder || `Please continue where you left off.`),
+        attachments: inputFiles.length ? inputFiles : undefined,
         timestamp: new Date()
     });
     saveToLocalStorage(agent);
@@ -12472,7 +12577,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
     taskAbortControllers[taskId] = controller;
     let result = null;
     try {
-        result = await runOneOnOneAgentTurn(agent, [], taskId, controller.signal);
+        result = await runOneOnOneAgentTurn(agent, toApiAttachments(inputFiles), taskId, controller.signal);
     } finally {
         delete taskAbortControllers[taskId];
     }
@@ -13321,10 +13426,14 @@ function acceptProject(chatAgent, msgIndex) {
 
     // Same array reference as projects[id].tasks (set up in upsertProjectProposal),
     // so writing taskId here keeps the Projects sidebar's copy in sync for free.
+    let firstCreated = null;
     msg.projectProposal.tasks.forEach(taskEntry => {
         const created = createProjectTaskEntry(taskEntry.agent, msg.projectProposal.id, msg.projectProposal.name, taskEntry.task, acceptedAt, taskEntry.name);
         taskEntry.taskId = created.id;
+        if (!firstCreated) firstCreated = { agent: taskEntry.agent, task: created };
     });
+    // Files shared in this chat before the project was proposed go under its first step.
+    if (firstCreated) attachRecentChatFilesToTask(chatAgent, msgIndex, firstCreated.agent, firstCreated.task);
     saveWorkspaceTasks();
 
     if (projects[msg.projectProposal.id]) {
@@ -13349,6 +13458,7 @@ function acceptTaskProposal(chatAgent, msgIndex) {
     const assignee = msg.taskProposal.agent || chatAgent;
     const created = createTaskEntry(assignee, msg.taskProposal.task, new Date(), msg.taskProposal.name);
     msg.taskProposal.taskId = created.id;
+    attachRecentChatFilesToTask(chatAgent, msgIndex, assignee, created);
     saveWorkspaceTasks();
     displayProjectsList();
     if (assignee !== chatAgent) {
@@ -14379,12 +14489,12 @@ function buildProjectContextText(projectId) {
 // only finding out after a long "typing..." wait. Returns null on any
 // failure so a classification hiccup falls back to answering normally rather
 // than silently dropping the message.
-async function classifyIfNeedsTask(message) {
+async function classifyIfNeedsTask(message, attachmentNames) {
     try {
         const response = await fetch('/classify-task-needed', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
+            body: JSON.stringify({ message, attachment_names: attachmentNames || [] })
         });
         const data = await response.json();
         return data.success ? data : null;
@@ -14400,14 +14510,22 @@ async function classifyIfNeedsTask(message) {
 // immediately. Reuses the exact same task lifecycle as a hand-created task:
 // Start shows "Working..." in the Workspace, and the result (including any
 // generated file) lands on the task card, not as a fresh chat bubble.
-function createTaskFromChatMessage(agent, message, taskName) {
+function createTaskFromChatMessage(agent, message, taskName, attachments) {
     const name = taskName || deriveShortName(message);
-    createTaskEntry(agent, message, new Date(), name);
+    const task = createTaskEntry(agent, message, new Date(), name);
+    // Files Francis attached with this message are what the task works from.
+    if (attachments && attachments.length) {
+        attachInputFilesToTask(agent, task, attachments);
+        const sharedWith = [...chatHistory[agent]].reverse().find(m => m.type === 'user');
+        if (sharedWith) sharedWith.attachmentsUsed = true;   // these files belong to this task now
+    }
     refreshTaskViewsForAgent(agent);
 
     chatHistory[agent].push({
         type: 'agent',
-        text: `I've created a task for this: "${name}" — go ahead and start it whenever you're ready.`,
+        text: attachments && attachments.length
+            ? `I've created a task for this: "${name}" - ${attachments.length === 1 ? 'your file is' : 'your files are'} attached to it. Go ahead and start it whenever you're ready.`
+            : `I've created a task for this: "${name}" — go ahead and start it whenever you're ready.`,
         timestamp: new Date()
     });
     saveToLocalStorage(agent);
@@ -14436,23 +14554,25 @@ async function sendMessageInner(message, attachments, attachmentsForApi, related
     displayMessages(currentAgent);
     saveToLocalStorage(agentAtSendTime);
 
-    // Anything the user attaches lands in this agent's Workspace too, not
-    // just in the chat log - see addUploadedFileWorkspaceTask.
-    attachmentsForApi.forEach(file => addUploadedFileWorkspaceTask(agentAtSendTime, Object.assign({}, file)));
-
     // Skip classification while discussing an existing project task
     // (activeDiscussTask) - that's about updating that task, not starting new
-    // work, so it shouldn't spawn a redundant second one. Attachments/replies
-    // also skip it - a plain "quick text" message is the case this targets.
-    if (!activeDiscussTask[agentAtSendTime] && !attachments.length && !relatedItemId) {
+    // work, so it shouldn't spawn a redundant second one. Replies skip it too.
+    // A message WITH files is checked as well: if Francis wants something done
+    // with them it becomes a task and the files go under it; if they're only
+    // there to be read or answered from, no task is needed.
+    if (!activeDiscussTask[agentAtSendTime] && !relatedItemId) {
         if (currentAgent === agentAtSendTime) showTypingIndicator(agentAtSendTime);
-        const classification = await classifyIfNeedsTask(message);
+        const classification = await classifyIfNeedsTask(message, attachments.map(a => a.name));
         if (classification && classification.needs_task) {
             hideTypingIndicatorForAgent(agentAtSendTime);
-            createTaskFromChatMessage(agentAtSendTime, message, classification.task_name);
+            createTaskFromChatMessage(agentAtSendTime, message, classification.task_name, attachments);
             return;
         }
     }
+
+    // Not a task: the files are reading material, kept in this agent's
+    // Workspace as a reference (and in the chat) - see addUploadedFileWorkspaceTask.
+    attachmentsForApi.forEach(file => addUploadedFileWorkspaceTask(agentAtSendTime, Object.assign({}, file)));
 
     await runOneOnOneAgentTurn(agentAtSendTime, attachmentsForApi, undefined, undefined, activeDiscussTask[agentAtSendTime], relatedItemId);
 }

@@ -6302,7 +6302,9 @@ CLASSIFY_TASK_TOOL = {
                 "description": (
                     "True if answering this well genuinely requires deep research (several web "
                     "searches to dig through a topic or a whole site) or creating a downloadable file "
-                    "(a Word doc, spreadsheet, presentation, PDF, or HTML page/mockup) - real work that "
+                    "(a Word doc, spreadsheet, presentation, PDF, or HTML page/mockup) - or doing real "
+                    "work WITH attached files (analyzing them into a report, editing, converting, "
+                    "filling in, reconciling, building something from them) - real work that "
                     "takes meaningful time. False for anything answerable directly in a normal quick "
                     "reply: short questions, chit-chat, a quick opinion or explanation, or ordinary task/"
                     "project management (creating, editing, or discussing a task)."
@@ -6772,6 +6774,7 @@ def tasks_plan():
         notes = str(load_kb_notes().get(side) or '').strip()[:1500]
         role = get_agent_role_summary(agent)
 
+        file_names = [str(n)[:120] for n in (data.get('files') or []) if str(n).strip()][:10]
         project_line = ''
         steps = [x for x in (data.get('project_steps') or []) if isinstance(x, dict)]
         if data.get('project_name') and steps:
@@ -6787,6 +6790,7 @@ def tasks_plan():
             f"Task: {task_name + ' - ' if task_name else ''}{task_text}{project_line}\n\n"
             + (f"What Francis has told us about his {'life' if side == 'personal' else 'firm'} (use it only to tailor the plan - "
                f"never restate these facts inside the steps, and never invent details beyond them):\n{notes}\n\n" if notes else '')
+            + (f"Files Francis provided for this task - the agent is given them to work from: {', '.join(file_names)}\n\n" if file_names else '')
             + TASK_PLAN_CAPABILITIES + (TASK_PLAN_SASHA_NOTE if agent == 'sasha' else '') + "\n\n"
             "Return ONLY a JSON object with these keys:\n"
             "- goal: one or two sentences on what will get done and why it is worth doing.\n"
@@ -6817,6 +6821,7 @@ def classify_task_needed():
         message = str(data.get('message') or '').strip()
         if not message:
             return jsonify({'success': True, 'needs_task': False})
+        attachment_names = [str(n)[:120] for n in (data.get('attachment_names') or []) if str(n).strip()][:10]
 
         response = claude_create(
             model=CLAUDE_MODEL,
@@ -6826,8 +6831,13 @@ def classify_task_needed():
                 "needs a background task - deep research (several web searches) or generating a "
                 "downloadable file - versus something answerable directly in a normal quick chat reply. "
                 "You MUST answer by calling the classify tool exactly once, with no other output."
+                + (" The user also attached files. Files shared only so they can be read, discussed, or "
+                   "mined for an answer ('what does this say', 'what's the total', 'FYI, for reference') do "
+                   "NOT need a task. If the user wants the assistants to DO something with the files - turn "
+                   "them into a report or document, edit, convert, fill in, reconcile, or build something "
+                   "from them, or any multi-step work - that needs a task." if attachment_names else '')
             ),
-            messages=[{"role": "user", "content": message}],
+            messages=[{"role": "user", "content": message + (f"\n\n[Attached files: {', '.join(attachment_names)}]" if attachment_names else '')}],
             tools=[CLASSIFY_TASK_TOOL]
         )
 
@@ -7683,7 +7693,7 @@ CONVERSATION_STYLE_INSTRUCTIONS = """
 
 ## Attachments
 
-Francis can attach images, PDFs, Word, Excel, PowerPoint, and text files. Images and PDFs come to you directly - look at them and respond to specifics (what's actually in the image, the real numbers or text on the page), not a generic "got your file". Office files arrive as extracted text labeled "[Attached file: name]" - treat it as the document's real content. If an attachment couldn't be read (noted inline), say so and ask for a supported format instead of guessing.
+Francis can attach images, PDFs, Word, Excel, PowerPoint, and text files. Images and PDFs come to you directly - look at them and respond to specifics (what's actually in the image, the real numbers or text on the page), not a generic "got your file". Office files arrive as extracted text labeled "[Attached file: name]" - treat it as the document's real content. If an attachment couldn't be read (noted inline), say so and ask for a supported format instead of guessing. A file Francis shares just to read, discuss or pull information from needs no task - handle it in chat. If he wants something DONE with a file (turned into a report, edited, filled in, reconciled, built from), that's a task: the file is attached under it and given to you when it starts - propose a task if one wasn't already created.
 
 ## Quoted Text
 
