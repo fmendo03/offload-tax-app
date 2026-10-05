@@ -12539,9 +12539,12 @@ function openTaskFeedback(agent, taskId) {
 function requestTaskChanges(agent, taskId, feedback) {
     const task = findWorkspaceTaskById(agent, taskId);
     feedback = (feedback || '').trim();
-    if (!task || task.status !== 'in_review') return;
+    // A finished task can be reopened for changes too - the revision belongs to
+    // the same task, and any new file lands under it.
+    if (!task || (task.status !== 'in_review' && task.status !== 'completed')) return;
     if (!feedback) { alert('Tell them what should change first.'); return; }
     task.revisions = (task.revisions || 0) + 1;
+    if (task.status === 'completed') task.completedAt = null;
     taskFeedbackOpen[taskId] = false;
     delete taskFeedbackDraft[taskId];
     startProjectTask(agent, taskId, 1,
@@ -14545,8 +14548,10 @@ async function sendWorkspaceReview() {
     scheduleWsLayout();
 
     // Notes on a task's finished work are change requests - the agent revises
-    // it. Edits alone only need acknowledging.
-    if (notes.length && task && task.status === 'in_review') {
+    // it as part of that same task (no new task), and the updated file is added
+    // under it. Edits alone only need acknowledging.
+    const taskIsOpenForRevision = task && !task.archived && (task.status === 'in_review' || task.status === 'completed');
+    if (notes.length && taskIsOpenForRevision) {
         requestTaskChanges(agent, task.id, message);
         return;
     }
@@ -14554,8 +14559,10 @@ async function sendWorkspaceReview() {
     chatHistory[agent].push({
         type: 'user',
         text: message + '\n\n' + (notes.length
-            ? "Please acknowledge in a few sentences what you understand I want changed. If it needs the file remade, propose a task for it."
-            : "Please acknowledge in a sentence or two that you've seen my edits and what they change. If you disagree with one, say why - don't undo them."),
+            ? "Please acknowledge in a few sentences what you understand I want changed."
+                + (task ? ` This file belongs to the existing task "${task.name || task.task}" - don't propose a new task for it; the changes are made as part of that task.` : " If it needs the file remade, propose a task for it.")
+            : "Please acknowledge in a sentence or two that you've seen my edits and what they change. If you disagree with one, say why - don't undo them."
+                + (task ? ` This file belongs to the existing task "${task.name || task.task}", so don't propose a new task - tell me if you'd want to change anything further and I'll send it back as a revision to that same task.` : '')),
         reviewNotes: true,
         timestamp: new Date()
     });
