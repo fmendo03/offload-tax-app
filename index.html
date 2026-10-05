@@ -9484,10 +9484,19 @@ body.va-open #notification-toasts {
             sendMessage();
         }
 
+        // Hidden while signed out, and on an agent's Chat tab - the chat box has its
+        // own mic there, so the floating one would just be in the way.
         function updateVoiceAssistantVisibility(locked) {
-            if (va.fab) va.fab.style.display = locked ? 'none' : 'flex';
-            if (locked && va.panel) vaClose();
+            if (locked !== undefined) va.locked = !!locked;
+            if (!va.fab) return;
+            const chatPanel = document.querySelector('.agent-tab-panel[data-agent-panel="chat"]');
+            const inChat = !!(chatPanel && chatPanel.getClientRects().length);
+            const hide = va.locked !== false || inChat;
+            va.fab.style.display = hide ? 'none' : 'flex';
+            if (hide && va.panel && va.panel.style.display !== 'none') vaClose();
         }
+        // Pages change in many places, so just keep it in step.
+        setInterval(() => updateVoiceAssistantVisibility(), 400);
 
         if (getSpeechRecognitionCtor()) {
             const fab = document.createElement('button');
