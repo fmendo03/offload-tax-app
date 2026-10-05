@@ -11140,7 +11140,7 @@ function renderWorkspaceTasks(agent) {
         el.appendChild(empty);
     };
     if (items.length === 0 && standaloneFiles.length === 0) {
-        addEmptyNote(container, 'Nothing here yet - topics sent over for discussion, and files this agent creates or you attach, will show up here.');
+        addEmptyNote(container, 'Nothing here yet - files you attach in chat and topics you send over for discussion will show up here.');
     }
     if (tasks.length === 0) {
         addEmptyNote(projContainer, 'No tasks yet - accepted projects and tasks will show up here.');
@@ -11156,7 +11156,7 @@ function renderWorkspaceTasks(agent) {
     }
 
     if (standaloneFiles.length > 0) {
-        const body = appendWorkspaceGroup(container, agent, 'files', `${FILE_ICON} Files`, standaloneFiles.length);
+        const body = appendWorkspaceGroup(container, agent, 'files', `${FILE_ICON} Files you shared`, standaloneFiles.length);
         standaloneFiles.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
     }
 
@@ -11846,7 +11846,7 @@ function buildTaskPlanPanel(agent, task, force) {
         note.className = 'task-plan-note';
         note.textContent = task.plan ? 'Updating the plan...' : 'Drafting a plan...';
         panel.appendChild(note);
-    } else if (!task.plan) {
+    } else if (!task.plan && task.planStatus !== 'skipped') {
         const note = document.createElement('div');
         note.className = 'task-plan-note';
         note.textContent = task.planStatus === 'failed' ? "Couldn't draft a plan. " : 'No plan yet. ';
@@ -12627,9 +12627,57 @@ function addStandaloneWorkspaceFile(agent, file) {
     return created;
 }
 
-// An agent generating a file unprompted, outside of any Started task.
+// Every generated file belongs to a task. Agents can't create files outside a
+// task run any more (see /chat), but if one ever arrives anyway - or an old one
+// is found with no task (see migrateLooseGeneratedFiles) - it gets a task of its
+// own rather than sitting loose. `inReview` puts it where Francis can look it
+// over and approve it; old ones are simply marked completed.
+function adoptGeneratedFileIntoTask(agent, file, inReview) {
+    if (!file || !file.data) return null;
+    const label = `Create ${file.name}`;
+    const task = createProjectTaskEntry(agent, null, null, label, new Date(), label, 'firm', true);
+    task.startedAt = new Date();
+    task.resultType = 'file';
+    if (inReview) {
+        task.status = 'in_review';
+        task.reviewReadyAt = new Date();
+        task.viewed = false;
+    } else {
+        task.status = 'completed';
+        task.completedAt = new Date();
+        task.viewed = true;
+    }
+    return task;
+}
+
+// A file an agent generated with no task behind it.
 function addFileWorkspaceTask(agent, createdFile) {
-    addStandaloneWorkspaceFile(agent, createdFile);
+    const task = adoptGeneratedFileIntoTask(agent, createdFile, true);
+    if (!task) return;
+    createWorkspaceFile(agent, task.id, createdFile);
+    refreshTaskViewsForAgent(agent);
+    notifyTaskComplete(agent, task.name);
+}
+
+// One-time cleanup: generated files (they carry a fileType) that were saved
+// loose, before every file had to belong to a task, each get a completed task.
+// Files you attached yourself have no fileType and are left alone.
+function migrateLooseGeneratedFiles() {
+    let changed = false;
+    Object.keys(workspaceFiles).forEach(agent => {
+        (workspaceFiles[agent] || []).forEach(file => {
+            if (file.taskId || !file.fileType || file.archived) return;
+            const task = adoptGeneratedFileIntoTask(agent, file, false);
+            if (!task) return;
+            task.createdAt = file.createdAt || task.createdAt;
+            file.taskId = task.id;
+            changed = true;
+        });
+    });
+    if (changed) {
+        saveWorkspaceTasks();
+        saveWorkspaceFiles();
+    }
 }
 
 // A file Francis attaches in chat (not one an agent generates) - so anything
@@ -13067,7 +13115,7 @@ function detectRequestedFileTypes(text) {
 // Builds one task in the unified shape both the Projects sidebar and the
 // Workspace pane read/mutate (status/result live only in workspaceTasks -
 // the project's own copy just carries the same taskId to look it up by).
-function createProjectTaskEntry(agent, projectId, projectName, taskText, createdAt, taskName, planContext) {
+function createProjectTaskEntry(agent, projectId, projectName, taskText, createdAt, taskName, planContext, skipPlan) {
     const task = {
         kind: 'project',
         id: makeTaskId(),
@@ -13096,7 +13144,10 @@ function createProjectTaskEntry(agent, projectId, projectName, taskText, created
     // "Suggestions for you" side, so it's tailored to that side's notes.
     task.plan = null;
     task.planContext = planContext || 'firm';
-    requestTaskPlan(agent, task.id);
+    // A task wrapped around a file that already exists has no work left to
+    // plan, so it skips the plan call.
+    if (skipPlan) task.planStatus = 'skipped';
+    else requestTaskPlan(agent, task.id);
     return task;
 }
 
@@ -23377,6 +23428,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             window.addEventListener('resize', applyArchiveColumnWidths);
             migrateTaskData();
             migrateSingleTaskProjects();
+            migrateLooseGeneratedFiles();
             loadInsightCardAnchors();
             loadTopicsCollapsedState();
             loadWorkspaceGroupsCollapsed();

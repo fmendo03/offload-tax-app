@@ -6174,7 +6174,8 @@ def generate_file_bytes(file_type, content, theme=DEFAULT_THEME, primary_color=N
 CREATE_FILE_TOOL = {
     "name": "create_file",
     "description": (
-        "Call this when you've prepared something Francis asked for as an actual file he can download "
+        "Only available while you're running a task - every file belongs to a task. Call this when "
+        "you've prepared something Francis asked for as an actual file he can download "
         "and use directly - a document, spreadsheet, presentation, PDF, or web page/mockup - rather than "
         "pasting the content into chat. Use it when Francis asks for something 'as a doc/Word file/"
         "spreadsheet/Excel/PDF/deck/PowerPoint/HTML page/mockup', or when handing over a finished "
@@ -6991,14 +6992,17 @@ def chat():
         tools = [
             {"type": "web_search_20260209", "name": "web_search", "max_uses": 10},
             QUICK_REPLIES_TOOL,
-            CREATE_FILE_TOOL,
             REFER_TEAMMATE_TOOL,
             PROPOSE_TASK_TOOL,
             PAUSE_TASK_TOOL
         ]
         # A project is work passed between colleagues, which Manny sets up.
         if agent == 'manny':
-            tools.insert(5, PROPOSE_PROJECT_TOOL)
+            tools.append(PROPOSE_PROJECT_TOOL)
+        # Files only come out of a task, so the task's page can hold them and
+        # Francis can review them - never from a plain chat.
+        if is_task_run:
+            tools.append(CREATE_FILE_TOOL)
         if agent == 'sasha' and is_task_run:
             tools.append(DRAFT_SOCIAL_POST_TOOL)
         if task_context:
@@ -7687,7 +7691,7 @@ Francis can highlight text anywhere in your office (a task or its plan, a file p
 
 ## Creating Files
 
-When what Francis needs is genuinely a file - he asks for a doc, spreadsheet, PDF, deck, or CSV, or a finished deliverable (an engagement letter, a pricing sheet, a report) belongs in a file rather than a chat wall of text - call `create_file` and follow the tool's content conventions exactly. Don't reach for it by default; most answers are just chat.
+Every file belongs to a task - you can't create one in a normal chat. When what Francis needs is genuinely a file (he asks for a doc, spreadsheet, PDF, deck, CSV or web page, or a finished deliverable like an engagement letter, pricing sheet or report belongs in a file rather than a chat wall of text), propose it with `propose_task`, naming the file and format in the task, so he can accept it, press Start and review the result - the file then sits under that task. The same goes for changes to a file you already made: propose a task for the revision. While you ARE running a task, call `create_file` and follow the tool's content conventions exactly. Don't promise or attach a file in chat. Most answers are just chat.
 
 ## Formatting (messages render as markdown)
 
