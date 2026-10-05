@@ -4901,6 +4901,23 @@ body.va-open #notification-toasts {
 
         .workspace-project-task-text.has-plan-toggle { cursor: pointer; }
 
+        .task-plan-editable { cursor: text; }
+
+        .task-plan-edit-field {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 8px;
+            border: 1px solid #c9cdf0;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 12px;
+            line-height: 1.5;
+            resize: vertical;
+        }
+
+        .task-plan-editor .task-row-actions { margin-top: 8px; }
+
         .task-plan-label {
             margin: 8px 0 2px;
             font-size: 10px;
@@ -11691,6 +11708,7 @@ function toggleTaskPlan(agent, task) {
 async function requestTaskPlan(agent, taskId) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task || task.isFileOnly) return;
+    if (task.plan && task.planEdited) return;   // Francis edited this plan himself - don't overwrite it
     task.planStatus = 'drafting';
     // The caller is still wiring the task into its project and saving it -
     // let that finish before reading the project's steps below.
@@ -11819,9 +11837,16 @@ function buildTaskPlanPanel(agent, task, force) {
     panel.dataset.replySource = taskReplyLabel(task);
     panel.addEventListener('click', e => e.stopPropagation());
 
-    if (task.plan) {
+    if (task.plan && taskPlanEditing[task.id]) {
+        panel.appendChild(buildTaskPlanEditor(agent, task));
+    } else if (task.plan) {
         const body = document.createElement('div');
         body.innerHTML = taskPlanSectionHtml(task);
+        if (isTaskPlanEditable(task)) {
+            body.title = 'Double-click to edit this plan';
+            body.classList.add('task-plan-editable');
+            body.addEventListener('dblclick', (e) => openTaskPlanEditor(agent, task, planSectionFor(e.target, panel)));
+        }
         panel.appendChild(body);
     }
     const published = (task.socialPost && task.socialPost.published) || [];
@@ -11860,6 +11885,131 @@ function buildTaskPlanPanel(agent, task, force) {
     }
     if (task.status === 'in_review') panel.appendChild(buildTaskReviewBox(agent, task));
     return panel;
+}
+
+// ---- Editing a plan -----------------------------------------------------
+// Double-click any part of a task's plan to edit it. Saving a change tells the
+// agent in chat (announceTaskPlanChange) and they reply with what they now
+// understand they're doing, so a change never goes unacknowledged.
+const taskPlanEditing = {};   // taskId -> { draft: {goal, steps, output}, focus }
+
+// Not while the agent is mid-run (that turn wouldn't see the change), and not
+// once it's done.
+function isTaskPlanEditable(task) {
+    return !task.isFileOnly && !!task.plan && task.planStatus !== 'drafting'
+        && ['not_started', 'paused', 'in_review'].includes(task.status);
+}
+
+function openTaskPlanEditor(agent, task, sectionLabel) {
+    if (!isTaskPlanEditable(task)) return;
+    const focus = sectionLabel === 'Steps' ? 'steps' : sectionLabel === 'Final output' ? 'output' : 'goal';
+    taskPlanEditing[task.id] = {
+        draft: { goal: task.plan.goal, steps: (task.plan.steps || []).join('\n'), output: task.plan.output },
+        focus
+    };
+    taskPlanOpen[task.id] = true;
+    window.getSelection().removeAllRanges();
+    hideSelectionReplyBtn();   // the double-click selected a word and offered Send to chat
+    refreshTaskViewsForAgent(agent);
+    const field = document.querySelector(`.task-plan-edit-field[data-task-id="${task.id}"][data-field="${focus}"]`);
+    if (field) field.focus();
+}
+
+function cancelTaskPlanEdit(agent, task) {
+    delete taskPlanEditing[task.id];
+    refreshTaskViewsForAgent(agent);
+}
+
+function buildTaskPlanEditor(agent, task) {
+    const editing = taskPlanEditing[task.id];
+    const wrap = document.createElement('div');
+    wrap.className = 'task-plan-editor';
+    [['goal', 'What will get done', 3], ['steps', 'Steps (one per line)', 6], ['output', 'Final output', 3]].forEach(([field, label, rows]) => {
+        const heading = document.createElement('div');
+        heading.className = 'task-plan-label';
+        heading.textContent = label;
+        const input = document.createElement('textarea');
+        input.className = 'task-plan-edit-field';
+        input.dataset.taskId = task.id;
+        input.dataset.field = field;
+        input.rows = rows;
+        input.value = editing.draft[field];
+        input.addEventListener('input', () => { editing.draft[field] = input.value; });
+        input.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelTaskPlanEdit(agent, task); });
+        wrap.appendChild(heading);
+        wrap.appendChild(input);
+    });
+    const hint = document.createElement('div');
+    hint.className = 'task-plan-note';
+    hint.textContent = `Saving sends your change to ${capitalizeAgent(agent)} in chat, and they'll confirm what they understand.`;
+    wrap.appendChild(hint);
+    const actions = document.createElement('div');
+    actions.className = 'task-row-actions';
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'task-action-btn solid-start';
+    save.textContent = 'Save plan';
+    save.addEventListener('click', () => saveTaskPlanEdit(agent, task));
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'task-action-btn';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => cancelTaskPlanEdit(agent, task));
+    actions.appendChild(save);
+    actions.appendChild(cancel);
+    wrap.appendChild(actions);
+    return wrap;
+}
+
+function saveTaskPlanEdit(agent, task) {
+    const editing = taskPlanEditing[task.id];
+    if (!editing) return;
+    const goal = editing.draft.goal.trim();
+    const output = editing.draft.output.trim();
+    const steps = editing.draft.steps.split('\n')
+        .map(line => line.trim().replace(/^(\d+[.)]|[-*•])\s*/, ''))
+        .filter(Boolean);
+    if (!goal || !steps.length || !output) {
+        alert('The plan needs what will get done, at least one step, and the final output.');
+        return;
+    }
+    const before = task.plan;
+    const after = { goal, steps, output };
+    const changed = before.goal !== goal || before.output !== output || JSON.stringify(before.steps) !== JSON.stringify(steps);
+    delete taskPlanEditing[task.id];
+    if (!changed) { refreshTaskViewsForAgent(agent); return; }
+
+    task.plan = after;
+    task.planStatus = 'ready';
+    task.planEdited = true;
+    // The deliverables the task has to produce follow the new plan: its own
+    // wording plus whatever file formats the final output now names.
+    task.expectedFileTypes = [...new Set([...detectRequestedFileTypes(task.task), ...detectRequestedFileTypes(output)])];
+    refreshTaskViewsForAgent(agent);
+    announceTaskPlanChange(agent, task, before, after);
+}
+
+// Tells the agent, in their own chat, what Francis changed and asks them to
+// say back what they now understand - the reply is the acknowledgement.
+// Works the same whether he edited from the agent's page or the Projects
+// page: the exchange lands in that agent's chat either way.
+async function announceTaskPlanChange(agent, task, before, after) {
+    if (!chatHistory[agent]) chatHistory[agent] = [];
+    const name = task.name || task.task;
+    const changed = [];
+    if (before.goal !== after.goal) changed.push(`what will get done (was: "${before.goal}")`);
+    if (JSON.stringify(before.steps) !== JSON.stringify(after.steps)) changed.push('the steps');
+    if (before.output !== after.output) changed.push(`the final output (was: "${before.output}")`);
+    const stepsText = after.steps.map((step, i) => `${i + 1}. ${step}`).join('\n');
+    const text = `I updated the plan for "${name}". I changed ${changed.join('; ')}.\n\n`
+        + `The plan as it stands now:\nGoal: ${after.goal}\nSteps:\n${stepsText}\nFinal output: ${after.output}\n\n`
+        + `Please acknowledge the change: in a few sentences, tell me in your own words what you'll do now and what I'll get at the end, and flag anything that's unclear (ask one question if so). `
+        + `Don't start the task or create any files yet - just confirm you understand.`
+        + (task.status === 'in_review' ? ` This task is already in review, so also tell me if the change means your finished work needs redoing.` : '');
+    chatHistory[agent].push({ type: 'user', text, planUpdate: true, timestamp: new Date() });
+    saveToLocalStorage(agent);
+    if (currentAgent === agent) displayMessages(agent);
+    await runOneOnOneAgentTurn(agent, [], undefined, undefined, undefined, undefined);
 }
 
 // Francis approves the finished work - the only way a reviewed task completes.
