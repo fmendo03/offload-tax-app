@@ -5281,6 +5281,12 @@ body.va-open #notification-toasts {
         .ws-tool-note .ws-doc-content { cursor: crosshair; }
         .ws-tool-note .ws-doc-content .wp-doc-preview { cursor: crosshair; }
         .ws-tool-edit .wp-doc-preview { outline: 2px dashed #667eea; outline-offset: 4px; cursor: text; }
+        .ws-tool-note .wp-slide { cursor: crosshair; }
+        .ws-tool-edit .wp-slide-heading, .ws-tool-edit .wp-slide-subtitle, .ws-tool-edit .wp-slide-bullets { outline: 1px dashed #667eea; outline-offset: 3px; cursor: text; }
+        .ws-tool-edit .wp-slide-heading:focus, .ws-tool-edit .wp-slide-subtitle:focus, .ws-tool-edit .wp-slide-bullets:focus { outline: 2px solid #667eea; }
+        .ws-view-toggle { display: inline-flex; border: 1px solid #c9cde0; border-radius: 6px; overflow: hidden; }
+        .ws-view-toggle button { border: none; background: #f0f1f8; padding: 5px 10px; font-size: 12px; cursor: pointer; color: #333; }
+        .ws-view-toggle button.active { background: #667eea; color: white; }
         .ws-tool-edit .wp-table-preview td { cursor: text; }
         .ws-tool-edit .wp-table-preview td:focus { outline: 2px solid #667eea; }
 
@@ -5400,6 +5406,7 @@ body.va-open #notification-toasts {
         .ws-note-top strong { flex: 1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #555; }
         .ws-note-chip { font-size: 10px; padding: 0 6px; border-radius: 8px; background: #e6f4ea; color: #1a6b1a; }
         .ws-note-chip.warn { background: #fdecea; color: #b3261e; }
+        .ws-note-chip.away { background: #eceef7; color: #4a4f7a; }
         .ws-note-del { border: none; background: none; cursor: pointer; font-size: 16px; line-height: 1; color: #bbb; }
         .ws-note-del:hover { color: #c0392b; }
         .ws-note-quote { font-style: italic; color: #777; margin-bottom: 3px; }
@@ -7277,6 +7284,17 @@ body.va-open #notification-toasts {
     margin-bottom: 6px;
 }
 
+.wp-slide-content .wp-slide-bullets li::before {
+    content: '\25CF';
+    font-size: 7px;
+    vertical-align: middle;
+    margin-right: 9px;
+}
+
+.wp-slide-title .wp-slide-subtitle + .wp-slide-subtitle {
+    margin-top: 4px;
+}
+
 .wp-slide-number {
     position: absolute;
     bottom: 6px;
@@ -7453,6 +7471,10 @@ body.va-open #notification-toasts {
                                 <div class="ws-file-info">
                                     <div class="ws-file-title" id="ws-file-title"></div>
                                     <div class="ws-file-sub" id="ws-file-sub"></div>
+                                </div>
+                                <div class="ws-view-toggle" id="ws-view-toggle" style="display: none;" title="A PDF can be shown as its page or as its text - the text is what you edit">
+                                    <button type="button" data-view="page">PDF page</button>
+                                    <button type="button" data-view="text">Text</button>
                                 </div>
                                 <div class="ws-tools">
                                     <button type="button" class="ws-tool-btn" data-tool="note" title="Note - leave a note for the agent on any spot or highlighted wording">&#128221; Note</button>
@@ -13268,7 +13290,8 @@ const WS_TOOL_HINTS = {
 let wsTool = 'view';   // 'view' | 'note' | 'edit'
 let wsNotesPaneHidden = false;
 let workspaceNotes = {};   // agent -> fileId -> [annotation]
-const wsState = { agent: null, fileId: null, kind: 'point', canEdit: false, baseline: null, bytesDirty: false, layoutQueued: false, commitTimer: null, popover: null, resizeObserver: null };
+const wsState = { agent: null, fileId: null, kind: 'point', canEdit: false, baseline: null, bytesDirty: false, layoutQueued: false, commitTimer: null, popover: null, resizeObserver: null,
+    pdfText: false, domPlaces: {}, frameSig: '', offView: new Set(), otherPage: new Set(), flashDom: null };
 
 function loadWorkspaceNotes() {
     try { workspaceNotes = JSON.parse(localStorage.getItem('workspaceNotes') || '{}') || {}; } catch (e) { workspaceNotes = {}; }
@@ -13303,6 +13326,31 @@ function getDocBlocks(docEl) {
         else blocks.push(child);
     });
     return blocks;
+}
+
+// Slides: every title, subtitle and bullet is a block, in reading order.
+function getSlideBlocks(root) {
+    return Array.from(root.querySelectorAll('.wp-slide-heading, .wp-slide-subtitle, .wp-slide-bullets li'));
+}
+
+function wsCurrentBlocks(content) {
+    const docEl = content.querySelector('.wp-doc-preview');
+    return docEl ? getDocBlocks(docEl) : getSlideBlocks(content);
+}
+
+// The slide script (slides split by a --- line) rebuilt from the edited slides.
+function wsSlidesToContent(root) {
+    const clean = (t) => t.replace(/\s+/g, ' ').trim();
+    return Array.from(root.querySelectorAll('.wp-slide')).map(slide => {
+        const heading = slide.querySelector('.wp-slide-heading');
+        const lines = ['# ' + ((heading && clean(heading.textContent)) || 'Untitled slide')];
+        if (slide.classList.contains('wp-slide-title')) {
+            slide.querySelectorAll('.wp-slide-subtitle').forEach(el => { const t = clean(el.textContent); if (t) lines.push(t); });
+        } else {
+            slide.querySelectorAll('.wp-slide-bullets li').forEach(li => { const t = clean(li.textContent); if (t) lines.push('- ' + t); });
+        }
+        return lines.join('\n');
+    }).join('\n---\n');
 }
 
 function wsTextOffset(block, container, offset) {
@@ -13355,6 +13403,7 @@ function openWorkspaceViewer(agent, fileId) {
     if (wsState.fileId && (wsState.agent !== agent || wsState.fileId !== fileId)) commitViewerEdits(true);
     wsState.agent = agent;
     wsState.fileId = fileId;
+    wsState.pdfText = false;
     wsTool = 'view';
     closeWsPopover();
     wsEl('workspace-tasks-list').style.display = 'none';
@@ -13384,18 +13433,38 @@ function renderWorkspaceViewer() {
     wsEl('ws-file-sub').textContent = task ? `from task “${task.name || task.task}”` : (file.role === 'input' ? 'provided by you' : 'shared by you');
 
     const content = wsEl('ws-doc-content');
-    content.innerHTML = buildWorkspacePreviewBody(file);
+    content.innerHTML = buildWorkspacePreviewBody(file, { pdfAsText: !!wsState.pdfText });
     wsEl('ws-doc-wrap').dataset.replySource = `file “${file.name}”` + (task ? ` (from task “${task.name || task.task}”)` : '');
 
     const docEl = content.querySelector('.wp-doc-preview');
     const tableEl = content.querySelector('.wp-table-preview');
-    wsState.kind = docEl ? 'text' : (tableEl ? 'table' : 'point');
-    wsState.canEdit = !!((docEl && isFileContentEditable(file)) || (tableEl && file.content));
+    const slidesEl = content.querySelector('.wp-slide');
+    const htmlFrame = content.querySelector('iframe.ws-html-frame');
+    wsState.kind = htmlFrame ? 'html' : ((docEl || slidesEl) ? 'text' : (tableEl ? 'table' : 'point'));
+    // A PDF made by the team keeps its source text, so Edit works on that text
+    // and the PDF is rebuilt from it; slides are edited right on the slides.
+    const pdfHasText = file.fileType === 'pdf' && !!file.content;
+    wsState.canEdit = !!(pdfHasText || (docEl && isFileContentEditable(file)) || slidesEl || (tableEl && file.content));
     wsState.baseline = null;
-    const editTarget = docEl || tableEl;
+    wsState.domPlaces = {};
+    wsState.frameSig = '';
+    wsState.offView = new Set();
+    wsState.otherPage = new Set();
+    wsState.flashDom = null;
+    const editTarget = docEl || tableEl || (slidesEl ? slidesEl.parentElement : null);
     if (editTarget) {
         editTarget.addEventListener('input', onWsEditInput);
         editTarget.addEventListener('focusout', () => { if (wsTool === 'edit') commitViewerEdits(false); });
+        if (slidesEl) {
+            editTarget.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.target.closest && e.target.closest('.wp-slide-heading, .wp-slide-subtitle')) e.preventDefault();
+            });
+            editTarget.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const text = ((e.clipboardData || window.clipboardData).getData('text') || '').replace(/\s*\n\s*/g, ' ');
+                document.execCommand('insertText', false, text);
+            });
+        }
     }
     content.querySelectorAll('img').forEach(img => img.addEventListener('load', scheduleWsLayout));
 
@@ -13413,23 +13482,41 @@ function renderWorkspaceViewer() {
 // ---- tools ----
 function setWsTool(tool) {
     if (tool === wsTool) tool = 'view';
+    const file = wsFile();
     if (tool === 'edit' && !wsState.canEdit) {
-        wsEl('ws-tool-hint').textContent = "Editing isn't available for this kind of file (PDF, slides or a web page) - leave a Note and the agent will make the change.";
+        wsEl('ws-tool-hint').textContent = "Editing isn't available for this file - it has no editable text (a web page, or a file that was uploaded rather than made by the team). Leave a Note and the agent will make the change.";
         return;
     }
     if (wsTool === 'edit') commitViewerEdits(true);
     flushWsPopover();
     wsTool = tool;
+    // A PDF is edited through its text: switch to the text version first.
+    if (tool === 'edit' && file && file.fileType === 'pdf' && !wsState.pdfText) { wsState.pdfText = true; renderWorkspaceViewer(); }
     if (tool === 'edit') wsState.baseline = wsSnapshot();
     applyWsTool();
 }
 
+// PDF page <-> its text version (only for PDFs the team made, which keep their text).
+function setWsPdfView(showText) {
+    const file = wsFile();
+    if (!file || file.fileType !== 'pdf' || !file.content || !!wsState.pdfText === !!showText) return;
+    flushWsPopover();
+    const pending = commitViewerEdits(true);
+    if (!showText && wsTool === 'edit') wsTool = 'view';
+    wsState.pdfText = !!showText;
+    renderWorkspaceViewer();
+    if (wsTool === 'edit') wsState.baseline = wsSnapshot();
+    if (!showText && pending) {
+        wsEl('ws-tool-hint').textContent = 'Rebuilding the PDF from your changes…';
+        pending.then(() => {
+            if (wsState.fileId === file.id && !wsState.pdfText) { renderWorkspaceViewer(); wsEl('ws-tool-hint').textContent = ''; }
+        });
+    }
+}
+
 function wsSnapshot() {
     const content = wsEl('ws-doc-content');
-    if (wsState.kind === 'text') {
-        const docEl = content.querySelector('.wp-doc-preview');
-        return docEl ? getDocBlocks(docEl).map(b => b.textContent) : null;
-    }
+    if (wsState.kind === 'text') return wsCurrentBlocks(content).map(b => b.textContent);
     if (wsState.kind === 'table') {
         const tableEl = content.querySelector('.wp-table-preview');
         return tableEl ? wsTableMatrix(tableEl) : null;
@@ -13442,15 +13529,22 @@ function applyWsTool() {
     viewer.classList.toggle('ws-tool-note', wsTool === 'note');
     viewer.classList.toggle('ws-tool-edit', wsTool === 'edit');
     viewer.querySelectorAll('.ws-tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === wsTool));
-    wsEl('ws-tool-hint').textContent = WS_TOOL_HINTS[wsTool] || '';
+    let hint = WS_TOOL_HINTS[wsTool] || '';
+    if (wsTool === 'note' && wsState.kind === 'html') hint += ' Notes belong to the page you are on - turn Note off (click it again) to move between pages of the site.';
+    wsEl('ws-tool-hint').textContent = hint;
     const content = wsEl('ws-doc-content');
     const editable = wsTool === 'edit';
-    const docEl = content.querySelector('.wp-doc-preview');
-    if (docEl) docEl.contentEditable = editable ? 'true' : 'false';
+    content.querySelectorAll('.wp-doc-preview, .wp-slide-heading, .wp-slide-subtitle, .wp-slide-bullets').forEach(el => { el.contentEditable = editable ? 'true' : 'false'; });
     content.querySelectorAll('.wp-table-preview td').forEach(td => { td.contentEditable = editable ? 'true' : 'false'; });
-    // Pages that can't be clicked into (PDF/web page frames) get a transparent
-    // layer so a click can still drop a note on them.
+    // Pages that can't be clicked into (PDF frames) get a transparent layer so
+    // a click can still drop a note on them. Web pages handle clicks themselves.
     wsEl('ws-capture').style.display = (wsTool === 'note' && wsState.kind === 'point') ? 'block' : 'none';
+    const file = wsFile();
+    const toggle = wsEl('ws-view-toggle');
+    const hasText = !!(file && file.fileType === 'pdf' && file.content);
+    toggle.style.display = hasText ? '' : 'none';
+    toggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', (b.dataset.view === 'text') === !!wsState.pdfText));
+    if (wsState.kind === 'html') wsPostToFrame({ type: 'mode', note: wsTool === 'note' });
 }
 
 function onWsEditInput() {
@@ -13502,20 +13596,21 @@ function recordWsEdit(list, anchor, before, after, change) {
 function commitViewerEdits(final) {
     clearTimeout(wsState.commitTimer);
     const file = wsFile();
-    if (!file || !wsState.baseline) return;
+    if (!file || !wsState.baseline) return null;
     const content = wsEl('ws-doc-content');
     const list = wsAnns();
     let changed = false;
 
     if (wsState.kind === 'text') {
         const docEl = content.querySelector('.wp-doc-preview');
-        if (docEl) {
-            const now = getDocBlocks(docEl).map(b => b.textContent);
+        const slidesEl = content.querySelector('.wp-slide');
+        if (docEl || slidesEl) {
+            const now = wsCurrentBlocks(content).map(b => b.textContent);
             wsDiffBlocks(wsState.baseline, now).forEach(ch => {
                 recordWsEdit(list, { kind: 'text', block: ch.index, start: 0, end: ch.after.length }, ch.before, ch.after, ch);
                 changed = true;
             });
-            if (changed) { wsState.baseline = now; file.content = htmlToMarkdown(docEl); }
+            if (changed) { wsState.baseline = now; file.content = docEl ? htmlToMarkdown(docEl) : wsSlidesToContent(content); }
         }
     } else if (wsState.kind === 'table') {
         const tableEl = content.querySelector('.wp-table-preview');
@@ -13541,7 +13636,8 @@ function commitViewerEdits(final) {
         renderNotesPane();
         scheduleWsLayout();
     }
-    if (final && wsState.bytesDirty) { wsState.bytesDirty = false; regenerateFileBytes(file); }
+    if (final && wsState.bytesDirty) { wsState.bytesDirty = false; return regenerateFileBytes(file); }
+    return null;
 }
 
 // The downloadable file is rebuilt from the edited text, so Download always
@@ -13576,8 +13672,7 @@ function wsAnchorFromEvent(e) {
     const fraction = (cx, cy) => ({ kind: 'point', x: +((cx - wrapRect.left) / wrapRect.width).toFixed(4), y: +((cy - wrapRect.top) / wrapRect.height).toFixed(4) });
 
     if (wsState.kind === 'text') {
-        const docEl = content.querySelector('.wp-doc-preview');
-        const blocks = docEl ? getDocBlocks(docEl) : [];
+        const blocks = wsCurrentBlocks(content);
         if (hasSel) {
             const range = sel.getRangeAt(0);
             const block = wsBlockForNode(range.startContainer, blocks);
@@ -13610,7 +13705,7 @@ function wsAnchorFromEvent(e) {
 }
 
 function onWsNoteMouseUp(e) {
-    if (wsTool !== 'note') return;
+    if (wsTool !== 'note' || wsState.kind === 'html') return;
     if (e.target.closest('.ws-pin, .ws-popover, .ws-tip')) return;
     const clientX = e.clientX;
     const clientY = e.clientY;
@@ -13660,6 +13755,7 @@ function openWsNoteEditor(draft, rect, existing) {
         }
         saveWorkspaceNotes();
         window.getSelection().removeAllRanges();
+        if (wsState.kind === 'html') wsPostToFrame({ type: 'clearsel' });
         renderNotesPane();
         scheduleWsLayout();
     };
@@ -13711,6 +13807,19 @@ function scheduleWsLayout() {
 // document changed), as overlay-relative rectangles plus a pin position.
 function locateWsAnnotation(ann, blocks, content) {
     const a = ann.anchor;
+    if (a.kind === 'dom') {
+        // A spot on a web page: the page itself says where it is right now, or
+        // that it isn't showing (another page of the site, or scrolled away).
+        const place = wsState.domPlaces[ann.id];
+        const frame = wsFrame();
+        if (!place || !frame) return 'pending';
+        if (place.state === 'hidden') return 'otherpage';
+        if (place.state === 'missing') return null;
+        const off = wsFrameOffset(frame);
+        if (place.pt.y < -4 || place.pt.y > off.height || place.pt.x < -4 || place.pt.x > off.width) return 'scrolled';
+        const rects = (place.rects || []).map(r => ({ cls: 'ws-hl-note', left: off.left + r.left, top: off.top + r.top, width: r.width, height: r.height }));
+        return { rects, pin: { left: off.left + place.pt.x - 10, top: off.top + place.pt.y - 12 } };
+    }
     if (a.kind === 'text') {
         let block = blocks[a.block];
         const text = block ? block.textContent : '';
@@ -13750,18 +13859,35 @@ function locateWsAnnotation(ann, blocks, content) {
     return { rects: [], pin: { left: a.x * wrap.clientWidth - 11, top: a.y * wrap.clientHeight - 11 } };
 }
 
+// Which of the file's notes belong to what is on screen right now. A PDF has
+// two views (its page, and its text) and notes belong to one or the other; a web
+// page's notes belong to wherever on the site they were made.
+function wsAnnOnThisView(ann) {
+    const file = wsFile();
+    const k = ann.anchor.kind;
+    if (file && file.fileType === 'pdf' && file.content) return (k === 'point') !== !!wsState.pdfText;
+    if (wsState.kind === 'html') return k === 'dom';
+    return k !== 'dom';
+}
+
 function layoutWsAnnotations() {
     const overlay = wsEl('ws-overlay');
     if (!overlay || !wsState.fileId) return;
+    wsSendFrameAnns();
     overlay.innerHTML = '';
     const content = wsEl('ws-doc-content');
-    const docEl = content.querySelector('.wp-doc-preview');
-    const blocks = docEl ? getDocBlocks(docEl) : [];
+    const blocks = wsCurrentBlocks(content);
     const wrapWidth = wsEl('ws-doc-wrap').clientWidth;
-    const lostBefore = wsAnns().map(a => (a.lost ? 1 : 0)).join('');
+    const stateSig = () => wsAnns().map(a => (a.lost ? 'l' : '') + (wsState.offView.has(a.id) ? 'v' : '') + (wsState.otherPage.has(a.id) ? 'p' : '')).join(',');
+    const sigBefore = stateSig();
+    wsState.offView = new Set();
+    wsState.otherPage = new Set();
     wsAnns().forEach(ann => {
+        if (!wsAnnOnThisView(ann)) { wsState.offView.add(ann.id); ann.lost = false; return; }
         let place = null;
         try { place = locateWsAnnotation(ann, blocks, content); } catch (e) { place = null; }
+        if (place === 'pending' || place === 'scrolled') { ann.lost = false; return; }
+        if (place === 'otherpage') { wsState.otherPage.add(ann.id); ann.lost = false; return; }
         ann.lost = !place;
         if (!place) return;
         place.rects.forEach(r => {
@@ -13787,9 +13913,230 @@ function layoutWsAnnotations() {
         });
         overlay.appendChild(pin);
         if (wsState.justAdded === ann.id) { wsState.justAdded = null; flashWsAnnotation(ann.id); }
+        if (wsState.flashDom && wsState.flashDom.id === ann.id) { wsState.flashDom = null; flashWsAnnotation(ann.id); }
     });
+    if (wsState.flashDom && Date.now() > wsState.flashDom.until) wsState.flashDom = null;
     if (wsState.flashId) { const id = wsState.flashId; wsState.flashId = null; flashWsAnnotation(id); }
-    if (lostBefore !== wsAnns().map(a => (a.lost ? 1 : 0)).join('')) renderNotesPane();   // a marker's spot was lost or found
+    if (sigBefore !== stateSig()) renderNotesPane();   // a marker's spot was lost, found, or moved to another page/view
+}
+
+// ---- web pages: notes are tied to the part of the page they were made on ----
+// A web page is shown in a sandboxed frame (scripts allowed so its own page
+// switching works, but no network and no access to this app). A small script is
+// added to it that reports where each note's spot is on the page - or that the
+// spot isn't showing because the site is on a different page - and that turns
+// clicks and highlights into notes while the Note tool is on.
+function wsHtmlBridge() {
+    var TAG = 'offload-ws';
+    var noteMode = false;
+    var anns = [];
+    var lastSent = '';
+    var timer = null;
+
+    function post(msg) { msg.ws = TAG; try { parent.postMessage(msg, '*'); } catch (e) { /* no parent */ } }
+    function elOf(node) { return node && node.nodeType === 1 ? node : (node ? node.parentElement : null); }
+    function clip(t, n) { return (t || '').replace(/\s+/g, ' ').trim().slice(0, n); }
+    function cssPath(el) {
+        var parts = [];
+        while (el && el.nodeType === 1 && el !== document.documentElement) {
+            if (el.id) {
+                var sel = '#' + CSS.escape(el.id);
+                try { if (document.querySelectorAll(sel).length === 1) { parts.unshift(sel); break; } } catch (e) { /* bad id */ }
+            }
+            if (el === document.body) { parts.unshift('body'); break; }
+            var p = el.parentElement;
+            if (!p) break;
+            parts.unshift(el.tagName.toLowerCase() + ':nth-child(' + (Array.prototype.indexOf.call(p.children, el) + 1) + ')');
+            el = p;
+        }
+        return parts.join(' > ');
+    }
+    function shown(el) {
+        if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+        if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+        var r = el.getBoundingClientRect();
+        if (r.width > 0 && (r.right + window.scrollX <= 0 || r.left + window.scrollX >= document.documentElement.scrollWidth)) return false;
+        return true;
+    }
+    function textOffset(el, container, offset) {
+        var r = document.createRange();
+        r.selectNodeContents(el);
+        r.setEnd(container, offset);
+        return r.toString().length;
+    }
+    function rangeFor(el, start, end) {
+        var range = document.createRange();
+        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        var pos = 0, startSet = false, node;
+        while ((node = walker.nextNode())) {
+            var len = node.nodeValue.length;
+            if (!startSet && start <= pos + len) { range.setStart(node, Math.max(0, start - pos)); startSet = true; }
+            if (startSet && end <= pos + len) { range.setEnd(node, Math.max(0, end - pos)); return range; }
+            pos += len;
+        }
+        range.selectNodeContents(el);
+        return range;
+    }
+    function contextFor(el) {
+        var sec = el.closest('section, article, main, [id]') || document.body;
+        var h = sec.querySelector('h1, h2, h3') || document.querySelector('h1');
+        return { hash: location.hash || '', heading: h ? clip(h.textContent, 80) : clip(document.title, 80), tag: el.tagName.toLowerCase(), text: clip(el.textContent, 80) };
+    }
+    function find(a) {
+        try { return a.path ? document.querySelector(a.path) : null; } catch (e) { return null; }
+    }
+    function locate(a) {
+        var el = find(a);
+        if (!el) return { state: 'missing' };
+        if (!shown(el)) return { state: 'hidden' };
+        var out = { state: 'ok' };
+        if (a.quote && (el.textContent || '').slice(a.start, a.end) === a.quote) {
+            var rects = Array.prototype.slice.call(rangeFor(el, a.start, a.end).getClientRects())
+                .filter(function (q) { return q.width > 1; })
+                .map(function (q) { return { left: q.left, top: q.top, width: q.width, height: q.height }; });
+            if (rects.length) { out.rects = rects; out.pt = { x: rects[0].left, y: rects[0].top }; return out; }
+        }
+        var r = el.getBoundingClientRect();
+        out.pt = { x: r.left + (a.ox || 0) * r.width, y: r.top + (a.oy || 0) * r.height };
+        return out;
+    }
+    function report() {
+        timer = null;
+        var results = anns.map(function (a) { var o = locate(a.anchor); o.id = a.id; return o; });
+        var sig = JSON.stringify(results);
+        if (sig === lastSent) return;
+        lastSent = sig;
+        post({ type: 'located', results: results });
+    }
+    function schedule() { if (!timer) timer = setTimeout(report, 40); }
+
+    function onUp(e) {
+        if (!noteMode) return;
+        var x = e.clientX, y = e.clientY, target = e.target;
+        setTimeout(function () {
+            var sel = window.getSelection();
+            var picked = sel ? sel.toString().trim() : '';
+            var el, anchor;
+            if (picked && sel.rangeCount) {
+                var range = sel.getRangeAt(0);
+                el = elOf(range.startContainer);
+                if (el) {
+                    var full = el.textContent || '';
+                    var start = textOffset(el, range.startContainer, range.startOffset);
+                    var end = el.contains(range.endContainer) ? textOffset(el, range.endContainer, range.endOffset) : full.length;
+                    if (end <= start) end = full.length;
+                    anchor = { kind: 'dom', path: cssPath(el), start: start, end: end, quote: full.slice(start, end).slice(0, 200), context: contextFor(el) };
+                    var rr = range.getBoundingClientRect();
+                    post({ type: 'note', anchor: anchor, rect: { left: rr.left, top: rr.top, bottom: rr.bottom } });
+                    return;
+                }
+            }
+            el = elOf(target);
+            if (!el) return;
+            var r = el.getBoundingClientRect();
+            anchor = { kind: 'dom', path: cssPath(el), ox: r.width ? +((x - r.left) / r.width).toFixed(4) : 0, oy: r.height ? +((y - r.top) / r.height).toFixed(4) : 0, context: contextFor(el) };
+            post({ type: 'note', anchor: anchor, rect: { left: x, top: y, bottom: y + 4 } });
+        }, 0);
+    }
+
+    // While noting, a click is a note - it must not follow links or press buttons.
+    document.addEventListener('click', function (e) { if (noteMode) { e.preventDefault(); e.stopPropagation(); } }, true);
+    document.addEventListener('submit', function (e) { if (noteMode) e.preventDefault(); }, true);
+    document.addEventListener('mouseup', onUp);
+
+    ['scroll', 'resize', 'hashchange', 'popstate', 'load', 'transitionend', 'animationend'].forEach(function (t) { window.addEventListener(t, schedule, true); });
+    document.addEventListener('click', function () { setTimeout(schedule, 80); setTimeout(schedule, 400); }, true);
+    try { new MutationObserver(schedule).observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true }); } catch (e) { /* no observer */ }
+
+    window.addEventListener('message', function (e) {
+        var m = e.data;
+        if (!m || m.ws !== TAG) return;
+        if (m.type === 'mode') {
+            noteMode = !!m.note;
+            var st = document.getElementById('offload-ws-style');
+            if (!st) { st = document.createElement('style'); st.id = 'offload-ws-style'; (document.head || document.documentElement).appendChild(st); }
+            st.textContent = noteMode ? 'html, html * { cursor: crosshair !important; }' : '';
+        } else if (m.type === 'anns') {
+            anns = m.anns || [];
+            lastSent = '';
+            schedule();
+        } else if (m.type === 'clearsel') {
+            if (window.getSelection) window.getSelection().removeAllRanges();
+        } else if (m.type === 'reveal') {
+            var an = anns.filter(function (x) { return x.id === m.id; })[0];
+            if (!an) return;
+            var el = find(an.anchor);
+            if (el && shown(el)) el.scrollIntoView({ block: 'center' });
+            else if (an.anchor.context && an.anchor.context.hash) {
+                location.hash = an.anchor.context.hash;
+                setTimeout(function () { var e2 = find(an.anchor); if (e2 && shown(e2)) e2.scrollIntoView({ block: 'center' }); schedule(); }, 150);
+            }
+            schedule();
+        }
+    });
+    post({ type: 'ready' });
+}
+
+// The HTML of a web page file with the bridge added (and a policy that blocks
+// the page from sending anything out), as a data: URL for the frame.
+function buildHtmlFrameSrc(file) {
+    const mime = file.mimeType || 'text/html';
+    const source = file.data ? base64ToText(file.data) : null;
+    if (source === null) return `data:${mime};base64,${file.data}`;
+    const meta = '<meta http-equiv="Content-Security-Policy" content="connect-src \'none\'; form-action \'none\'">';
+    const script = '<script>(' + wsHtmlBridge.toString() + ')();<\/script>';
+    let out = source;
+    if (/<head[^>]*>/i.test(out)) out = out.replace(/<head[^>]*>/i, (m) => m + meta);
+    else if (/<html[^>]*>/i.test(out)) out = out.replace(/<html[^>]*>/i, (m) => m + meta);
+    else out = meta + out;
+    if (/<\/body>/i.test(out)) out = out.replace(/<\/body>(?![\s\S]*<\/body>)/i, () => script + '</body>');
+    else out += script;
+    const bytes = new TextEncoder().encode(out);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return `data:${mime};base64,${btoa(binary)}`;
+}
+
+const wsFrame = () => wsEl('ws-doc-content').querySelector('iframe.ws-html-frame');
+
+function wsFrameOffset(frame) {
+    const w = wsEl('ws-doc-wrap').getBoundingClientRect();
+    const f = frame.getBoundingClientRect();
+    return { left: f.left - w.left, top: f.top - w.top, width: f.width, height: f.height };
+}
+
+function wsPostToFrame(msg) {
+    const frame = wsFrame();
+    if (!frame || !frame.contentWindow) return;
+    msg.ws = 'offload-ws';
+    frame.contentWindow.postMessage(msg, '*');
+}
+
+function wsSendFrameAnns(force) {
+    if (wsState.kind !== 'html') return;
+    const anns = wsAnns().filter(a => a.anchor.kind === 'dom').map(a => ({ id: a.id, anchor: a.anchor }));
+    const sig = JSON.stringify(anns);
+    if (!force && sig === wsState.frameSig) return;
+    wsState.frameSig = sig;
+    wsPostToFrame({ type: 'anns', anns });
+}
+
+function onWsFrameMessage(e) {
+    const m = e.data;
+    if (!m || m.ws !== 'offload-ws' || !wsState.fileId) return;
+    const frame = wsFrame();
+    if (!frame || e.source !== frame.contentWindow) return;
+    if (m.type === 'ready') {
+        wsPostToFrame({ type: 'mode', note: wsTool === 'note' });
+        wsSendFrameAnns(true);
+    } else if (m.type === 'located') {
+        wsState.domPlaces = {};
+        (m.results || []).forEach(r => { wsState.domPlaces[r.id] = r; });
+        scheduleWsLayout();
+    } else if (m.type === 'note' && wsTool === 'note' && m.anchor && m.rect) {
+        const off = wsFrameOffset(frame);
+        openWsNoteEditor({ anchor: m.anchor }, { left: off.left + m.rect.left, top: off.top + m.rect.top, bottom: off.top + m.rect.bottom }, null);
+    }
 }
 
 function flashWsAnnotation(id) {
@@ -13866,6 +14213,14 @@ function renderNotesPane() {
             chip.textContent = 'spot changed';
             top.appendChild(chip);
         }
+        const elsewhere = wsState.otherPage.has(ann.id) ? 'on another page'
+            : (wsState.offView.has(ann.id) ? (wsState.kind === 'html' ? 'not tied to a page' : (ann.anchor.kind === 'point' ? 'on the PDF page' : 'in the text view')) : '');
+        if (elsewhere) {
+            const chip = document.createElement('span');
+            chip.className = 'ws-note-chip away';
+            chip.textContent = elsewhere;
+            top.appendChild(chip);
+        }
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'ws-note-del';
@@ -13908,6 +14263,28 @@ function jumpToWsNoteItem(id) {
 
 // Click a note in the pane -> take you to that spot in the file.
 function jumpToWsAnnotation(id) {
+    const ann = wsAnns().find(a => a.id === id);
+    const file = wsFile();
+    if (ann && file) {
+        if (!wsAnnOnThisView(ann)) {
+            if (file.fileType === 'pdf' && file.content) {
+                setWsPdfView(ann.anchor.kind !== 'point');
+                setTimeout(() => jumpToWsAnnotation(id), 80);
+            } else {
+                wsEl('ws-tool-hint').textContent = "That note was made before notes were tied to a page of the site, so it can't be placed on one. Delete it and add it again on the page it belongs to.";
+            }
+            return;
+        }
+        if (ann.anchor.kind === 'dom') {
+            if (wsState.otherPage.has(id)) {
+                const c = ann.anchor.context || {};
+                wsEl('ws-tool-hint').textContent = `That note is on another page of the site${c.heading ? ` (“${c.heading}”)` : ''} - taking you there. If the page doesn't change, open it yourself and the note will show.`;
+            }
+            wsState.flashDom = { id, until: Date.now() + 3000 };
+            wsPostToFrame({ type: 'reveal', id });
+            return;
+        }
+    }
     const pin = wsEl('ws-overlay').querySelector(`.ws-pin[data-ann="${id}"]`);
     if (!pin) { wsEl('ws-tool-hint').textContent = "That spot has moved or been reworded, so it can't be found in the file any more."; return; }
     pin.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -13924,8 +14301,17 @@ function toggleWsNotesPane(show) {
 
 // ---- telling the agent ----
 function wsDocBlocksInfo(file) {
-    if (!file.content || !isFileContentEditable(file)) return [];
+    if (!file.content) return [];
     const tmp = document.createElement('div');
+    if (file.fileType === 'pptx') {
+        tmp.innerHTML = buildWorkspaceSlidesPreview(file);
+        const slides = Array.from(tmp.querySelectorAll('.wp-slide'));
+        return getSlideBlocks(tmp).map(b => {
+            const role = b.classList.contains('wp-slide-heading') ? 'title' : (b.classList.contains('wp-slide-subtitle') ? 'subtitle' : 'bullet');
+            return { heading: role === 'title', text: b.textContent, slide: slides.indexOf(b.closest('.wp-slide')) + 1, role };
+        });
+    }
+    if (!isFileContentEditable(file) && file.fileType !== 'pdf') return [];
     tmp.innerHTML = buildWorkspaceDocPreview(file);
     const root = tmp.firstElementChild;
     return root ? getDocBlocks(root).map(b => ({ heading: /^H[1-6]$/.test(b.tagName), text: b.textContent })) : [];
@@ -13933,7 +14319,15 @@ function wsDocBlocksInfo(file) {
 
 function describeWsLocation(file, ann, blocksInfo) {
     const a = ann.anchor;
+    if (a.kind === 'dom') {
+        const c = a.context || {};
+        return `on the web page${c.hash ? ` (page ${c.hash})` : ''}${c.heading ? `, in the section “${c.heading}”` : ''}${c.text ? `, at the element reading “${c.text}”` : ''}`;
+    }
     if (a.kind === 'text') {
+        const info = blocksInfo[a.block];
+        if (info && info.slide) {
+            return `on slide ${info.slide}, the ${info.role} “${info.text.slice(0, 80)}${info.text.length > 80 ? '…' : ''}”`;
+        }
         let section = '';
         for (let i = Math.min(a.block, blocksInfo.length) - 1; i >= 0; i--) { if (blocksInfo[i] && blocksInfo[i].heading) { section = blocksInfo[i].text; break; } }
         const here = blocksInfo[a.block] ? blocksInfo[a.block].text : '';
@@ -14011,7 +14405,14 @@ function initWorkspaceViewer() {
     wsEl('ws-notes-toggle').addEventListener('click', () => toggleWsNotesPane());
     wsEl('ws-notes-hide').addEventListener('click', () => toggleWsNotesPane(false));
     wsEl('ws-send-btn').addEventListener('click', sendWorkspaceReview);
-    wsEl('ws-download-btn').addEventListener('click', () => { if (wsState.fileId) { commitViewerEdits(true); downloadWorkspaceFileTask(wsState.agent, wsState.fileId); } });
+    wsEl('ws-download-btn').addEventListener('click', () => {
+        if (!wsState.fileId) return;
+        const agent = wsState.agent;
+        const fileId = wsState.fileId;
+        Promise.resolve(commitViewerEdits(true)).then(() => downloadWorkspaceFileTask(agent, fileId));   // after the file is rebuilt from any edits
+    });
+    wsEl('ws-view-toggle').querySelectorAll('button').forEach(b => b.addEventListener('click', () => setWsPdfView(b.dataset.view === 'text')));
+    window.addEventListener('message', onWsFrameMessage);
     const wrap = wsEl('ws-doc-wrap');
     wrap.addEventListener('mouseup', onWsNoteMouseUp);
     window.addEventListener('resize', scheduleWsLayout);
@@ -14052,16 +14453,19 @@ function openFileInWorkspace(agent, fileId) {
 // Just the reconstructed body - no toolbar - so other panels (the Projects
 // page's Preview panel) can wrap it in their own toolbar/controls instead of
 // this one's plain filename display.
-function buildWorkspacePreviewBody(file) {
+function buildWorkspacePreviewBody(file, opts) {
     if (file.fileType === 'pdf') {
+        // opts.pdfAsText: the Workspace's text version of a PDF the team made.
+        if (opts && opts.pdfAsText && file.content) return `<div class="wp-preview-body">${buildWorkspaceDocPreview(file)}</div>`;
         return `<iframe class="wp-pdf-frame" src="data:${file.mimeType};base64,${file.data}"></iframe>`;
     }
 
     // Rendered from its own bytes as a data: URL, same as the PDF case above -
-    // sandboxed (no scripts, no same-origin access) since it's arbitrary HTML,
-    // even though the agent wrote it itself rather than a third party.
+    // sandboxed (scripts may run so the site's own pages work, but it has no
+    // same-origin access to this app and can't send anything out) since it's
+    // arbitrary HTML, even though the agent wrote it itself.
     if (file.fileType === 'html') {
-        return `<iframe class="wp-pdf-frame" sandbox="" src="data:${file.mimeType || 'text/html'};base64,${file.data}"></iframe>`;
+        return `<iframe class="wp-pdf-frame ws-html-frame" sandbox="allow-scripts" src="${buildHtmlFrameSrc(file)}"></iframe>`;
     }
 
     if (!file.content) {
@@ -14279,7 +14683,7 @@ function buildWorkspaceSlidesPreview(file) {
             html += `<div class="wp-slide wp-slide-title" style="background:${primary};color:#fff;">`;
             html += `<div style="width:56px;height:4px;background:${accent};margin-bottom:14px;"></div>`;
             html += `<div class="wp-slide-heading">${escapeHtml(title)}</div>`;
-            if (bodyLines.length) html += `<div class="wp-slide-subtitle" style="color:${accent}">${escapeHtml(bodyLines[0])}</div>`;
+            bodyLines.forEach((b, i) => { html += `<div class="wp-slide-subtitle" style="color:${i ? '#e0e0e0' : accent}">${escapeHtml(b)}</div>`; });
             html += `<div class="wp-slide-number">Slide 1</div></div>`;
         } else {
             html += `<div class="wp-slide wp-slide-content" style="background:#fff;">`;
@@ -14287,7 +14691,7 @@ function buildWorkspaceSlidesPreview(file) {
             html += `<div class="wp-slide-heading" style="color:${primary}">${escapeHtml(title)}</div>`;
             if (bodyLines.length) {
                 html += '<ul class="wp-slide-bullets">';
-                bodyLines.forEach(b => { html += `<li>â—&nbsp;&nbsp;${escapeHtml(b)}</li>`; });
+                bodyLines.forEach(b => { html += `<li>${escapeHtml(b)}</li>`; });
                 html += '</ul>';
             }
             html += `<div class="wp-slide-number">Slide ${idx + 1}</div></div>`;
