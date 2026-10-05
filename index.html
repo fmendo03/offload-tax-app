@@ -12203,33 +12203,41 @@ async function requestTaskPlan(agent, taskId) {
     // let that finish before reading the project's steps below.
     await new Promise(resolve => setTimeout(resolve, 0));
     const project = task.projectId ? projects[task.projectId] : null;
-    try {
-        const response = await fetch('/tasks/plan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                agent,
-                name: task.name,
-                task: task.task,
-                context: task.planContext || 'firm',
-                files: getTaskFiles(agent, task.id).filter(f => f.role === 'input').map(f => f.name).concat((task.attachments || []).map(a => a.name)),
-                project_name: project ? project.name : null,
-                project_steps: project ? project.tasks.map(t => ({ agent: t.agent, name: t.name || deriveShortName(t.task) })) : []
-            })
-        });
-        const data = await response.json();
-        if (!data.success || !data.plan) throw new Error(data.error || 'No plan came back');
-        task.plan = data.plan;
-        task.planStatus = 'ready';
-        // A file format named in the plan's final output counts towards "not
-        // done until every requested format has been delivered".
-        const expected = new Set(task.expectedFileTypes || []);
-        detectRequestedFileTypes(data.plan.output).forEach(t => expected.add(t));
-        task.expectedFileTypes = [...expected];
-    } catch (error) {
-        console.error('Could not draft a task plan:', error);
-        task.planStatus = 'failed';
+    const body = JSON.stringify({
+        agent,
+        name: task.name,
+        task: task.task,
+        context: task.planContext || 'firm',
+        files: getTaskFiles(agent, task.id).filter(f => f.role === 'input').map(f => f.name).concat((task.attachments || []).map(a => a.name)),
+        project_name: project ? project.name : null,
+        project_steps: project ? project.tasks.map(t => ({ agent: t.agent, name: t.name || deriveShortName(t.task) })) : []
+    });
+    // One quiet retry: a plan request can land while the server is restarting
+    // or the model is briefly busy, and that usually clears within seconds.
+    let failure = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, 2500));
+        try {
+            const response = await fetch('/tasks/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+            if (response.status === 401) { failure = 'You were signed out - refresh the page and log in again.'; break; }
+            const data = await response.json();
+            if (!data.success || !data.plan) throw new Error(data.error || 'No plan came back');
+            task.plan = data.plan;
+            task.planStatus = 'ready';
+            task.planError = '';
+            // A file format named in the plan's final output counts towards "not
+            // done until every requested format has been delivered".
+            const expected = new Set(task.expectedFileTypes || []);
+            detectRequestedFileTypes(data.plan.output).forEach(t => expected.add(t));
+            task.expectedFileTypes = [...expected];
+            failure = '';
+            break;
+        } catch (error) {
+            console.error('Could not draft a task plan:', error);
+            failure = (error && error.message) || 'The request failed.';
+        }
     }
+    if (failure) { task.planStatus = 'failed'; task.planError = failure.slice(0, 200); }
     refreshTaskViewsForAgent(agent);
 }
 
@@ -12364,7 +12372,7 @@ function buildTaskPlanPanel(agent, task, force) {
     } else if (!task.plan && task.planStatus !== 'skipped') {
         const note = document.createElement('div');
         note.className = 'task-plan-note';
-        note.textContent = task.planStatus === 'failed' ? "Couldn't draft a plan. " : 'No plan yet. ';
+        note.textContent = task.planStatus === 'failed' ? `Couldn't draft a plan${task.planError ? ` (${task.planError})` : ''}. ` : 'No plan yet. ';
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.className = 'task-action-btn';
