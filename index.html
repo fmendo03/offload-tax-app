@@ -19432,6 +19432,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (isTodoScheduled(todo) && !todo.completed) {
                 row.title = 'Double-click to see it on the calendar';
                 row.addEventListener('dblclick', () => goToCalendarEvent(todo.calendarEventId));
+            } else {
+                // Everything else (not scheduled, or completed) opens the
+                // same inline editor as the details pane's Edit button.
+                row.title = 'Double-click to edit';
+                row.addEventListener('dblclick', () => {
+                    selectedTodoId = todo.id;
+                    editingTodoId = todo.id;
+                    renderTodosPage();
+                });
             }
             return row;
         }
