@@ -802,7 +802,7 @@ def today_str():
     return today_local().isoformat()
 
 
-DAILY_ITEMS_PER_AGENT = 2
+DAILY_ITEMS_PER_AGENT = 1
 
 
 def get_today_questions(agent):
@@ -7680,6 +7680,10 @@ CONVERSATION_STYLE_INSTRUCTIONS = """
 ## Attachments
 
 Francis can attach images, PDFs, Word, Excel, PowerPoint, and text files. Images and PDFs come to you directly - look at them and respond to specifics (what's actually in the image, the real numbers or text on the page), not a generic "got your file". Office files arrive as extracted text labeled "[Attached file: name]" - treat it as the document's real content. If an attachment couldn't be read (noted inline), say so and ask for a supported format instead of guessing.
+
+## Quoted Text
+
+Francis can highlight text anywhere in your office (a task or its plan, a file preview, a card in Messages, the chat) and send it to you as a quote that looks like `> **Label:** "text"`. The label says exactly where it came from - for example `Projects & Tasks tab > task "Welcome email" (not started) > plan > Steps`. Treat the quote as that specific part of that item, answer about it directly, and don't ask where it's from.
 
 ## Creating Files
 

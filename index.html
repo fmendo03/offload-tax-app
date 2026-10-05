@@ -5015,15 +5015,15 @@ body.va-open #notification-toasts {
             display: flex;
         }
 
-        /* Inbox tab - the "About you / your firm" questions and the suggestions */
-        .inbox-tab-scroll {
+        /* Messages tab - the "About you / your firm" questions and the suggestions */
+        .messages-tab-scroll {
             flex: 1;
             min-height: 0;
             overflow-y: auto;
             padding: 20px;
         }
 
-        .inbox-tab-cards {
+        .messages-tab-cards {
             display: flex;
             flex-direction: column;
             gap: 14px;
@@ -5031,13 +5031,13 @@ body.va-open #notification-toasts {
             margin: 0 auto;
         }
 
-        .inbox-tab-cards .message.insight-message {
+        .messages-tab-cards .message.insight-message {
             width: 100%;
             max-width: none;
             align-self: stretch;
         }
 
-        .inbox-tab-empty {
+        .messages-tab-empty {
             display: none;
             max-width: 760px;
             margin: 0 auto;
@@ -7009,7 +7009,7 @@ body.va-open #notification-toasts {
                 <div class="third-pane agent-right-pane" id="third-pane">
                     <div class="agent-tabs" id="agent-tabs" role="tablist">
                         <button type="button" class="agent-tab active" role="tab" data-agent-tab="chat">Chat <span class="mini-badge mini-badge-inline" id="chat-tab-badge"></span></button>
-                        <button type="button" class="agent-tab" role="tab" data-agent-tab="inbox">Inbox <span class="mini-badge mini-badge-inline" id="inbox-tab-badge"></span></button>
+                        <button type="button" class="agent-tab" role="tab" data-agent-tab="messages">Messages <span class="mini-badge mini-badge-inline" id="messages-tab-badge"></span></button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="projects">Projects &amp; Tasks <span class="mini-badge mini-badge-inline" id="projects-tab-badge"></span></button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="workspace">Workspace</button>
                         <button type="button" class="agent-tab" role="tab" data-agent-tab="preview">Preview</button>
@@ -7044,10 +7044,10 @@ body.va-open #notification-toasts {
                         </div>
                     </div>
 
-                    <div class="agent-tab-panel" data-agent-panel="inbox">
-                        <div class="inbox-tab-scroll">
-                            <div class="inbox-tab-cards" id="inbox-tab-cards"></div>
-                            <div class="inbox-tab-empty" id="inbox-tab-empty">Nothing waiting on you right now - new questions and suggestions show up here.</div>
+                    <div class="agent-tab-panel" data-agent-panel="messages">
+                        <div class="messages-tab-scroll">
+                            <div class="messages-tab-cards" id="messages-tab-cards"></div>
+                            <div class="messages-tab-empty" id="messages-tab-empty">Nothing waiting on you right now - new questions and suggestions show up here.</div>
                         </div>
                     </div>
 
@@ -8432,23 +8432,23 @@ body.va-open #notification-toasts {
         }
 
         // Everything the Chat tab's own badge counts: unread messages plus the
-        // Ashanti check-ins. (The questions and suggestions are in the Inbox
-        // tab - see countInboxItems.)
+        // Ashanti check-ins. (The questions and suggestions are in the Messages
+        // tab - see countMessageTabItems.)
         function countChatPendingItems(agent) {
             const unreadMessages = Math.max(0, countAgentMessages(agent) - (lastReadCounts[agent] || 0));
             return unreadMessages + countPendingCalendarCheckin(agent) + countPendingTodoMorningCheckin(agent);
         }
 
         // Unanswered "About you / your firm" questions plus pending suggestions
-        // (for the firm and for you) - the Inbox tab's badge.
-        function countInboxItems(agent) {
+        // (for the firm and for you) - the Messages tab's badge.
+        function countMessageTabItems(agent) {
             return countUnansweredQuestions(agent) + countPendingThoughts(agent);
         }
 
         // The agent's total across every tab - the badge on their card and
         // next to their name.
         function getUnreadCount(agent) {
-            return countChatPendingItems(agent) + countInboxItems(agent) + countWorkspacePendingTasks(agent);
+            return countChatPendingItems(agent) + countMessageTabItems(agent) + countWorkspacePendingTasks(agent);
         }
 
         // Caps displayed badge counts at two digits (99+) instead of one (9+).
@@ -9156,10 +9156,10 @@ body.va-open #notification-toasts {
         }
 
         // The Chat tab badge and the "Notifications" strip - unread messages plus
-        // the Ashanti check-ins - and the Inbox tab's badge, refreshed at the
+        // the Ashanti check-ins - and the Messages tab's badge, refreshed at the
         // same moments.
         function updateChatPendingBadge(agent) {
-            setMiniBadge(document.getElementById('inbox-tab-badge'), countInboxItems(agent));
+            setMiniBadge(document.getElementById('messages-tab-badge'), countMessageTabItems(agent));
             const count = countChatPendingItems(agent);
             setMiniBadge(document.getElementById('chat-pending-badge'), count);
             setMiniBadge(document.getElementById('chat-tab-badge'), count);
@@ -11231,6 +11231,7 @@ function buildTaskRowWithFiles(agent, task, body) {
     const row = document.createElement('div');
     row.className = 'workspace-task-row workspace-project-task-row';
     row.dataset.taskId = task.id;
+    row.dataset.replySource = taskReplyLabel(task);
 
     const files = getTaskFiles(agent, task.id);
     const groupKey = `task:${task.id}`;
@@ -11254,7 +11255,7 @@ function buildTaskRowWithFiles(agent, task, body) {
     text.textContent = `${TASK_ICON} ${projectStepPrefix(task)}${task.name || task.task}`;
     text.title = task.task;
     text.classList.add('has-plan-toggle');
-    text.addEventListener('click', () => { markTaskViewed(agent, task.id); toggleTaskPlan(agent, task); });
+    text.addEventListener('click', () => { if (hasTextSelection()) return; markTaskViewed(agent, task.id); toggleTaskPlan(agent, task); });
 
     row.appendChild(text);
     row.appendChild(buildTaskActionsRow(agent, task));
@@ -11815,6 +11816,7 @@ function buildTaskPlanPanel(agent, task, force) {
 
     const panel = document.createElement('div');
     panel.className = 'task-plan-panel';
+    panel.dataset.replySource = taskReplyLabel(task);
     panel.addEventListener('click', e => e.stopPropagation());
 
     if (task.plan) {
@@ -12158,11 +12160,14 @@ function buildFileActionsRow(agent, file) {
 function buildWorkspaceFileRow(agent, file) {
     const row = document.createElement('div');
     row.className = 'workspace-task-row workspace-file-row';
+    const parentTask = file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
+    row.dataset.replySource = `file \u201C${file.name}\u201D` + (parentTask ? ` (from task \u201C${parentTask.name || parentTask.task}\u201D)` : '');
 
     const text = document.createElement('span');
     text.className = 'workspace-file-text';
     text.textContent = `${FILE_ICON} ${file.name}`;
     text.addEventListener('click', () => {
+        if (hasTextSelection()) return;
         showWorkspaceFilePreview(agent, file.id);
         markFileViewed(agent, file.id);
         markTaskViewed(agent, file.taskId);
@@ -12180,11 +12185,12 @@ function buildWorkspaceFileRow(agent, file) {
 function buildWorkspaceItemRow(agent, item) {
     const row = document.createElement('div');
     row.className = 'workspace-task-row workspace-file-row';
+    row.dataset.replySource = `discussion topic \u201C${item.title}\u201D`;
 
     const text = document.createElement('span');
     text.className = 'workspace-file-text';
     text.textContent = `\u{1F4AC} ${item.title}`;
-    text.addEventListener('click', () => showWorkspaceItemPreview(agent, item.id));
+    text.addEventListener('click', () => { if (hasTextSelection()) return; showWorkspaceItemPreview(agent, item.id); });
     row.appendChild(text);
 
     row.appendChild(buildWorkspaceItemActionsRow(agent, item));
@@ -12249,6 +12255,7 @@ function renderWorkspaceItemPreviewPanel(item) {
     contentEl.style.flexDirection = 'column';
     contentEl.style.gap = '10px';
     contentEl.style.padding = '16px';
+    contentEl.dataset.replySource = `discussion topic \u201C${item.title}\u201D`;
     contentEl.innerHTML = `
         <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:#999;">${escapeHtml(kindLabel)}</div>
         <div style="font-size:15px; font-weight:700; color:#222;">${escapeHtml(item.title)}</div>
@@ -12652,6 +12659,7 @@ function clearWorkspacePreview() {
     if (contentEl) {
         contentEl.style.display = 'none';
         contentEl.innerHTML = '';
+        delete contentEl.dataset.replySource;
     }
 }
 
@@ -12667,6 +12675,8 @@ function renderWorkspacePreviewPanel(agent, fileId) {
     emptyEl.style.display = 'none';
     contentEl.style.display = 'flex';
     contentEl.innerHTML = buildWorkspacePreviewHtml(file);
+    const previewTask = file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
+    contentEl.dataset.replySource = `file \u201C${file.name}\u201D` + (previewTask ? ` (from task \u201C${previewTask.name || previewTask.task}\u201D)` : '');
 
     if (workspacePreviewEditCleanup) { workspacePreviewEditCleanup(); workspacePreviewEditCleanup = null; }
     workspacePreviewEditCleanup = wireFilePreviewEditing(contentEl, agent, fileId, () => {
@@ -13504,7 +13514,7 @@ function capitalizeAgent(agent) {
  let chatScrollState = null;
 
  function showAgentTab(tab) {
-    if (!['chat', 'inbox', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
+    if (!['chat', 'messages', 'projects', 'workspace', 'preview'].includes(tab)) tab = 'chat';
     if (agentActiveTab === 'chat' && tab !== 'chat') {
         chatScrollState = {
             top: messagesContainer.scrollTop,
@@ -13684,7 +13694,7 @@ function renderMessageWithQuote(text) {
 
     const [, speaker, quotedText, rest] = match;
     const quoteHtml = `
-        <div class="message-quote-chip" title="${escapeHtml(quotedText)}">
+        <div class="message-quote-chip" title="${escapeHtml(speaker + ': ' + quotedText)}">
             <span class="message-quote-speaker">${escapeHtml(speaker)}:</span>
             <span class="message-quote-text">${escapeHtml(quotedText)}</span>
         </div>
@@ -14585,6 +14595,78 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (quoteAgent && activeDiscussTask[quoteAgent]) delete activeDiscussTask[quoteAgent];
         }
 
+        // The button is position:fixed but its markup sits in the chat panel,
+        // which is display:none while any other tab is showing - so it lives on
+        // the page itself.
+        document.body.appendChild(selectionReplyBtn);
+
+        // Highlight text anywhere in the agent's office and send it to the
+        // chat as a quote. The quote's label says where it came from, so the
+        // agent knows exactly what is being referred to - for example:
+        //   Projects & Tasks tab > task "Welcome email" (not started) > plan > Steps
+        // Chat messages keep their plain "speaker" label and the "Reply" wording.
+        const AGENT_TAB_LABELS = { chat: 'Chat', messages: 'Messages', projects: 'Projects & Tasks', workspace: 'Workspace', preview: 'Preview' };
+
+        // A click that ends a text selection shouldn't also fire the row's own
+        // click action (which would re-render and wipe the selection).
+        function hasTextSelection() {
+            return !!window.getSelection().toString().trim();
+        }
+
+        function taskReplyLabel(task) {
+            const bits = [String(task.status || '').replace('_', ' ')];
+            const step = getProjectStepInfo(task);
+            if (step) bits.unshift(`step ${step.step} of project “${(projects[task.projectId] || {}).name || ''}”`);
+            return `task “${task.name || task.task}” (${bits.join(', ')})`;
+        }
+
+        // Which part of a task's plan the text is in: the nearest "What will
+        // get done / Steps / Final output" label above it.
+        function planSectionFor(el, panel) {
+            const body = panel.firstElementChild;
+            let node = el;
+            while (node && node.parentElement !== body) node = node.parentElement;
+            while (node) {
+                if (node.classList && node.classList.contains('task-plan-label')) return node.textContent.trim();
+                node = node.previousElementSibling;
+            }
+            return '';
+        }
+
+        // { speaker, fromChat } for text that can be quoted, or null.
+        function describeReplySource(startEl) {
+            const messageEl = startEl.closest('.message');
+            if (messageEl && messagesContainer.contains(messageEl)) {
+                const agentClass = Array.from(messageEl.classList).find(c => c.startsWith('agent-'));
+                return { speaker: agentClass ? capitalizeAgent(agentClass.replace('agent-', '')) : 'You', fromChat: true };
+            }
+            if (!currentAgent || !startEl.closest('#third-pane') || startEl.closest('input, textarea')) return null;
+            const panel = startEl.closest('.agent-tab-panel');
+            const tab = panel ? panel.dataset.agentPanel : null;
+            if (!tab || tab === 'chat') return null;
+
+            const parts = [`${AGENT_TAB_LABELS[tab]} tab`];
+            const owner = startEl.closest('[data-reply-source]');
+            const card = tab === 'messages' ? startEl.closest('.insight-message') : null;
+            if (!owner && !card) return null;   // headings, empty-state notes, etc. aren't worth quoting
+            if (owner) parts.push(owner.dataset.replySource);
+            if (card) {
+                const header = card.querySelector('.insights-header');
+                if (header) parts.push(`“${header.textContent.trim().replace(/\.+$/, '')}” card`);
+            }
+            const plan = startEl.closest('.task-plan-panel');
+            if (plan) {
+                if (startEl.closest('.task-review-box')) {
+                    parts.push(startEl.closest('.task-social-draft') ? 'review - drafted social post' : 'review');
+                } else {
+                    parts.push('plan');
+                    const section = planSectionFor(startEl, plan);
+                    if (section) parts.push(section);
+                }
+            }
+            return { speaker: parts.join(' > '), fromChat: false };
+        }
+
         document.addEventListener('mouseup', (e) => {
             if (e.target === selectionReplyBtn) return;
 
@@ -14594,20 +14676,24 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 hideSelectionReplyBtn();
                 return;
             }
-
-            const range = selection.getRangeAt(0);
-            const container = range.commonAncestorContainer;
-            const containerEl = container.nodeType === 1 ? container : container.parentElement;
-            const messageEl = containerEl ? containerEl.closest('.message') : null;
-            if (!messageEl || !messagesContainer.contains(messageEl)) {
+            // Text selected inside a field you're typing in isn't a quote.
+            const active = document.activeElement;
+            if (active && /^(INPUT|TEXTAREA)$/.test(active.tagName) && active.selectionStart !== active.selectionEnd) {
                 hideSelectionReplyBtn();
                 return;
             }
 
-            const agentClass = Array.from(messageEl.classList).find(c => c.startsWith('agent-'));
-            const speaker = agentClass ? capitalizeAgent(agentClass.replace('agent-', '')) : 'You';
+            const range = selection.getRangeAt(0);
+            const container = range.commonAncestorContainer;
+            const containerEl = container.nodeType === 1 ? container : container.parentElement;
+            const source = containerEl ? describeReplySource(containerEl) : null;
+            if (!source) {
+                hideSelectionReplyBtn();
+                return;
+            }
 
-            pendingSelectionQuote = { text, speaker };
+            pendingSelectionQuote = { text, speaker: source.speaker };
+            selectionReplyBtn.textContent = source.fromChat ? '↩ Reply' : '↩ Send to chat';
 
             const rect = range.getBoundingClientRect();
             selectionReplyBtn.style.left = `${Math.max(8, rect.left)}px`;
@@ -14624,6 +14710,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
             window.getSelection().removeAllRanges();
             hideSelectionReplyBtn();
+            // The quote waits above the chat box - take Francis there.
+            showAgentTab('chat');
             inputBox.focus();
         });
 
@@ -14859,11 +14947,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             ['learn-message-card', 'personal-message-card', 'thoughts-message-card', 'personal-thoughts-message-card', 'calendar-checkin-card', 'todo-morning-checkin-card']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.remove(); });
 
-            // The questions and suggestions live in the Inbox tab rather than the
+            // The questions and suggestions live in the Messages tab rather than the
             // conversation. The anchor is still used for the "when it first
             // showed up" time on each card; where it sits in the chat no
             // longer matters.
-            const inboxEl = document.getElementById('inbox-tab-cards');
+            const inboxEl = document.getElementById('messages-tab-cards');
             const inboxCards = [
                 ['learn', getFlattenedLearnItems(learnQuestionsData).length > 0, buildLearnCard],
                 ['personal', getFlattenedPersonalItems(personalQuestionsData).length > 0, buildPersonalCard],
@@ -14876,7 +14964,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const card = anchor ? build(anchor.timestamp) : null;
                 if (card) { inboxEl.appendChild(card); inboxCount++; }
             });
-            document.getElementById('inbox-tab-empty').style.display = inboxCount ? 'none' : 'block';
+            document.getElementById('messages-tab-empty').style.display = inboxCount ? 'none' : 'block';
 
             const calendarCheckinAnchor = resolveInsightCardAnchor('calendarCheckin', currentAgent === 'ashanti' && !!calendarCheckinData);
             const calendarCheckinCard = calendarCheckinAnchor ? buildCalendarCheckinCard() : null;
@@ -15099,7 +15187,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // section reloads, so this is checked from each load*Section.)
         let promptScrollPending = false;
 
-        // The question and suggestion cards are in the Inbox tab now, so nothing
+        // The question and suggestion cards are in the Messages tab now, so nothing
         // in the chat itself is left to wait on.
         function countPendingPromptItems() {
             return 0;
