@@ -5284,6 +5284,7 @@ body.va-open #notification-toasts {
         .ws-tool-note .wp-slide { cursor: crosshair; }
         .ws-tool-edit .wp-slide-heading, .ws-tool-edit .wp-slide-subtitle, .ws-tool-edit .wp-slide-bullets { outline: 1px dashed #667eea; outline-offset: 3px; cursor: text; }
         .ws-tool-edit .wp-slide-heading:focus, .ws-tool-edit .wp-slide-subtitle:focus, .ws-tool-edit .wp-slide-bullets:focus { outline: 2px solid #667eea; }
+        .ws-code-view { margin: 0; padding: 14px 16px; font-family: Consolas, Menlo, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: #2b2b2b; }
         .ws-view-toggle { display: inline-flex; border: 1px solid #c9cde0; border-radius: 6px; overflow: hidden; }
         .ws-view-toggle button { border: none; background: #f0f1f8; padding: 5px 10px; font-size: 12px; cursor: pointer; color: #333; }
         .ws-view-toggle button.active { background: #667eea; color: white; }
@@ -13296,7 +13297,7 @@ let wsTool = 'view';   // 'view' | 'note' | 'edit'
 let wsNotesPaneHidden = false;
 let workspaceNotes = {};   // agent -> fileId -> [annotation]
 const wsState = { agent: null, fileId: null, kind: 'point', canEdit: false, baseline: null, bytesDirty: false, layoutQueued: false, commitTimer: null, popover: null, resizeObserver: null,
-    pdfText: false, domPlaces: {}, frameSig: '', offView: new Set(), otherPage: new Set(), flashDom: null };
+    altView: false, domPlaces: {}, frameSig: '', offView: new Set(), otherPage: new Set(), flashDom: null };
 
 function loadWorkspaceNotes() {
     try { workspaceNotes = JSON.parse(localStorage.getItem('workspaceNotes') || '{}') || {}; } catch (e) { workspaceNotes = {}; }
@@ -13408,7 +13409,7 @@ function openWorkspaceViewer(agent, fileId) {
     if (wsState.fileId && (wsState.agent !== agent || wsState.fileId !== fileId)) commitViewerEdits(true);
     wsState.agent = agent;
     wsState.fileId = fileId;
-    wsState.pdfText = false;
+    wsState.altView = false;
     wsTool = 'view';
     closeWsPopover();
     wsEl('workspace-tasks-list').style.display = 'none';
@@ -13438,14 +13439,15 @@ function renderWorkspaceViewer() {
     wsEl('ws-file-sub').textContent = task ? `from task “${task.name || task.task}”` : (file.role === 'input' ? 'provided by you' : 'shared by you');
 
     const content = wsEl('ws-doc-content');
-    content.innerHTML = buildWorkspacePreviewBody(file, { pdfAsText: !!wsState.pdfText });
+    content.innerHTML = buildWorkspacePreviewBody(file, { pdfAsText: !!wsState.altView, codeView: !!wsState.altView });
     wsEl('ws-doc-wrap').dataset.replySource = `file “${file.name}”` + (task ? ` (from task “${task.name || task.task}”)` : '');
 
     const docEl = content.querySelector('.wp-doc-preview');
     const tableEl = content.querySelector('.wp-table-preview');
     const slidesEl = content.querySelector('.wp-slide');
     const htmlFrame = content.querySelector('iframe.ws-html-frame');
-    wsState.kind = htmlFrame ? 'html' : ((docEl || slidesEl) ? 'text' : (tableEl ? 'table' : 'point'));
+    const codeEl = content.querySelector('.ws-code-view');
+    wsState.kind = codeEl ? 'code' : htmlFrame ? 'html' : ((docEl || slidesEl) ? 'text' : (tableEl ? 'table' : 'point'));
     // A PDF made by the team keeps its source text, so Edit works on that text
     // and the PDF is rebuilt from it; slides are edited right on the slides.
     const pdfHasText = file.fileType === 'pdf' && !!file.content;
@@ -13492,29 +13494,43 @@ function setWsTool(tool) {
         wsEl('ws-tool-hint').textContent = "Editing isn't available for this file - it has no editable text (a web page, or a file that was uploaded rather than made by the team). Leave a Note and the agent will make the change.";
         return;
     }
+    if (tool === 'note' && wsState.kind === 'code') {
+        wsEl('ws-tool-hint').textContent = 'Switch back to the page to leave notes - they belong to a spot on the page, not to the code.';
+        return;
+    }
     if (wsTool === 'edit') commitViewerEdits(true);
     flushWsPopover();
     wsTool = tool;
     // A PDF is edited through its text: switch to the text version first.
-    if (tool === 'edit' && file && file.fileType === 'pdf' && !wsState.pdfText) { wsState.pdfText = true; renderWorkspaceViewer(); }
+    if (tool === 'edit' && file && file.fileType === 'pdf' && !wsState.altView) { wsState.altView = true; renderWorkspaceViewer(); }
     if (tool === 'edit') wsState.baseline = wsSnapshot();
     applyWsTool();
 }
 
-// PDF page <-> its text version (only for PDFs the team made, which keep their text).
-function setWsPdfView(showText) {
+// A second way of looking at a file: a PDF's page <-> its text (only for PDFs the
+// team made, which keep their text), and a web page <-> its HTML code.
+function wsIsHtmlFile(file) {
+    return file.fileType === 'html' || (!file.fileType && (/^text\/html/i.test(file.mimeType || '') || /\.html?$/i.test(file.name || '')));
+}
+
+function wsHasAltView(file) {
+    return (file.fileType === 'pdf' && !!file.content) || (wsIsHtmlFile(file) && !!file.data);
+}
+
+function setWsAltView(showText) {
     const file = wsFile();
-    if (!file || file.fileType !== 'pdf' || !file.content || !!wsState.pdfText === !!showText) return;
+    if (!file || !wsHasAltView(file) || !!wsState.altView === !!showText) return;
     flushWsPopover();
     const pending = commitViewerEdits(true);
     if (!showText && wsTool === 'edit') wsTool = 'view';
-    wsState.pdfText = !!showText;
+    if (showText && file.fileType !== 'pdf' && wsTool !== 'view') wsTool = 'view';   // a web page's code is only for reading
+    wsState.altView = !!showText;
     renderWorkspaceViewer();
     if (wsTool === 'edit') wsState.baseline = wsSnapshot();
     if (!showText && pending) {
         wsEl('ws-tool-hint').textContent = 'Rebuilding the PDF from your changes…';
         pending.then(() => {
-            if (wsState.fileId === file.id && !wsState.pdfText) { renderWorkspaceViewer(); wsEl('ws-tool-hint').textContent = ''; }
+            if (wsState.fileId === file.id && !wsState.altView) { renderWorkspaceViewer(); wsEl('ws-tool-hint').textContent = ''; }
         });
     }
 }
@@ -13546,9 +13562,12 @@ function applyWsTool() {
     wsEl('ws-capture').style.display = (wsTool === 'note' && wsState.kind === 'point') ? 'block' : 'none';
     const file = wsFile();
     const toggle = wsEl('ws-view-toggle');
-    const hasText = !!(file && file.fileType === 'pdf' && file.content);
-    toggle.style.display = hasText ? '' : 'none';
-    toggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', (b.dataset.view === 'text') === !!wsState.pdfText));
+    toggle.style.display = (file && wsHasAltView(file)) ? '' : 'none';
+    const isHtml = !!(file && wsIsHtmlFile(file));
+    toggle.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('active', (b.dataset.view === 'text') === !!wsState.altView);
+        b.textContent = b.dataset.view === 'text' ? (isHtml ? 'Code' : 'Text') : (isHtml ? 'Page' : 'PDF page');
+    });
     if (wsState.kind === 'html') wsPostToFrame({ type: 'mode', note: wsTool === 'note' });
 }
 
@@ -13870,8 +13889,8 @@ function locateWsAnnotation(ann, blocks, content) {
 function wsAnnOnThisView(ann) {
     const file = wsFile();
     const k = ann.anchor.kind;
-    if (file && file.fileType === 'pdf' && file.content) return (k === 'point') !== !!wsState.pdfText;
-    if (wsState.kind === 'html') return k === 'dom';
+    if (file && wsIsHtmlFile(file)) return wsState.kind === 'html' && k === 'dom';
+    if (file && file.fileType === 'pdf' && file.content) return (k === 'point') !== !!wsState.altView;
     return k !== 'dom';
 }
 
@@ -14219,7 +14238,7 @@ function renderNotesPane() {
             top.appendChild(chip);
         }
         const elsewhere = wsState.otherPage.has(ann.id) ? 'on another page'
-            : (wsState.offView.has(ann.id) ? (wsState.kind === 'html' ? 'not tied to a page' : (ann.anchor.kind === 'point' ? 'on the PDF page' : 'in the text view')) : '');
+            : (wsState.offView.has(ann.id) ? (wsState.kind === 'code' ? 'on the page view' : wsState.kind === 'html' ? 'not tied to a page' : (ann.anchor.kind === 'point' ? 'on the PDF page' : 'in the text view')) : '');
         if (elsewhere) {
             const chip = document.createElement('span');
             chip.className = 'ws-note-chip away';
@@ -14272,8 +14291,9 @@ function jumpToWsAnnotation(id) {
     const file = wsFile();
     if (ann && file) {
         if (!wsAnnOnThisView(ann)) {
-            if (file.fileType === 'pdf' && file.content) {
-                setWsPdfView(ann.anchor.kind !== 'point');
+            const switchTo = file.fileType === 'pdf' ? ann.anchor.kind !== 'point' : (ann.anchor.kind === 'dom' ? false : null);
+            if (wsHasAltView(file) && switchTo !== null) {
+                setWsAltView(switchTo);
                 setTimeout(() => jumpToWsAnnotation(id), 80);
             } else {
                 wsEl('ws-tool-hint').textContent = "That note was made before notes were tied to a page of the site, so it can't be placed on one. Delete it and add it again on the page it belongs to.";
@@ -14415,7 +14435,7 @@ function initWorkspaceViewer() {
         const fileId = wsState.fileId;
         Promise.resolve(commitViewerEdits(true)).then(() => downloadWorkspaceFileTask(agent, fileId));   // after the file is rebuilt from any edits
     });
-    wsEl('ws-view-toggle').querySelectorAll('button').forEach(b => b.addEventListener('click', () => setWsPdfView(b.dataset.view === 'text')));
+    wsEl('ws-view-toggle').querySelectorAll('button').forEach(b => b.addEventListener('click', () => setWsAltView(b.dataset.view === 'text')));
     window.addEventListener('message', onWsFrameMessage);
     const wrap = wsEl('ws-doc-wrap');
     wrap.addEventListener('mouseup', onWsNoteMouseUp);
@@ -14458,6 +14478,14 @@ function openFileInWorkspace(agent, fileId) {
 // page's Preview panel) can wrap it in their own toolbar/controls instead of
 // this one's plain filename display.
 function buildWorkspacePreviewBody(file, opts) {
+    // A web page - made by the team, or a .html file that came in without a type.
+    if (wsIsHtmlFile(file) && file.data) {
+        if (opts && opts.codeView) {
+            const source = base64ToText(file.data);
+            return `<div class="wp-preview-body"><pre class="ws-code-view">${escapeHtml(source !== null ? source : (file.content || ''))}</pre></div>`;
+        }
+        return `<iframe class="wp-pdf-frame ws-html-frame" sandbox="allow-scripts" src="${buildHtmlFrameSrc(file)}"></iframe>`;
+    }
     if (file.fileType === 'pdf') {
         // opts.pdfAsText: the Workspace's text version of a PDF the team made.
         if (opts && opts.pdfAsText && file.content) return `<div class="wp-preview-body">${buildWorkspaceDocPreview(file)}</div>`;
