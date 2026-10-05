@@ -7,7 +7,7 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, 'reconfigure'):
         _stream.reconfigure(encoding='utf-8', errors='replace')
 
-from flask import Flask, request, jsonify, send_from_directory, Response, session
+from flask import Flask, request, jsonify, send_from_directory, Response, session, redirect
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import anthropic
@@ -6317,6 +6317,409 @@ CLASSIFY_TASK_TOOL = {
 }
 
 
+# --- Social accounts and publishing ---------------------------------------
+# Sasha drafts posts; nothing is ever published by an agent. Connecting an
+# account happens in Settings > Agents > Sasha (OAuth against the platform's
+# own login page), and a post only goes out when Francis presses Publish on
+# the review screen, which calls /social/publish with confirm=true. No chat
+# tool can reach any of this, so nothing an agent writes can post itself.
+#
+# Each platform is a small provider: is it configured (developer-app keys in
+# the server environment), the login URL, finishing the login, and publishing
+# text. A "practice" provider connects instantly and only records what would
+# have been posted, so the whole flow can be rehearsed without any account.
+SOCIAL_FILE = _data_path('social_accounts.json')
+SOCIAL_LOG_FILE = _data_path('social_publish_log.jsonl')
+LINKEDIN_API_VERSION = os.getenv('LINKEDIN_API_VERSION', '202609')
+FACEBOOK_GRAPH_VERSION = os.getenv('FACEBOOK_GRAPH_VERSION', 'v25.0')
+SOCIAL_LABELS = {'linkedin': 'LinkedIn', 'facebook': 'Facebook Page', 'practice': 'Practice mode'}
+SOCIAL_MAX_LENGTH = {'linkedin': 3000, 'facebook': 20000, 'practice': 20000}
+social_lock = threading.Lock()
+_social_recent_publishes = {}   # (publish id, platform) -> result, so a double click never double-posts
+
+
+class SocialError(Exception):
+    pass
+
+
+def _social_load():
+    if os.path.exists(SOCIAL_FILE):
+        try:
+            with open(SOCIAL_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _social_save(data):
+    with open(SOCIAL_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+def _social_error_text(status, body):
+    message = ''
+    try:
+        parsed = json.loads(body)
+        err = parsed.get('error') if isinstance(parsed, dict) else None
+        if isinstance(err, dict):
+            message = err.get('message') or ''
+        elif isinstance(err, str):
+            message = parsed.get('error_description') or err
+        if not message and isinstance(parsed, dict):
+            message = parsed.get('message') or ''
+    except ValueError:
+        pass
+    message = message or body[:200]
+    message = re.sub(r'(access_token|client_secret|fb_exchange_token)=[^&\s"]+', r'\1=***', message)
+    return f"{message.strip()[:300]} (HTTP {status})"
+
+
+def _social_request(method, url, headers=None, form=None, json_body=None, timeout=25):
+    data = None
+    hdrs = dict(headers or {})
+    if form is not None:
+        data = urllib.parse.urlencode(form).encode('utf-8')
+        hdrs.setdefault('Content-Type', 'application/x-www-form-urlencoded')
+    elif json_body is not None:
+        data = json.dumps(json_body).encode('utf-8')
+        hdrs.setdefault('Content-Type', 'application/json')
+    request_obj = urllib.request.Request(url, data=data, headers=hdrs, method=method)
+    try:
+        with urllib.request.urlopen(request_obj, timeout=timeout) as resp:
+            body = resp.read().decode('utf-8', 'replace')
+            status = resp.status
+            resp_headers = {k.lower(): v for k, v in resp.headers.items()}
+    except urllib.error.HTTPError as e:
+        raise SocialError(_social_error_text(e.code, e.read().decode('utf-8', 'replace')))
+    except urllib.error.URLError as e:
+        raise SocialError(f"Couldn't reach the service: {e.reason}")
+    parsed = {}
+    if body.strip().startswith(('{', '[')):
+        try:
+            parsed = json.loads(body)
+        except ValueError:
+            parsed = {}
+    return status, resp_headers, parsed
+
+
+def _social_redirect_uri(platform):
+    base = (os.getenv('PUBLIC_BASE_URL') or request.url_root).rstrip('/')
+    return f"{base}/social/callback/{platform}"
+
+
+def _social_expires_at(seconds):
+    return (now_local() + timedelta(seconds=int(seconds))).isoformat()
+
+
+# -- LinkedIn (posts to the connected member's own profile) ------------------
+def _linkedin_configured():
+    return bool(os.getenv('LINKEDIN_CLIENT_ID') and os.getenv('LINKEDIN_CLIENT_SECRET'))
+
+
+def _linkedin_auth_url(state, redirect_uri):
+    return 'https://www.linkedin.com/oauth/v2/authorization?' + urllib.parse.urlencode({
+        'response_type': 'code', 'client_id': os.getenv('LINKEDIN_CLIENT_ID'), 'redirect_uri': redirect_uri,
+        'state': state, 'scope': 'openid profile w_member_social'
+    })
+
+
+def _linkedin_finish(code, redirect_uri):
+    _, _, token = _social_request('POST', 'https://www.linkedin.com/oauth/v2/accessToken', form={
+        'grant_type': 'authorization_code', 'code': code, 'redirect_uri': redirect_uri,
+        'client_id': os.getenv('LINKEDIN_CLIENT_ID'), 'client_secret': os.getenv('LINKEDIN_CLIENT_SECRET')
+    })
+    access = token.get('access_token')
+    if not access:
+        raise SocialError('LinkedIn did not return an access token.')
+    _, _, info = _social_request('GET', 'https://api.linkedin.com/v2/userinfo', headers={'Authorization': f'Bearer {access}'})
+    if not info.get('sub'):
+        raise SocialError("Couldn't read your LinkedIn profile.")
+    return {
+        'accessToken': access,
+        # Self-serve LinkedIn tokens last about 60 days and cannot be refreshed.
+        'expiresAt': _social_expires_at(token.get('expires_in') or 5184000),
+        'accountName': info.get('name') or 'LinkedIn member',
+        'authorUrn': f"urn:li:person:{info['sub']}"
+    }
+
+
+# LinkedIn's "little" text format treats these characters as syntax; unescaped
+# they can swallow or cut off the rest of a post. #tags are turned into real
+# hashtags with LinkedIn's hashtag template instead.
+_LINKEDIN_RESERVED = re.compile(r'([\\|{}@\[\]()<>#*_~])')
+
+
+def _linkedin_commentary(text):
+    out = []
+    pos = 0
+    for match in re.finditer(r'(?<![\w\\])#([A-Za-z][A-Za-z0-9]*)', text):
+        out.append(_LINKEDIN_RESERVED.sub(r'\\\1', text[pos:match.start()]))
+        out.append('{hashtag|\\#|' + match.group(1) + '}')
+        pos = match.end()
+    out.append(_LINKEDIN_RESERVED.sub(r'\\\1', text[pos:]))
+    return ''.join(out)
+
+
+def _linkedin_publish(account, text):
+    if account.get('expiresAt') and datetime.fromisoformat(account['expiresAt']) <= now_local():
+        raise SocialError('The LinkedIn connection has expired - reconnect it in Settings > Agents > Sasha.')
+    _, headers, _ = _social_request('POST', 'https://api.linkedin.com/rest/posts', headers={
+        'Authorization': f"Bearer {account['accessToken']}",
+        'Linkedin-Version': LINKEDIN_API_VERSION,
+        'X-Restli-Protocol-Version': '2.0.0'
+    }, json_body={
+        'author': account['authorUrn'],
+        'commentary': _linkedin_commentary(text),
+        'visibility': 'PUBLIC',
+        'distribution': {'feedDistribution': 'MAIN_FEED', 'targetEntities': [], 'thirdPartyDistributionChannels': []},
+        'lifecycleState': 'PUBLISHED',
+        'isReshareDisabledByAuthor': False
+    })
+    post_id = headers.get('x-restli-id') or ''
+    return {'id': post_id, 'url': f"https://www.linkedin.com/feed/update/{post_id}/" if post_id else None}
+
+
+# -- Facebook Pages ------------------------------------------------------------
+def _facebook_configured():
+    return bool(os.getenv('META_APP_ID') and os.getenv('META_APP_SECRET'))
+
+
+def _facebook_auth_url(state, redirect_uri):
+    return f"https://www.facebook.com/{FACEBOOK_GRAPH_VERSION}/dialog/oauth?" + urllib.parse.urlencode({
+        'client_id': os.getenv('META_APP_ID'), 'redirect_uri': redirect_uri, 'state': state,
+        'scope': 'pages_show_list,pages_manage_posts,pages_read_engagement'
+    })
+
+
+def _facebook_finish(code, redirect_uri):
+    graph = f"https://graph.facebook.com/{FACEBOOK_GRAPH_VERSION}"
+    app_creds = {'client_id': os.getenv('META_APP_ID'), 'client_secret': os.getenv('META_APP_SECRET')}
+    _, _, short = _social_request('GET', f"{graph}/oauth/access_token?" + urllib.parse.urlencode(
+        dict(app_creds, redirect_uri=redirect_uri, code=code)))
+    if not short.get('access_token'):
+        raise SocialError('Facebook did not return an access token.')
+    _, _, long_lived = _social_request('GET', f"{graph}/oauth/access_token?" + urllib.parse.urlencode(
+        dict(app_creds, grant_type='fb_exchange_token', fb_exchange_token=short['access_token'])))
+    user_token = long_lived.get('access_token') or short['access_token']
+    # Page tokens fetched with a long-lived user token don't expire.
+    _, _, accounts = _social_request('GET', f"{graph}/me/accounts?" + urllib.parse.urlencode(
+        {'fields': 'id,name,access_token', 'access_token': user_token}))
+    pages = [{'id': p['id'], 'name': p.get('name') or p['id'], 'accessToken': p['access_token']}
+             for p in (accounts.get('data') or []) if p.get('id') and p.get('access_token')]
+    if not pages:
+        raise SocialError("No Facebook Pages came back. Log in with an account that manages a Page and allow access to it.")
+    return {'pages': pages, 'pageId': pages[0]['id'], 'accountName': pages[0]['name'], 'expiresAt': None}
+
+
+def _facebook_publish(account, text):
+    page = next((p for p in account.get('pages', []) if p['id'] == account.get('pageId')), None)
+    if not page:
+        raise SocialError('Choose which Facebook Page to post to in Settings > Agents > Sasha.')
+    _, _, result = _social_request('POST', f"https://graph.facebook.com/{FACEBOOK_GRAPH_VERSION}/{page['id']}/feed",
+                                   form={'message': text, 'access_token': page['accessToken']})
+    post_id = result.get('id') or ''
+    return {'id': post_id, 'url': f"https://www.facebook.com/{post_id}" if post_id else None}
+
+
+# -- Practice mode (nothing leaves the app) ---------------------------------------
+def _practice_publish(account, text):
+    return {'id': f"practice-{uuid.uuid4().hex[:8]}", 'url': None, 'practice': True}
+
+
+SOCIAL_PROVIDERS = {
+    'linkedin': {
+        'configured': _linkedin_configured, 'auth_url': _linkedin_auth_url, 'finish': _linkedin_finish, 'publish': _linkedin_publish,
+        'setup': [
+            "Create an app at linkedin.com/developers/apps (it asks for a LinkedIn Page to attach it to).",
+            "On the app's Products tab, add \"Share on LinkedIn\" and \"Sign In with LinkedIn using OpenID Connect\".",
+            "On the Auth tab, add the redirect URL shown below.",
+            "Put the Client ID and Client Secret in the server settings LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET, then restart the app."
+        ]
+    },
+    'facebook': {
+        'configured': _facebook_configured, 'auth_url': _facebook_auth_url, 'finish': _facebook_finish, 'publish': _facebook_publish,
+        'setup': [
+            "At developers.facebook.com, create an app and add the Facebook Login product.",
+            "Add the redirect URL shown below under Valid OAuth Redirect URIs, and make sure you are an admin or tester of the app.",
+            "The app asks for the permissions pages_show_list, pages_manage_posts and pages_read_engagement. In development mode these work for Pages you manage.",
+            "Put the App ID and App Secret in the server settings META_APP_ID and META_APP_SECRET, then restart the app."
+        ]
+    },
+    'practice': {'configured': lambda: True, 'publish': _practice_publish, 'setup': []}
+}
+
+
+def _social_public_status():
+    saved = _social_load()
+    platforms = []
+    for pid, provider in SOCIAL_PROVIDERS.items():
+        account = saved.get(pid) or {}
+        connected = bool(account)
+        expires_at = account.get('expiresAt')
+        expired = bool(expires_at and datetime.fromisoformat(expires_at) <= now_local())
+        entry = {
+            'id': pid, 'label': SOCIAL_LABELS[pid], 'configured': provider['configured'](),
+            'connected': connected, 'accountName': account.get('accountName'),
+            'expiresAt': expires_at, 'expired': expired,
+            'maxLength': SOCIAL_MAX_LENGTH[pid], 'setup': provider['setup'],
+            'redirectUri': _social_redirect_uri(pid) if 'auth_url' in provider else None
+        }
+        if pid == 'facebook' and connected:
+            entry['pages'] = [{'id': p['id'], 'name': p['name']} for p in account.get('pages', [])]
+            entry['pageId'] = account.get('pageId')
+        platforms.append(entry)
+    return platforms
+
+
+@app.route('/social/status', methods=['GET'])
+def social_status():
+    return jsonify({'success': True, 'platforms': _social_public_status()})
+
+
+# Navigates the browser to the platform's own login page. The random state
+# tied to the session is what the callback checks, so a link someone else
+# crafts can't connect an account to this one.
+@app.route('/social/connect/<platform>', methods=['GET'])
+def social_connect(platform):
+    provider = SOCIAL_PROVIDERS.get(platform)
+    if not provider or 'auth_url' not in provider:
+        return jsonify({'success': False, 'error': 'Unknown platform'}), 404
+    if not provider['configured']():
+        return jsonify({'success': False, 'error': f"{SOCIAL_LABELS[platform]} isn't set up on the server yet."}), 400
+    state = secrets.token_urlsafe(24)
+    session['social_oauth'] = {'platform': platform, 'state': state}
+    return redirect(provider['auth_url'](state, _social_redirect_uri(platform)))
+
+
+@app.route('/social/connect/practice', methods=['POST'])
+def social_connect_practice():
+    with social_lock:
+        saved = _social_load()
+        saved['practice'] = {'accountName': 'Practice mode - nothing is posted', 'connectedAt': now_local().isoformat()}
+        _social_save(saved)
+    return jsonify({'success': True})
+
+
+@app.route('/social/callback/<platform>', methods=['GET'])
+def social_callback(platform):
+    def back(**params):
+        return redirect('/?' + urllib.parse.urlencode(dict(params, platform=platform)))
+
+    saved_state = session.pop('social_oauth', None)
+    provider = SOCIAL_PROVIDERS.get(platform)
+    if not provider or 'finish' not in provider:
+        return back(social='error', message='Unknown platform')
+    if not saved_state or saved_state.get('platform') != platform or not secrets.compare_digest(
+            str(saved_state.get('state', '')), str(request.args.get('state', ''))):
+        return back(social='error', message="That connection attempt didn't match this browser session - try Connect again.")
+    denied = request.args.get('error_description') or request.args.get('error')
+    if denied:
+        return back(social='error', message=str(denied)[:200])
+    code = request.args.get('code')
+    if not code:
+        return back(social='error', message='No authorization code came back.')
+    try:
+        account = provider['finish'](code, _social_redirect_uri(platform))
+    except SocialError as e:
+        print(f"Social connect error ({platform}): {e}")
+        return back(social='error', message=str(e)[:200])
+    except Exception as e:
+        print(f"Social connect error ({platform}): {e}")
+        return back(social='error', message="Something went wrong finishing the connection.")
+    account['connectedAt'] = now_local().isoformat()
+    with social_lock:
+        saved = _social_load()
+        saved[platform] = account
+        _social_save(saved)
+    return back(social='connected')
+
+
+@app.route('/social/disconnect/<platform>', methods=['POST'])
+def social_disconnect(platform):
+    if platform not in SOCIAL_PROVIDERS:
+        return jsonify({'success': False, 'error': 'Unknown platform'}), 404
+    with social_lock:
+        saved = _social_load()
+        saved.pop(platform, None)
+        _social_save(saved)
+    return jsonify({'success': True})
+
+
+@app.route('/social/page', methods=['POST'])
+def social_choose_page():
+    data = request.json or {}
+    with social_lock:
+        saved = _social_load()
+        account = saved.get('facebook')
+        if not account or not any(p['id'] == data.get('pageId') for p in account.get('pages', [])):
+            return jsonify({'success': False, 'error': 'Unknown page'}), 400
+        account['pageId'] = data['pageId']
+        account['accountName'] = next(p['name'] for p in account['pages'] if p['id'] == data['pageId'])
+        _social_save(saved)
+    return jsonify({'success': True})
+
+
+def _social_log(entry):
+    try:
+        with open(SOCIAL_LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry) + '\n')
+    except OSError as e:
+        print(f"Could not write the publish log: {e}")
+
+
+# The only way anything is published. It runs when Francis presses Publish on
+# the review screen: it needs confirm=true, posts exactly the text he sent
+# (which he can edit there), and records every attempt. publishId makes a
+# double click or a retry safe - a platform that already succeeded for that
+# id returns its earlier result instead of posting a second time.
+@app.route('/social/publish', methods=['POST'])
+def social_publish():
+    data = request.json or {}
+    if data.get('confirm') is not True:
+        return jsonify({'success': False, 'error': 'Publishing needs explicit confirmation.'}), 400
+    text = str(data.get('text') or '').strip()
+    platforms = [p for p in (data.get('platforms') or []) if p in SOCIAL_PROVIDERS]
+    publish_id = str(data.get('publishId') or '').strip()[:80]
+    if not text:
+        return jsonify({'success': False, 'error': 'There is nothing to post.'}), 400
+    if not platforms:
+        return jsonify({'success': False, 'error': 'Choose at least one account.'}), 400
+    if not publish_id:
+        return jsonify({'success': False, 'error': 'Missing publish id.'}), 400
+
+    results = []
+    for platform in dict.fromkeys(platforms):
+        with social_lock:
+            cached = _social_recent_publishes.get((publish_id, platform))
+            account = _social_load().get(platform)
+            if cached:
+                results.append(cached)
+                continue
+            result = {'platform': platform, 'label': SOCIAL_LABELS[platform]}
+            try:
+                if not account:
+                    raise SocialError(f"{SOCIAL_LABELS[platform]} isn't connected.")
+                if len(text) > SOCIAL_MAX_LENGTH[platform]:
+                    raise SocialError(f"That's {len(text)} characters; {SOCIAL_LABELS[platform]} allows {SOCIAL_MAX_LENGTH[platform]}.")
+                outcome = SOCIAL_PROVIDERS[platform]['publish'](account, text)
+                result.update(success=True, id=outcome.get('id'), url=outcome.get('url'), practice=bool(outcome.get('practice')))
+            except SocialError as e:
+                result.update(success=False, error=str(e))
+            except Exception as e:
+                print(f"Social publish error ({platform}): {e}")
+                result.update(success=False, error='Something went wrong while posting.')
+            if result['success']:
+                _social_recent_publishes[(publish_id, platform)] = result
+            _social_log({
+                'ts': now_local().isoformat(), 'platform': platform, 'success': result['success'],
+                'practice': result.get('practice', False), 'postId': result.get('id'), 'error': result.get('error'),
+                'agent': data.get('agent'), 'taskId': data.get('taskId'), 'textPreview': text[:200]
+            })
+            results.append(result)
+    return jsonify({'success': True, 'results': results})
+
+
 # --- Task plans ---------------------------------------------------------
 # Every task gets a short plan when it is created: what will get done, the
 # steps the agent will take, and what the final output is. Francis sees it on
@@ -6329,6 +6732,14 @@ TASK_PLAN_CAPABILITIES = (
     "or messages, post anywhere, log in to any account, run code, or change anything outside this "
     "app. Plan only what the agent can actually do here; if the real-world follow-through is up to "
     "Francis, say so in the final output (for example, \"Francis then posts it\")."
+)
+
+
+TASK_PLAN_SASHA_NOTE = (
+    " Exception for Sasha: she can draft the text of a social media post. Once Francis has reviewed and "
+    "approved it, the app publishes it to his connected social accounts - so a social post's plan should "
+    "end with the finished draft, and its final output should say it is published after his approval "
+    "rather than that he posts it himself. She still can't make images or video."
 )
 
 
@@ -6375,7 +6786,7 @@ def tasks_plan():
             f"Task: {task_name + ' - ' if task_name else ''}{task_text}{project_line}\n\n"
             + (f"What Francis has told us about his {'life' if side == 'personal' else 'firm'} (use it only to tailor the plan - "
                f"never restate these facts inside the steps, and never invent details beyond them):\n{notes}\n\n" if notes else '')
-            + TASK_PLAN_CAPABILITIES + "\n\n"
+            + TASK_PLAN_CAPABILITIES + (TASK_PLAN_SASHA_NOTE if agent == 'sasha' else '') + "\n\n"
             "Return ONLY a JSON object with these keys:\n"
             "- goal: one or two sentences on what will get done and why it is worth doing.\n"
             "- steps: 3 to 6 short, concrete steps in the order the agent will take them, each starting with a verb.\n"
@@ -6562,6 +6973,13 @@ def chat():
                 "finish, say briefly what you produced and where to find it; Francis reviews the work before "
                 "the task counts as complete, so don't call it final or ask him to mark it complete."
             )
+            if agent == 'sasha':
+                system_prompt += (
+                    "\n\nWhen the finished work is a social media post, call draft_social_post with the final "
+                    "post text. You can't publish anything: Francis reviews your draft and, once he approves, "
+                    "publishes it himself to his connected accounts. Never claim you posted it, and keep any "
+                    "alternatives or notes in your reply rather than in the post text."
+                )
 
         # Tools: quick replies and referrals always available. propose_task lets
         # any agent turn a single settled piece of their own work into a real,
@@ -6581,6 +6999,8 @@ def chat():
         # A project is work passed between colleagues, which Manny sets up.
         if agent == 'manny':
             tools.insert(5, PROPOSE_PROJECT_TOOL)
+        if agent == 'sasha' and is_task_run:
+            tools.append(DRAFT_SOCIAL_POST_TOOL)
         if task_context:
             tools.append(UPDATE_TASK_TOOL)
         if agent == 'ashanti':
@@ -6675,6 +7095,7 @@ def chat():
         propose_project = None
         propose_tasks = []
         created_files = []
+        social_draft = None
         task_update = None
         calendar_update = None
         # A hard token-limit cutoff during a Started task leaves nothing to
@@ -6773,6 +7194,14 @@ def chat():
                     # A repeat call for the same assignee refines that proposal.
                     propose_tasks = [t for t in propose_tasks if t['agent'] != assignee]
                     propose_tasks.append({'agent': assignee, 'task': task_text, 'name': task_name})
+            elif block_name == 'draft_social_post' and agent == 'sasha' and is_task_run:
+                block_input = block.input or {}
+                draft_text = str(block_input.get('text', '')).strip()[:5000]
+                if draft_text:
+                    social_draft = {
+                        'text': draft_text,
+                        'platforms': [x for x in (block_input.get('platforms') or []) if x in ('linkedin', 'facebook')]
+                    }
             elif block_name == 'update_task' and task_context:
                 block_input = block.input or {}
                 new_task_text = str(block_input.get('task', '')).strip()
@@ -6892,6 +7321,7 @@ def chat():
             'propose_project': propose_project,
             'propose_tasks': propose_tasks,
             'created_files': created_files,
+            'social_draft': social_draft,
             'task_update': task_update,
             'calendar_update': calendar_update,
             'task_paused': task_paused
@@ -7162,6 +7592,37 @@ PROPOSE_PROJECT_TOOL = {
             }
         },
         "required": ["name", "summary", "tasks"]
+    }
+}
+
+# Acted on by the frontend, and only offered to Sasha while she is running a
+# task. It does NOT publish anything: it hands the app the finished post text,
+# which is shown on the task's review screen. Francis edits it there if he
+# likes and presses Publish himself (see /social/publish) - no tool lets an
+# agent post.
+DRAFT_SOCIAL_POST_TOOL = {
+    "name": "draft_social_post",
+    "description": (
+        "Call this when the final output of the task you are running is a social media post. Give "
+        "the finished post text exactly as it should appear - ready to publish, with no commentary, "
+        "options or explanations around it (those go in your reply). It does not post anything: "
+        "Francis reviews and edits the draft, then publishes it himself from the task's review "
+        "screen. Never say or imply that you posted it. Text only - you cannot attach images or video."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "The complete post, exactly as it should be published."
+            },
+            "platforms": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["linkedin", "facebook"]},
+                "description": "Which networks this wording is written for. Leave out if it works for any."
+            }
+        },
+        "required": ["text"]
     }
 }
 

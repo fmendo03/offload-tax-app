@@ -4810,6 +4810,79 @@ body.va-open #notification-toasts {
             flex-direction: column;
         }
 
+        /* Settings > Agents > Sasha: social accounts, and the publish review screen */
+        .social-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .social-row-name { font-weight: 700; font-size: 14px; color: #222; }
+        .social-row-status { font-size: 12px; color: #666; margin-top: 2px; }
+        .social-row-status.warn, .social-modal-results .warn, .social-modal-counter.warn { color: #b3261e; }
+        .social-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .social-row-sub { padding: 8px 0 0; font-size: 13px; color: #444; }
+
+        .social-setup { padding: 8px 0 4px; font-size: 12px; color: #444; }
+        .social-setup summary { cursor: pointer; color: #667eea; font-weight: 600; }
+        .social-setup ol { margin: 8px 0; padding-left: 20px; line-height: 1.5; }
+        .social-redirect { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+        .social-redirect code { background: #f2f2f6; padding: 4px 8px; border-radius: 4px; word-break: break-all; }
+
+        .social-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1300;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .social-modal {
+            background: white;
+            border-radius: 10px;
+            padding: 20px 22px;
+            width: min(620px, 100%);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .social-modal h3 { margin: 0 0 4px; font-size: 16px; }
+
+        .social-modal-text {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid #d8d8e6;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+        }
+
+        .social-modal-counter { font-size: 11px; color: #777; text-align: right; margin: 2px 0 8px; }
+        .social-modal-account { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+        .social-modal-summary { margin: 10px 0; padding: 8px 12px; background: #fff8e6; border-left: 4px solid #f5b301; border-radius: 6px; font-size: 13px; color: #4a3b00; }
+        .social-modal-results { font-size: 13px; line-height: 1.7; }
+        .social-modal-results a { margin-left: 6px; color: #667eea; }
+        .social-modal-buttons { justify-content: flex-end; margin-top: 12px; }
+
+        .task-social-draft {
+            margin: 8px 0 4px;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.7);
+            border: 1px dashed #d8c88a;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            color: #333;
+        }
+
         /* Task plan (what will get done / steps / final output) and the review box */
         .task-plan-panel {
             margin: 2px 0 10px 22px;
@@ -11125,6 +11198,342 @@ function findWorkspaceTaskById(agent, id) {
     return (workspaceTasks[agent] || []).find(t => t.id === id);
 }
 
+// ---- Social accounts and publishing (Sasha) -----------------------------
+// Accounts are connected in Settings > Agents > Sasha. Sasha only ever drafts
+// post text (the draft_social_post tool - see task.socialPost); nothing goes
+// out until Francis presses Publish in the review screen below, which is the
+// only caller of /social/publish.
+let socialPlatforms = null;
+
+async function loadSocialStatus() {
+    try {
+        const response = await fetch('/social/status');
+        const data = await response.json();
+        if (data.success) socialPlatforms = data.platforms;
+    } catch (error) {
+        console.error('Failed to load social accounts:', error);
+    }
+    renderSocialAccountsCard();
+    return socialPlatforms;
+}
+
+function formatSocialExpiry(iso) {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function socialButton(label, onClick, className) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = className || 'pane-toolbar-btn';
+    btn.textContent = label;
+    btn.addEventListener('click', onClick);
+    return btn;
+}
+
+async function socialApi(path, body) {
+    const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+    });
+    return response.json();
+}
+
+function renderSocialAccountsCard() {
+    const card = document.getElementById('social-accounts-card');
+    if (!card) return;
+    card.innerHTML = '';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Social accounts';
+    card.appendChild(title);
+    const desc = document.createElement('p');
+    desc.className = 'settings-section-desc';
+    desc.textContent = 'Connect the accounts Sasha can post to. She only writes the post - nothing is published until you review and approve it, and you choose the accounts each time.';
+    card.appendChild(desc);
+
+    if (!socialPlatforms) {
+        const loading = document.createElement('p');
+        loading.className = 'settings-section-desc';
+        loading.textContent = 'Loading...';
+        card.appendChild(loading);
+        return;
+    }
+
+    socialPlatforms.forEach(platform => {
+        const row = document.createElement('div');
+        row.className = 'social-row';
+
+        const info = document.createElement('div');
+        info.className = 'social-row-info';
+        const name = document.createElement('div');
+        name.className = 'social-row-name';
+        name.textContent = platform.label;
+        const status = document.createElement('div');
+        status.className = 'social-row-status';
+        if (platform.id === 'practice') {
+            status.textContent = platform.connected ? 'On - posts are only recorded here, nothing is sent anywhere' : 'Off - try the whole publish flow without posting to a real account';
+        } else if (!platform.configured) {
+            status.textContent = 'Setup needed on the server first';
+        } else if (!platform.connected) {
+            status.textContent = 'Not connected';
+        } else if (platform.expired) {
+            status.textContent = `Connection expired on ${formatSocialExpiry(platform.expiresAt)} - reconnect to keep posting`;
+            status.classList.add('warn');
+        } else {
+            status.textContent = `Connected as ${platform.accountName}` + (platform.expiresAt ? ` - connection runs until ${formatSocialExpiry(platform.expiresAt)}` : '');
+        }
+        info.appendChild(name);
+        info.appendChild(status);
+
+        const actions = document.createElement('div');
+        actions.className = 'social-row-actions';
+        if (platform.id === 'practice') {
+            actions.appendChild(platform.connected
+                ? socialButton('Turn off', async () => { await socialApi('/social/disconnect/practice'); loadSocialStatus(); })
+                : socialButton('Turn on', async () => { await socialApi('/social/connect/practice'); loadSocialStatus(); }));
+        } else if (platform.configured) {
+            actions.appendChild(socialButton(platform.connected ? 'Reconnect' : 'Connect', () => { window.location.href = `/social/connect/${platform.id}`; }));
+            if (platform.connected) {
+                actions.appendChild(socialButton('Disconnect', async () => { await socialApi(`/social/disconnect/${platform.id}`); loadSocialStatus(); }));
+            }
+        }
+        row.appendChild(info);
+        row.appendChild(actions);
+        card.appendChild(row);
+
+        if (platform.id === 'facebook' && platform.connected && (platform.pages || []).length > 1) {
+            const pick = document.createElement('div');
+            pick.className = 'social-row-sub';
+            pick.appendChild(document.createTextNode('Post to Page: '));
+            const select = document.createElement('select');
+            select.className = 'pane-filter-select';
+            platform.pages.forEach(page => select.appendChild(new Option(page.name, page.id, false, page.id === platform.pageId)));
+            select.addEventListener('change', async () => { await socialApi('/social/page', { pageId: select.value }); loadSocialStatus(); });
+            pick.appendChild(select);
+            card.appendChild(pick);
+        }
+
+        if (platform.id !== 'practice' && !platform.configured) {
+            const details = document.createElement('details');
+            details.className = 'social-setup';
+            const summary = document.createElement('summary');
+            summary.textContent = `How to set up ${platform.label}`;
+            details.appendChild(summary);
+            const steps = document.createElement('ol');
+            platform.setup.forEach(step => { const li = document.createElement('li'); li.textContent = step; steps.appendChild(li); });
+            details.appendChild(steps);
+            if (platform.redirectUri) {
+                const url = document.createElement('div');
+                url.className = 'social-redirect';
+                const code = document.createElement('code');
+                code.textContent = platform.redirectUri;
+                url.appendChild(code);
+                url.appendChild(socialButton('Copy', () => { if (navigator.clipboard) navigator.clipboard.writeText(platform.redirectUri); }, 'task-action-btn'));
+                details.appendChild(url);
+            }
+            card.appendChild(details);
+        }
+    });
+}
+
+// Back from a platform's login page (the server redirects to /?social=...).
+function handleSocialReturn() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('social')) return;
+    const outcome = params.get('social');
+    const platform = params.get('platform');
+    const message = params.get('message');
+    history.replaceState(null, '', window.location.pathname);
+    showSettingsPage();
+    showSettingsTab('agents');
+    showAgentSettingsSubtab('sasha');
+    const label = (socialPlatforms && (socialPlatforms.find(p => p.id === platform) || {}).label) || platform || 'The account';
+    setTimeout(() => alert(outcome === 'connected'
+        ? `${label} is connected. Nothing will be posted until you approve a post.`
+        : `Couldn't connect ${label}: ${message || 'something went wrong'}`), 400);
+}
+
+// The review screen: exactly what goes out, where, with Publish as the one
+// deliberate click. Francis can edit the text here. Approving the task and
+// publishing are one step ("Approve & Publish"), or he can approve without
+// publishing at all.
+async function openSocialPublishModal(agent, taskId) {
+    const task = findWorkspaceTaskById(agent, taskId);
+    if (!task || !task.socialPost || document.getElementById('social-publish-overlay')) return;
+    const platforms = (await loadSocialStatus()) || [];
+    const usable = id => { const p = platforms.find(x => x.id === id); return !!(p && p.connected && !p.expired); };
+    const publishId = makeTaskId();   // one id per review screen, so a retry never re-posts what already went out
+
+    const overlay = document.createElement('div');
+    overlay.id = 'social-publish-overlay';
+    overlay.className = 'social-modal-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'social-modal';
+    overlay.appendChild(modal);
+    const close = () => overlay.remove();
+
+    const heading = document.createElement('h3');
+    heading.textContent = `Review before it goes out - ${task.name || 'social post'}`;
+    modal.appendChild(heading);
+    const sub = document.createElement('p');
+    sub.className = 'settings-section-desc';
+    sub.textContent = `${capitalizeAgent(agent)} drafted this. Edit it if you like. Nothing is published until you press Publish.`;
+    modal.appendChild(sub);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'social-modal-text';
+    textarea.rows = 8;
+    textarea.value = task.socialPost.text || '';
+    modal.appendChild(textarea);
+    const counter = document.createElement('div');
+    counter.className = 'social-modal-counter';
+    modal.appendChild(counter);
+
+    const accountsLabel = document.createElement('div');
+    accountsLabel.className = 'task-plan-label';
+    accountsLabel.textContent = 'Post to';
+    modal.appendChild(accountsLabel);
+    const suggested = task.socialPost.platforms || [];
+    const boxes = {};
+    platforms.forEach(platform => {
+        const line = document.createElement('label');
+        line.className = 'social-modal-account';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.disabled = !usable(platform.id);
+        box.checked = usable(platform.id) && platform.id !== 'practice' && (suggested.length === 0 || suggested.includes(platform.id));
+        boxes[platform.id] = box;
+        line.appendChild(box);
+        const text = document.createElement('span');
+        text.textContent = usable(platform.id)
+            ? `${platform.label} - ${platform.accountName}`
+            : `${platform.label} - ${platform.connected ? 'connection expired' : 'not connected'} (Settings > Agents > Sasha)`;
+        line.appendChild(text);
+        modal.appendChild(line);
+    });
+    const anyUsable = platforms.some(p => usable(p.id));
+    if (!Object.values(boxes).some(b => b.checked) && anyUsable) {
+        const first = platforms.find(p => usable(p.id));
+        boxes[first.id].checked = true;
+    }
+
+    const summary = document.createElement('div');
+    summary.className = 'social-modal-summary';
+    modal.appendChild(summary);
+    const results = document.createElement('div');
+    results.className = 'social-modal-results';
+    modal.appendChild(results);
+
+    const buttons = document.createElement('div');
+    buttons.className = 'task-row-actions social-modal-buttons';
+    const cancelBtn = socialButton('Cancel', close, 'task-action-btn');
+    const skipBtn = socialButton('Approve without publishing', () => { approveTask(agent, taskId); close(); }, 'task-action-btn');
+    const publishBtn = socialButton('Publish', () => publish(), 'task-action-btn solid-complete');
+    buttons.appendChild(cancelBtn);
+    buttons.appendChild(skipBtn);
+    buttons.appendChild(publishBtn);
+    modal.appendChild(buttons);
+
+    const selected = () => platforms.filter(p => boxes[p.id] && boxes[p.id].checked);
+    function refresh() {
+        const chosen = selected();
+        const limit = chosen.length ? Math.min(...chosen.map(p => p.maxLength)) : 3000;
+        const length = textarea.value.trim().length;
+        counter.textContent = `${length} / ${limit} characters`;
+        counter.classList.toggle('warn', length > limit);
+        const real = chosen.filter(p => p.id !== 'practice');
+        summary.textContent = !chosen.length
+            ? (anyUsable ? 'Choose at least one account.' : 'No account is connected yet - connect one in Settings > Agents > Sasha.')
+            : (real.length
+                ? `This will be posted publicly to: ${real.map(p => `${p.label} (${p.accountName})`).join(', ')}.` + (chosen.length > real.length ? ' Practice mode records it only.' : '')
+                : 'Practice mode: this is only recorded, nothing is sent anywhere.');
+        publishBtn.disabled = !chosen.length || !length || length > limit;
+    }
+    textarea.addEventListener('input', refresh);
+    Object.values(boxes).forEach(b => b.addEventListener('change', refresh));
+    refresh();
+
+    async function publish() {
+        const chosen = selected();
+        if (!chosen.length) return;
+        publishBtn.disabled = true;
+        cancelBtn.disabled = true;
+        skipBtn.disabled = true;
+        publishBtn.textContent = 'Publishing...';
+        results.innerHTML = '';
+        let data;
+        try {
+            data = await socialApi('/social/publish', {
+                confirm: true, text: textarea.value.trim(), platforms: chosen.map(p => p.id),
+                publishId, taskId, agent
+            });
+        } catch (error) {
+            data = { success: false, error: 'Could not reach the app. Nothing was confirmed as posted - check before retrying.' };
+        }
+        cancelBtn.disabled = false;
+        skipBtn.disabled = false;
+        if (!data.success) {
+            results.textContent = data.error || 'Publishing failed.';
+            results.className = 'social-modal-results warn';
+            publishBtn.textContent = 'Publish';
+            refresh();
+            return;
+        }
+        results.className = 'social-modal-results';
+        const failed = [];
+        data.results.forEach(r => {
+            const line = document.createElement('div');
+            if (r.success) {
+                line.textContent = r.practice ? `✅ ${r.label}: recorded (practice - nothing was sent)` : `✅ ${r.label}: published `;
+                if (r.url) {
+                    const link = document.createElement('a');
+                    link.href = r.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'View post ↗';
+                    line.appendChild(link);
+                }
+            } else {
+                line.textContent = `❌ ${r.label}: ${r.error}`;
+                line.classList.add('warn');
+                failed.push(r.platform);
+            }
+            results.appendChild(line);
+        });
+        const done = data.results.filter(r => r.success);
+        if (done.length) {
+            const known = (task.socialPost.published || []).filter(p => !done.some(d => d.platform === p.platform));
+            task.socialPost.text = textarea.value.trim();
+            task.socialPost.published = known.concat(done.map(r => ({ platform: r.platform, label: r.label, url: r.url, practice: !!r.practice, at: new Date().toISOString() })));
+            // Publishing for real is the approval (a retry is a no-op here).
+            // A practice run is only a rehearsal - it never approves the task.
+            if (done.some(r => !r.practice)) approveTask(agent, taskId);
+            saveWorkspaceTasks();
+        }
+        const realDone = done.some(r => !r.practice);
+        Object.entries(boxes).forEach(([id, b]) => { b.checked = failed.includes(id); b.disabled = !failed.includes(id) && realDone; });
+        textarea.disabled = realDone && !failed.length;
+        if (!realDone && !failed.length) {
+            // Rehearsal only: leave everything as it was so the real publish is still available.
+            publishBtn.textContent = 'Publish';
+            Object.values(boxes).forEach(b => { b.disabled = false; });
+            refresh();
+        } else if (failed.length) {
+            publishBtn.textContent = 'Retry failed';
+            publishBtn.disabled = false;
+            textarea.disabled = false;
+            refresh();
+        } else {
+            publishBtn.textContent = 'Done';
+            publishBtn.disabled = false;
+            publishBtn.onclick = null;
+            publishBtn.replaceWith(socialButton('Done', close, 'task-action-btn solid-complete'));
+            skipBtn.remove();
+            cancelBtn.remove();
+        }
+    }
+
+    document.body.appendChild(overlay);
+}
+
 // ---- Task plans and review ---------------------------------------------
 // Every task is created with a plan - what will get done, the steps, and the
 // final output (drafted by /tasks/plan). Francis sees it before pressing
@@ -11221,9 +11630,19 @@ function buildTaskReviewBox(agent, task) {
         : `${capitalizeAgent(agent)}'s write-up is in their chat.`;
     box.appendChild(where);
 
+    const drafted = !!(task.socialPost && !(task.socialPost.published || []).some(p => !p.practice));
+    if (drafted) {
+        const draft = document.createElement('div');
+        draft.className = 'task-social-draft';
+        draft.textContent = task.socialPost.text;
+        box.appendChild(draft);
+    }
+
     const hint = document.createElement('div');
     hint.className = 'task-review-hint';
-    hint.textContent = 'Approve & Complete to finish the task, or Request Changes to send it back with your notes.';
+    hint.textContent = drafted
+        ? 'Approve & Publish opens the final review where you choose the accounts and press Publish - nothing is posted before that. Or Request Changes to send it back.'
+        : 'Approve & Complete to finish the task, or Request Changes to send it back with your notes.';
     box.appendChild(hint);
 
     if (taskFeedbackOpen[task.id]) {
@@ -11271,6 +11690,23 @@ function buildTaskPlanPanel(agent, task, force) {
         const body = document.createElement('div');
         body.innerHTML = taskPlanSectionHtml(task);
         panel.appendChild(body);
+    }
+    const published = (task.socialPost && task.socialPost.published) || [];
+    if (published.length) {
+        const line = document.createElement('div');
+        line.className = 'task-plan-note';
+        line.appendChild(document.createTextNode('Published: '));
+        published.forEach((entry, i) => {
+            if (i) line.appendChild(document.createTextNode(', '));
+            if (entry.url) {
+                const link = document.createElement('a');
+                link.href = entry.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = entry.label;
+                line.appendChild(link);
+            } else {
+                line.appendChild(document.createTextNode(entry.practice ? `${entry.label} (nothing sent)` : entry.label));
+            }
+        });
+        panel.appendChild(line);
     }
     if (task.planStatus === 'drafting') {
         const note = document.createElement('div');
@@ -11472,8 +11908,15 @@ function buildTaskActionsRow(agent, task) {
         completeBtn.type = 'button';
         if (task.status === 'in_review') {
             completeBtn.className = 'task-action-btn solid-complete';
-            completeBtn.textContent = 'Approve & Complete';
-            completeBtn.addEventListener('click', stop(() => approveTask(agent, task.id)));
+            if (task.socialPost && !(task.socialPost.published || []).some(p => !p.practice)) {
+                // A drafted post: approving goes through the review screen
+                // where the accounts are chosen and Publish is pressed.
+                completeBtn.textContent = 'Approve & Publish\u2026';
+                completeBtn.addEventListener('click', stop(() => openSocialPublishModal(agent, task.id)));
+            } else {
+                completeBtn.textContent = 'Approve & Complete';
+                completeBtn.addEventListener('click', stop(() => approveTask(agent, task.id)));
+            }
         } else if (task.status !== 'completed') {
             completeBtn.className = 'task-action-btn solid-complete';
             completeBtn.textContent = 'Mark Complete';
@@ -13900,6 +14343,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         if (taskId) {
+            // Sasha's draft_social_post: just the text, kept on the task for
+            // the review screen. Nothing is published by this.
+            if (data.social_draft && data.social_draft.text) {
+                const draftTask = findWorkspaceTaskById(agent, taskId);
+                if (draftTask) draftTask.socialPost = { text: data.social_draft.text, platforms: data.social_draft.platforms || [] };
+            }
             if (data.task_paused) {
                 pauseProjectTask(agent, taskId, data.created_files);
                 return { paused: true };
@@ -16372,7 +16821,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const panel = document.createElement('div');
                 panel.className = 'settings-subtab-panel';
                 panel.id = `settings-agent-panel-${agent}`;
-                panel.innerHTML = '<p class="settings-section-desc">Nothing here yet.</p>';
+                // Sasha is the one agent with settings so far: the social accounts she can post to.
+                panel.innerHTML = agent === 'sasha' ? '<div id="social-accounts-card"></div>' : '<p class="settings-section-desc">Nothing here yet.</p>';
                 panels.appendChild(panel);
             });
             showAgentSettingsSubtab(agents[0]);
@@ -16381,6 +16831,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function showAgentSettingsSubtab(agent) {
             document.querySelectorAll('.settings-subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.agent === agent));
             document.querySelectorAll('.settings-subtab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-agent-panel-${agent}`));
+            if (agent === 'sasha') loadSocialStatus();
         }
 
         // --- Global Settings Save -------------------------------------------
@@ -22708,6 +23159,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             AGENT_QUICKBAR_PAGES.forEach(page => buildAgentQuickbar(`${page}-agent-quickbar`));
             updateAllBadges();
             showLandingPage();
+            handleSocialReturn();
             loadLearnSection();
             loadThoughtsSection();
             loadPersonalSection();

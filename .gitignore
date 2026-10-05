@@ -244,6 +244,8 @@ usage_log.jsonl
 breakroom_pool.json
 breakroom_scenes.json
 breakroom_prefs.json
+social_accounts.json
+social_publish_log.jsonl
 kb_merge_state.json
 attachments/
 
