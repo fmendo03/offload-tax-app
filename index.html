@@ -7467,7 +7467,6 @@ body.va-open #notification-toasts {
                              section of the script). -->
                         <div class="ws-viewer" id="workspace-viewer" style="display: none;">
                             <div class="ws-toolbar">
-                                <button type="button" class="task-action-btn" id="ws-back-btn">&larr; Files</button>
                                 <div class="ws-file-info">
                                     <div class="ws-file-title" id="ws-file-title"></div>
                                     <div class="ws-file-sub" id="ws-file-sub"></div>
@@ -11559,31 +11558,29 @@ function renderWorkspaceTasks(agent) {
         empty.textContent = text;
         el.appendChild(empty);
     };
-    // The Workspace lists what agents produced (grouped under the task they
-    // came from) and the files Francis shared; opening one shows it with the
-    // review tools.
-    const outputTasks = tasks.filter(t => getTaskFiles(agent, t.id).some(f => f.role !== 'input'));
-    if (outputTasks.length === 0 && standaloneFiles.length === 0) {
-        addEmptyNote(container, 'Nothing here yet - the files agents produce for your tasks, and files you share, open here so you can review them with notes and edits.');
-    }
-    if (tasks.length === 0) {
+    // The Workspace is the review area for whichever file is open - it doesn't
+    // list files. Files live under their task in Projects & Tasks, and opening
+    // one from there brings it here.
+    const wsEmpty = document.createElement('div');
+    wsEmpty.className = 'workspace-tasks-empty';
+    wsEmpty.textContent = "Nothing open. Open a file from one of this agent's tasks in Projects & Tasks and it shows up here, where you can review it with notes and edits.";
+    const goBtn = document.createElement('button');
+    goBtn.type = 'button';
+    goBtn.className = 'task-action-btn';
+    goBtn.style.marginTop = '10px';
+    goBtn.textContent = 'Go to Projects & Tasks';
+    goBtn.addEventListener('click', () => showAgentTab('projects'));
+    wsEmpty.appendChild(document.createElement('br'));
+    wsEmpty.appendChild(goBtn);
+    container.appendChild(wsEmpty);
+    if (tasks.length === 0 && standaloneFiles.length === 0) {
         addEmptyNote(projContainer, 'No tasks yet - accepted projects and tasks will show up here.');
     }
 
-    if (outputTasks.length > 0) {
-        const total = outputTasks.reduce((sum, t) => sum + getTaskFiles(agent, t.id).filter(f => f.role !== 'input').length, 0);
-        const body = appendWorkspaceGroup(container, agent, 'outputs', `${FILE_ICON} Agent outputs`, total);
-        outputTasks.forEach(task => {
-            const head = document.createElement('div');
-            head.className = 'workspace-output-task';
-            head.textContent = `${TASK_ICON} ${task.name || task.task} - ${String(task.status).replace('_', ' ')}`;
-            body.appendChild(head);
-            getTaskFiles(agent, task.id).filter(f => f.role !== 'input').forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
-        });
-    }
-
+    // Files from before every file belonged to a task have no task to sit under;
+    // keep them reachable here.
     if (standaloneFiles.length > 0) {
-        const body = appendWorkspaceGroup(container, agent, 'files', `${FILE_ICON} Files you shared`, standaloneFiles.length);
+        const body = appendWorkspaceGroup(projContainer, agent, 'files', `${FILE_ICON} Files without a task`, standaloneFiles.length);
         standaloneFiles.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
     }
 
@@ -14400,7 +14397,6 @@ async function sendWorkspaceReview() {
 
 // ---- wiring (once, at startup) ----
 function initWorkspaceViewer() {
-    wsEl('ws-back-btn').addEventListener('click', () => { clearWorkspacePreview(); if (currentAgent) renderWorkspaceTasks(currentAgent); });
     wsEl('workspace-viewer').querySelectorAll('.ws-tool-btn').forEach(b => b.addEventListener('click', () => setWsTool(b.dataset.tool)));
     wsEl('ws-notes-toggle').addEventListener('click', () => toggleWsNotesPane());
     wsEl('ws-notes-hide').addEventListener('click', () => toggleWsNotesPane(false));
@@ -14418,7 +14414,7 @@ function initWorkspaceViewer() {
     window.addEventListener('resize', scheduleWsLayout);
 }
 
-// Closes the Workspace viewer (back to the list of files).
+// Closes the Workspace viewer (nothing open - the Workspace shows its empty state).
 function clearWorkspacePreview() {
     currentWorkspacePreview = null;
     workspacePreviewEditCleanup = null;
