@@ -4977,12 +4977,17 @@ LANA_LESSON_RULES = (
 LANA_TASK_RUN_RULES = (
     "\n\nThis task is preparing ONE interactive lesson. Call create_lesson exactly once with the complete, finished lesson "
     "(do not use create_file, and do not describe the lesson in chat instead). Sized to his daily study time. Include "
-    "simple explanations, real-life examples with pronunciation help, and a short set of exercises (usually 6 to 10) "
+    "simple explanations, real-life examples with pronunciation help, a short STORY with comprehension questions (below), "
+    "and a short set of exercises (usually 6 to 10) "
     "that check he really understood - each with the correct answer and a one-sentence explanation shown if he gets it "
     "wrong. Start from what the lesson history in the message says he already knows and where he struggled. If the "
     "message says this is a REVIEW lesson, build it to cover everything learned to date: mix the topics from every earlier "
     "lesson it lists (more weight on what he missed), with no new material. Every other lesson ends with a short review "
-    "of earlier material: its last couple of exercises revisit what the lesson history lists. Afterwards reply in a sentence or two."
+    "of earlier material: its last couple of exercises revisit what the lesson history lists. Every lesson ALSO includes a "
+    "short story (the `story` field) in the target language at his level - a few simple sentences for a beginner, longer "
+    "and richer as he advances - that reuses this lesson's new words plus earlier material from the lesson history, so it "
+    "doubles as spaced review. Keep it to words he knows or this lesson teaches, give the English translation separately, "
+    "and add 3 or 4 comprehension questions after it. Afterwards reply in a sentence or two."
 )
 
 PROPOSE_LANGUAGE_PLAN_TOOL = {
@@ -5041,6 +5046,20 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
     }
 }
 
+CREATE_LESSON_EXERCISE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "type": {"type": "string", "enum": ["choice", "fill", "translate"], "description": "choice = pick one option; fill = type the missing/asked word; translate = type a translation."},
+        "prompt": {"type": "string"},
+        "options": {"type": "array", "items": {"type": "string"}, "description": "For choice: 3-4 options, one of them exactly the answer."},
+        "answer": {"type": "string", "description": "The correct answer."},
+        "accepted": {"type": "array", "items": {"type": "string"}, "description": "Other answers that are also right (fill/translate)."},
+        "explanation": {"type": "string", "description": "One sentence on why, shown after he checks."},
+        "speak": {"type": "string", "description": "Optional target-language text he can play aloud for this question (a listening exercise)."}
+    },
+    "required": ["type", "prompt", "answer"]
+}
+
 CREATE_LESSON_TOOL = {
     "name": "create_lesson",
     "description": (
@@ -5083,24 +5102,33 @@ CREATE_LESSON_TOOL = {
             "exercises": {
                 "type": "array",
                 "description": "Short exercises he answers on the page.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "type": {"type": "string", "enum": ["choice", "fill", "translate"], "description": "choice = pick one option; fill = type the missing/asked word; translate = type a translation."},
-                        "prompt": {"type": "string"},
-                        "options": {"type": "array", "items": {"type": "string"}, "description": "For choice: 3-4 options, one of them exactly the answer."},
-                        "answer": {"type": "string", "description": "The correct answer."},
-                        "accepted": {"type": "array", "items": {"type": "string"}, "description": "Other answers that are also right (fill/translate)."},
-                        "explanation": {"type": "string", "description": "One sentence on why, shown after he checks."},
-                        "speak": {"type": "string", "description": "Optional target-language text he can play aloud for this question (a listening exercise)."}
-                    },
-                    "required": ["type", "prompt", "answer"]
-                },
+                "items": CREATE_LESSON_EXERCISE_SCHEMA,
                 "minItems": 3
+            },
+            "story": {
+                "type": "object",
+                "description": (
+                    "Every lesson includes a short story IN THE TARGET LANGUAGE, written at his level (a beginner gets a few "
+                    "very simple sentences; a more advanced learner a longer, richer paragraph). It reuses this lesson's new words "
+                    "plus material from earlier lessons (see the lesson history), so it doubles as spaced review. Don't lean on "
+                    "words he hasn't met - keep new vocabulary to what this lesson teaches."
+                ),
+                "properties": {
+                    "title": {"type": "string", "description": "A short title in the target language."},
+                    "text": {"type": "string", "description": "The story, in the target language. Separate paragraphs with a blank line."},
+                    "translation": {"type": "string", "description": "The same story in English, so he can check himself."},
+                    "questions": {
+                        "type": "array",
+                        "description": "3-4 comprehension questions about the story (what happened, who, why), answerable from it. Same shape as the exercises.",
+                        "items": CREATE_LESSON_EXERCISE_SCHEMA,
+                        "minItems": 3
+                    }
+                },
+                "required": ["title", "text", "translation", "questions"]
             },
             "wrap_up": {"type": "string", "description": "A short encouraging close and what's next."}
         },
-        "required": ["title", "language", "sections", "exercises"]
+        "required": ["title", "language", "sections", "story", "exercises"]
     }
 }
 
@@ -5185,13 +5213,26 @@ def _clean_lesson(raw):
                 })
         sections.append({'heading': text(sec.get('heading'), 120), 'text': text(sec.get('text'), 4000), 'examples': examples})
     exercises = _clean_exercises(raw.get('exercises'), 20)
-    if not title or not sections or len(exercises) < 3:
+    story = None
+    raw_story = raw.get('story')
+    if isinstance(raw_story, dict):
+        story_text = text(raw_story.get('text'), 3000)
+        story_questions = _clean_exercises(raw_story.get('questions'), 5)
+        if story_text and len(story_questions) >= 2:
+            story = {
+                'title': text(raw_story.get('title'), 120), 'text': story_text,
+                'translation': text(raw_story.get('translation'), 3000)
+            }
+            for q in story_questions:
+                q['story'] = True
+            exercises = story_questions + exercises
+    if not title or not sections or len(exercises) < 3 or not story:
         return None
     return {
         'title': title, 'language': text(raw.get('language'), 40), 'languageCode': text(raw.get('language_code'), 12),
         'level': text(raw.get('level'), 60), 'objective': text(raw.get('objective'), 300),
         'estimatedMinutes': raw.get('estimated_minutes') if isinstance(raw.get('estimated_minutes'), int) else None,
-        'sections': sections, 'exercises': exercises, 'wrapUp': text(raw.get('wrap_up'), 600)
+        'sections': sections, 'story': story, 'exercises': exercises, 'wrapUp': text(raw.get('wrap_up'), 600)
     }
 
 

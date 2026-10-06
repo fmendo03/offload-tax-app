@@ -2209,6 +2209,12 @@
 .lesson-speak { flex: none; width: 34px; height: 34px; border-radius: 50%; border: none; background: #ede6bd; cursor: pointer; font-size: 15px; }
 .lesson-speak:hover { background: #e0d58f; }
 .lesson-practice { border-top: 2px dashed #e0d9b0; padding-top: 16px; }
+.lesson-story { padding: 14px 16px; background: #fbf8e8; border: 1px solid #e8e0b4; border-radius: 10px; }
+.lesson-story-text { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; line-height: 1.65; }
+.lesson-story-text p { margin: 0 0 8px; }
+.lesson-story-en { margin: 8px 0 4px; color: #555; font-size: 14px; }
+.lesson-story-en summary { cursor: pointer; color: #8a7a45; font-weight: 600; }
+.lesson-story-questions h3 { margin: 14px 0 0; font-size: 14px; color: #5b4a1e; }
 .lesson-q { margin: 14px 0; padding: 12px 14px; border: 1px solid #e6e6ec; border-radius: 8px; background: #fff; }
 .lesson-q.correct, .lesson-q.close { border-color: #4caf7a; background: #f2fbf6; }
 .lesson-q.wrong { border-color: #e57373; background: #fff5f5; }
@@ -14912,7 +14918,7 @@ function buildLessonHtml(file) {
                 </div>`).join('')}</div>` : ''}
         </section>`).join('');
 
-    const exercises = lesson.exercises.map((ex, i) => {
+    const renderExercise = (ex, i) => {
         const saved = progress.answers[i] || '';
         const input = ex.type === 'choice'
             ? `<div class="lesson-options">${ex.options.map(o => `<label class="lesson-option"><input type="radio" name="lq-${i}" value="${escapeHtml(o)}" ${saved === o ? 'checked' : ''}> <span>${escapeHtml(o)}</span></label>`).join('')}</div>`
@@ -14920,7 +14926,17 @@ function buildLessonHtml(file) {
         return `<div class="lesson-q" data-i="${i}">
             <div class="lesson-q-top"><span class="lesson-q-num">${i + 1}</span><div class="lesson-q-prompt">${escapeHtml(ex.prompt)}</div>${speak(ex.speak)}</div>
             ${input}<div class="lesson-q-feedback"></div></div>`;
-    }).join('');
+    };
+    // Questions about the story sit right under it; the rest are the practice.
+    const storyQuestions = lesson.exercises.map((ex, i) => ex.story ? renderExercise(ex, i) : '').join('');
+    const exercises = lesson.exercises.map((ex, i) => ex.story ? '' : renderExercise(ex, i)).join('');
+    const story = lesson.story ? `
+        <section class="lesson-section lesson-story">
+            <h2>Story time${lesson.story.title ? ` - ${escapeHtml(lesson.story.title)}` : ''}</h2>
+            <div class="lesson-story-text">${speak(lesson.story.text)}<div>${String(lesson.story.text).split(/\n\s*\n/).filter(Boolean).map(p => `<p>${escapeHtml(p)}</p>`).join('')}</div></div>
+            ${lesson.story.translation ? `<details class="lesson-story-en"><summary>Show the English</summary>${String(lesson.story.translation).split(/\n\s*\n/).filter(Boolean).map(p => `<p>${escapeHtml(p)}</p>`).join('')}</details>` : ''}
+            <div class="lesson-story-questions"><h3>Did you follow it?</h3>${storyQuestions}</div>
+        </section>` : '';
 
     return `<div class="lesson" data-file-id="${file.id}">
         <div class="lesson-head">
@@ -14929,6 +14945,7 @@ function buildLessonHtml(file) {
             ${lesson.objective ? `<p class="lesson-objective">${escapeHtml(lesson.objective)}</p>` : ''}
         </div>
         ${sections}
+        ${story}
         <section class="lesson-section lesson-practice">
             <h2>${lesson.kind === 'quiz' ? 'Quiz' : 'Practice'}</h2>
             ${exercises}
