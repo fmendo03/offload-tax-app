@@ -2163,7 +2163,48 @@
         .reminder-popover-actions { display: flex; gap: 6px; margin-top: 8px; }
 
         /* Reminders page */
-        .reminders-board { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px 16px; }
+        /* Lana's lessons (Workspace) and settings */
+.ws-viewer.ws-lesson .ws-tools, .ws-viewer.ws-lesson #ws-notes-toggle, .ws-viewer.ws-lesson #ws-notes-pane,
+.ws-viewer.ws-lesson #ws-download-btn, .ws-viewer.ws-lesson #ws-view-toggle { display: none !important; }
+.wp-lesson-body { padding: 8px 4px; }
+.lesson { max-width: 760px; margin: 0 auto; padding: 20px 24px 28px; color: #222; font-size: 15px; line-height: 1.55; }
+.lesson-head h1 { margin: 0 0 4px; font-size: 26px; color: #5b4a1e; }
+.lesson-meta { font-size: 12px; color: #8a7a45; text-transform: uppercase; letter-spacing: 0.06em; }
+.lesson-objective { margin: 10px 0 0; padding: 10px 14px; background: #f7f3df; border-left: 4px solid #c9b45a; border-radius: 4px; }
+.lesson-section { margin-top: 22px; }
+.lesson-section h2 { font-size: 18px; margin: 0 0 8px; color: #5b4a1e; }
+.lesson-section p { margin: 0 0 10px; }
+.lesson-examples { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.lesson-ex { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #fbfaf2; border: 1px solid #e8e2c4; border-radius: 8px; }
+.lesson-ex-target { font-size: 17px; font-weight: 700; color: #2d2a1d; }
+.lesson-ex-trans { color: #444; }
+.lesson-ex-pron { font-size: 12px; color: #8a7a45; font-style: italic; }
+.lesson-speak { flex: none; width: 34px; height: 34px; border-radius: 50%; border: none; background: #ede6bd; cursor: pointer; font-size: 15px; }
+.lesson-speak:hover { background: #e0d58f; }
+.lesson-practice { border-top: 2px dashed #e0d9b0; padding-top: 16px; }
+.lesson-q { margin: 14px 0; padding: 12px 14px; border: 1px solid #e6e6ec; border-radius: 8px; background: #fff; }
+.lesson-q.correct, .lesson-q.close { border-color: #4caf7a; background: #f2fbf6; }
+.lesson-q.wrong { border-color: #e57373; background: #fff5f5; }
+.lesson-q.blank { border-color: #f0b84d; background: #fffaf0; }
+.lesson-q-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.lesson-q-num { flex: none; width: 24px; height: 24px; border-radius: 50%; background: #c9b45a; color: #fff; font-size: 12px; font-weight: 700; text-align: center; line-height: 24px; }
+.lesson-q-prompt { flex: 1; font-weight: 600; }
+.lesson-options { display: flex; flex-direction: column; gap: 6px; }
+.lesson-option { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #e3e3ea; border-radius: 6px; cursor: pointer; }
+.lesson-option:hover { background: #f7f7fb; }
+.lesson-input { width: 100%; box-sizing: border-box; padding: 9px 12px; font-size: 15px; border: 1px solid #cfcfd8; border-radius: 6px; }
+.lesson-q-feedback { margin-top: 8px; font-size: 13px; color: #444; }
+.lesson-q.correct .lesson-q-feedback, .lesson-q.close .lesson-q-feedback { color: #1f7a49; }
+.lesson-q.wrong .lesson-q-feedback { color: #b3261e; }
+.lesson-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.lesson-score { margin-top: 10px; font-weight: 700; color: #5b4a1e; }
+.lesson-wrapup { margin-top: 14px; font-style: italic; color: #6b5f36; }
+.lana-add-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.lana-add-row input { flex: 1 1 160px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+.lana-time-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; }
+.lana-time-row select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+
+.reminders-board { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px 16px; }
         .reminders-pane { --col-color: #e6a100; display: flex; flex-direction: column; background: white; border: 1px solid #e3e3ea; border-radius: 10px; overflow: hidden; min-height: 0; }
         .reminders-new-pane { flex: 0 0 340px; max-width: 100%; }
         .reminders-list-pane { flex: 1 1 0; min-width: 0; }
@@ -10209,6 +10250,12 @@ function upsertProjectProposal(agent, proposeProjectData) {
         tasks: proposeProjectData.tasks,
         status: 'proposed'
     };
+    // A language plan (Lana): every task is a lesson.
+    if (proposeProjectData.kind === 'language') {
+        projectProposal.kind = 'language';
+        projectProposal.language = proposeProjectData.language || '';
+        projectProposal.languageCode = proposeProjectData.languageCode || '';
+    }
 
     projects[projectId] = {
         id: projectId,
@@ -10219,6 +10266,11 @@ function upsertProjectProposal(agent, proposeProjectData) {
         status: 'proposed',
         createdAt: existing ? existing.createdAt : new Date()
     };
+    if (projectProposal.kind) {
+        projects[projectId].kind = projectProposal.kind;
+        projects[projectId].language = projectProposal.language;
+        projects[projectId].languageCode = projectProposal.languageCode;
+    }
     saveProjects();
 
     if (existing) {
@@ -13056,7 +13108,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
         // this same chat history - repeating the full task text would read
         // as "start over" rather than "keep going from where you paused".
         text: continueCount === 0
-            ? `Please go ahead and do this now: ${task.task}${inputFiles.length ? `\n\nFiles provided for this task (attached): ${inputFiles.map(f => f.name).join(', ')}` : ''}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}`
+            ? `Please go ahead and do this now: ${task.task}${inputFiles.length ? `\n\nFiles provided for this task (attached): ${inputFiles.map(f => f.name).join(', ')}` : ''}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}${task.isLesson ? lessonRunContext(task) : ''}`
             : (reminder || `Please continue where you left off.`),
         attachments: inputFiles.length ? inputFiles : undefined,
         timestamp: new Date()
@@ -13603,11 +13655,11 @@ function renderWorkspaceViewer() {
     const file = wsFile();
     if (!file) { hideWorkspaceViewer(); return; }
     const task = file.taskId ? findWorkspaceTaskById(wsState.agent, file.taskId) : null;
-    wsEl('ws-file-title').textContent = file.name;
+    wsEl('ws-file-title').textContent = file.fileType === 'lesson' ? `Lesson: ${file.name}` : file.name;
     wsEl('ws-file-sub').textContent = task ? `from task “${task.name || task.task}”` : (file.role === 'input' ? 'provided by you' : 'shared by you');
 
     const content = wsEl('ws-doc-content');
-    content.innerHTML = buildWorkspacePreviewBody(file, { pdfAsText: !!wsState.altView, codeView: !!wsState.altView, codeHit: wsState.codeHit });
+    content.innerHTML = buildWorkspacePreviewBody(file, { pdfAsText: !!wsState.altView, codeView: !!wsState.altView, codeHit: wsState.codeHit, interactive: true });
     wsEl('ws-doc-wrap').dataset.replySource = `file “${file.name}”` + (task ? ` (from task “${task.name || task.task}”)` : '');
 
     const docEl = content.querySelector('.wp-doc-preview');
@@ -13615,7 +13667,10 @@ function renderWorkspaceViewer() {
     const slidesEl = content.querySelector('.wp-slide');
     const htmlFrame = content.querySelector('iframe.ws-html-frame');
     const codeEl = content.querySelector('.ws-code-view');
-    wsState.kind = codeEl ? 'code' : htmlFrame ? 'html' : ((docEl || slidesEl) ? 'text' : (tableEl ? 'table' : 'point'));
+    const lessonEl = content.querySelector('.lesson');
+    wsEl('workspace-viewer').classList.toggle('ws-lesson', !!lessonEl);
+    if (lessonEl) wireLessonView(file, content);
+    wsState.kind = lessonEl ? 'lesson' : codeEl ? 'code' : htmlFrame ? 'html' : ((docEl || slidesEl) ? 'text' : (tableEl ? 'table' : 'point'));
     // A PDF made by the team keeps its source text, so Edit works on that text
     // and the PDF is rebuilt from it; slides are edited right on the slides.
     const pdfHasText = file.fileType === 'pdf' && !!file.content;
@@ -13656,6 +13711,7 @@ function renderWorkspaceViewer() {
 
 // ---- tools ----
 function setWsTool(tool) {
+    if (wsState.kind === 'lesson') return;   // a lesson is worked through, not annotated
     if (tool === wsTool) tool = 'view';
     const file = wsFile();
     if (tool === 'edit' && !wsState.canEdit) {
@@ -14731,6 +14787,356 @@ async function sendWorkspaceReview() {
     await runOneOnOneAgentTurn(agent, [], undefined, undefined, undefined, undefined);
 }
 
+// ---- Language lessons (Lana) ------------------------------------------------
+// A language plan is a project and each lesson is a task in it. The prepared
+// lesson is a file of type 'lesson' (JSON: sections to read, exercises to answer)
+// that opens in the Workspace as an interactive page. Answers are saved on the
+// file; finishing a lesson completes its task and sends the results to Lana, who
+// may add more lessons to the project (add_lessons).
+let lanaSettings = { languages: [], dailyMinutes: 30 };
+let lanaPendingLesson = null;   // { taskId } while Lana's reply to submitted results may add lessons
+
+const LANA_COMMON_LANGUAGES = ['Spanish', 'French', 'Italian', 'German', 'Portuguese', 'Japanese', 'Mandarin Chinese', 'Korean', 'Arabic', 'Russian', 'Hindi', 'Dutch', 'Turkish', 'Polish', 'Greek', 'Hebrew', 'Swahili', 'Vietnamese'];
+
+function parseLesson(file) {
+    try { return JSON.parse(file.content || base64ToText(file.data) || ''); } catch (e) { return null; }
+}
+
+function lessonOwnerAgent(file) {
+    return Object.keys(workspaceFiles).find(a => (workspaceFiles[a] || []).includes(file)) || 'lana';
+}
+
+function lessonNormalize(s) {
+    return String(s || '').toLowerCase().normalize('NFC').replace(/[.,;:!?¡¿"“”‘’()]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function lessonStripAccents(s) {
+    return lessonNormalize(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// 'correct' | 'close' (right except for accents) | 'wrong' | 'blank'
+function gradeLessonExercise(ex, answer) {
+    const given = String(answer || '').trim();
+    if (!given) return 'blank';
+    if (ex.type === 'choice') return given === ex.answer ? 'correct' : 'wrong';
+    const accepted = [ex.answer].concat(ex.accepted || []);
+    if (accepted.some(a => lessonNormalize(a) === lessonNormalize(given))) return 'correct';
+    if (accepted.some(a => lessonStripAccents(a) === lessonStripAccents(given))) return 'close';
+    return 'wrong';
+}
+
+function speakLessonText(text, lang) {
+    if (!window.speechSynthesis) { alert("This browser can't read text aloud."); return; }
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    if (lang) utterance.lang = lang;
+    utterance.rate = 0.85;
+    speechSynthesis.speak(utterance);
+}
+
+function buildLessonHtml(file) {
+    const lesson = parseLesson(file);
+    if (!lesson) return '<div class="wp-preview-unavailable">This lesson could not be opened.</div>';
+    const progress = file.lessonProgress || (file.lessonProgress = { answers: {}, checked: false, submitted: false });
+    const code = lesson.languageCode || '';
+    const speak = (text) => text ? `<button type="button" class="lesson-speak" data-text="${escapeHtml(text)}" data-lang="${escapeHtml(code)}" title="Hear it">🔊</button>` : '';
+
+    const sections = lesson.sections.map(sec => `
+        <section class="lesson-section">
+            <h2>${escapeHtml(sec.heading)}</h2>
+            ${String(sec.text || '').split(/\n\s*\n/).filter(Boolean).map(p => `<p>${escapeHtml(p)}</p>`).join('')}
+            ${(sec.examples || []).length ? `<div class="lesson-examples">${sec.examples.map(ex => `
+                <div class="lesson-ex">${speak(ex.target)}
+                    <div class="lesson-ex-body">
+                        <div class="lesson-ex-target">${escapeHtml(ex.target)}</div>
+                        <div class="lesson-ex-trans">${escapeHtml(ex.translation)}</div>
+                        ${ex.pronunciation ? `<div class="lesson-ex-pron">say it: ${escapeHtml(ex.pronunciation)}</div>` : ''}
+                    </div>
+                </div>`).join('')}</div>` : ''}
+        </section>`).join('');
+
+    const exercises = lesson.exercises.map((ex, i) => {
+        const saved = progress.answers[i] || '';
+        const input = ex.type === 'choice'
+            ? `<div class="lesson-options">${ex.options.map(o => `<label class="lesson-option"><input type="radio" name="lq-${i}" value="${escapeHtml(o)}" ${saved === o ? 'checked' : ''}> <span>${escapeHtml(o)}</span></label>`).join('')}</div>`
+            : `<input type="text" class="lesson-input" data-i="${i}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${ex.type === 'translate' ? 'Type the translation' : 'Type your answer'}" value="${escapeHtml(saved)}">`;
+        return `<div class="lesson-q" data-i="${i}">
+            <div class="lesson-q-top"><span class="lesson-q-num">${i + 1}</span><div class="lesson-q-prompt">${escapeHtml(ex.prompt)}</div>${speak(ex.speak)}</div>
+            ${input}<div class="lesson-q-feedback"></div></div>`;
+    }).join('');
+
+    return `<div class="lesson" data-file-id="${file.id}">
+        <div class="lesson-head">
+            <h1>${escapeHtml(lesson.title)}</h1>
+            <div class="lesson-meta">${[lesson.language, lesson.level, lesson.estimatedMinutes ? `about ${lesson.estimatedMinutes} min` : ''].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+            ${lesson.objective ? `<p class="lesson-objective">${escapeHtml(lesson.objective)}</p>` : ''}
+        </div>
+        ${sections}
+        <section class="lesson-section lesson-practice">
+            <h2>Practice</h2>
+            ${exercises}
+            <div class="lesson-actions">
+                <button type="button" class="task-action-btn solid-start lesson-check-btn">Check my answers</button>
+                <button type="button" class="task-action-btn lesson-retry-btn">Start over</button>
+                <button type="button" class="task-action-btn solid-complete lesson-finish-btn" style="display:none;">Finish lesson &amp; send to Lana</button>
+            </div>
+            <div class="lesson-score"></div>
+            ${lesson.wrapUp ? `<p class="lesson-wrapup">${escapeHtml(lesson.wrapUp)}</p>` : ''}
+        </section>
+    </div>`;
+}
+
+// Fills in the right/wrong marks from the saved answers.
+function showLessonResults(file, root) {
+    const lesson = parseLesson(file);
+    const progress = file.lessonProgress;
+    if (!lesson || !progress) return;
+    let correct = 0;
+    lesson.exercises.forEach((ex, i) => {
+        const q = root.querySelector(`.lesson-q[data-i="${i}"]`);
+        if (!q) return;
+        const grade = progress.checked ? gradeLessonExercise(ex, progress.answers[i]) : null;
+        q.classList.remove('correct', 'close', 'wrong', 'blank');
+        const feedback = q.querySelector('.lesson-q-feedback');
+        feedback.textContent = '';
+        if (!grade) return;
+        q.classList.add(grade);
+        if (grade === 'correct' || grade === 'close') correct++;
+        const lines = {
+            correct: '✓ Correct',
+            close: `✓ Nearly - mind the accents: ${ex.answer}`,
+            wrong: `✗ Not quite - the answer is: ${ex.answer}`,
+            blank: `Not answered - the answer is: ${ex.answer}`
+        };
+        feedback.textContent = lines[grade] + (grade !== 'correct' && ex.explanation ? ` — ${ex.explanation}` : '');
+    });
+    const score = root.querySelector('.lesson-score');
+    score.textContent = progress.checked ? `You got ${correct} of ${lesson.exercises.length}.` + (progress.submitted ? ' Sent to Lana.' : '') : '';
+    root.querySelector('.lesson-finish-btn').style.display = progress.checked && !progress.submitted ? '' : 'none';
+    root.querySelector('.lesson-check-btn').style.display = progress.submitted ? 'none' : '';
+    root.querySelector('.lesson-retry-btn').style.display = progress.submitted ? 'none' : '';
+    root.querySelectorAll('.lesson-input, .lesson-option input').forEach(el => { el.disabled = !!progress.submitted; });
+}
+
+function wireLessonView(file, content) {
+    const root = content.querySelector('.lesson');
+    if (!root) return;
+    const progress = file.lessonProgress;
+    showLessonResults(file, root);
+
+    const saveAnswer = (i, value) => {
+        progress.answers[i] = value;
+        // Changing an answer after checking means the marks no longer apply.
+        if (progress.checked && !progress.submitted) { progress.checked = false; showLessonResults(file, root); }
+        saveWorkspaceFiles();
+    };
+    root.addEventListener('input', (e) => { if (e.target.matches('.lesson-input')) saveAnswer(+e.target.dataset.i, e.target.value); });
+    root.addEventListener('change', (e) => {
+        if (e.target.matches('.lesson-option input')) saveAnswer(+e.target.closest('.lesson-q').dataset.i, e.target.value);
+    });
+    root.addEventListener('click', (e) => {
+        const speakBtn = e.target.closest('.lesson-speak');
+        if (speakBtn) { speakLessonText(speakBtn.dataset.text, speakBtn.dataset.lang); return; }
+        if (e.target.closest('.lesson-check-btn')) {
+            progress.checked = true;
+            saveWorkspaceFiles();
+            showLessonResults(file, root);
+        } else if (e.target.closest('.lesson-retry-btn')) {
+            progress.answers = {};
+            progress.checked = false;
+            saveWorkspaceFiles();
+            content.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
+            wireLessonView(file, content);
+        } else if (e.target.closest('.lesson-finish-btn')) {
+            submitLesson(file);
+        }
+    });
+}
+
+// Finishing a lesson: its task is done, and the results go to Lana in chat.
+async function submitLesson(file) {
+    const lesson = parseLesson(file);
+    const progress = file.lessonProgress;
+    if (!lesson || !progress || !progress.checked || progress.submitted) return;
+    const agent = lessonOwnerAgent(file);
+    const results = lesson.exercises.map((ex, i) => ({ ex, answer: progress.answers[i] || '', grade: gradeLessonExercise(ex, progress.answers[i]) }));
+    const correct = results.filter(r => r.grade === 'correct' || r.grade === 'close').length;
+    const missed = results.filter(r => r.grade === 'wrong' || r.grade === 'blank');
+    progress.submitted = true;
+    progress.score = correct;
+    progress.total = results.length;
+    saveWorkspaceFiles();
+
+    const task = file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
+    if (task) {
+        task.lessonResult = {
+            score: correct, total: results.length, at: new Date().toISOString(),
+            missed: missed.slice(0, 8).map(r => `${r.ex.prompt} (answer: ${r.ex.answer})`)
+        };
+        if (task.status === 'in_review') approveTask(agent, task.id); else saveWorkspaceTasks();
+    }
+    const root = wsEl('ws-doc-content').querySelector('.lesson');
+    if (root) showLessonResults(file, root);
+
+    const lines = [`I finished "${lesson.title}" (${lesson.language || 'language lesson'}). I got ${correct} of ${results.length}.`];
+    if (missed.length) {
+        lines.push('', 'What I missed:');
+        missed.slice(0, 12).forEach(r => lines.push(`- ${r.ex.prompt} - I put "${r.answer || '(nothing)'}", the answer is "${r.ex.answer}"`));
+    }
+    lines.push('', "Please tell me how I did. If anything didn't stick, add lessons to my plan to practice it before we move on.");
+    if (!chatHistory[agent]) chatHistory[agent] = [];
+    chatHistory[agent].push({ type: 'user', text: lines.join('\n'), lessonResults: true, timestamp: new Date() });
+    saveToLocalStorage(agent);
+    lanaPendingLesson = task ? { taskId: task.id } : null;
+    selectAgent(agent);
+    showAgentTab('chat');
+    await runOneOnOneAgentTurn(agent, [], undefined, undefined, undefined, undefined);
+    lanaPendingLesson = null;
+}
+
+// Lana adding practice lessons to the plan, right after the lesson just finished.
+function applyAddedLessons(agent, lessons) {
+    const pending = lanaPendingLesson;
+    const finished = pending ? findWorkspaceTaskById(agent, pending.taskId) : null;
+    const project = finished && finished.projectId ? projects[finished.projectId] : null;
+    if (!project) return;
+    const at = project.tasks.findIndex(e => e.taskId === finished.id);
+    if (at < 0) return;
+    lessons.forEach((lesson, i) => {
+        const created = createProjectTaskEntry(agent, project.id, project.name, lesson.task, new Date(), lesson.name, 'personal', true);
+        markLessonTask(created, finished.language, finished.languageCode);
+        project.tasks.splice(at + 1 + i, 0, { agent, task: lesson.task, name: lesson.name, taskId: created.id });
+    });
+    saveProjects();
+    refreshTaskViewsForAgent(agent);
+}
+
+function markLessonTask(task, language, languageCode) {
+    task.isLesson = true;
+    task.language = language || '';
+    task.languageCode = languageCode || '';
+    task.expectedFileTypes = ['lesson'];
+}
+
+// What Lana is reminded of when she's asked to prepare the next lesson.
+function lessonRunContext(task) {
+    const project = task.projectId ? projects[task.projectId] : null;
+    const lines = [`\n\nThis is a language lesson task - prepare it now by calling create_lesson. Language: ${task.language || 'see the plan'}${task.languageCode ? ` (${task.languageCode})` : ''}. His daily study time: ${lanaSettings.dailyMinutes} minutes.`];
+    if (project) {
+        const history = [];
+        for (const entry of project.tasks) {
+            if (entry.taskId === task.id) break;
+            const earlier = findWorkspaceTaskById(entry.agent, entry.taskId);
+            if (!earlier || !earlier.lessonResult) continue;
+            const r = earlier.lessonResult;
+            history.push(`- ${earlier.name}: ${r.score}/${r.total}${r.missed && r.missed.length ? `; missed: ${r.missed.join('; ')}` : ''}`);
+        }
+        if (history.length) lines.push(`Lesson history so far (what he's done and where he struggled):\n${history.join('\n')}`);
+    }
+    return lines.join('\n');
+}
+
+// ---- Settings > Agents > Lana ----
+async function loadLanaSettings() {
+    try {
+        const response = await fetch('/lana/settings');
+        const data = await response.json();
+        if (data.success) { lanaSettings = data.settings; renderLanaSettingsCard(); }
+    } catch (error) {
+        console.error('Failed to load Lana settings:', error);
+    }
+}
+
+async function saveLanaSettings() {
+    try {
+        const response = await fetch('/lana/settings', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ languages: lanaSettings.languages, daily_minutes: lanaSettings.dailyMinutes })
+        });
+        const data = await response.json();
+        if (data.success) lanaSettings = data.settings;
+    } catch (error) {
+        console.error('Failed to save Lana settings:', error);
+    }
+    renderLanaSettingsCard();
+}
+
+function findLanguagePlan(languageName) {
+    return Object.values(projects).find(p => p.kind === 'language' && !p.archived && p.status !== 'cancelled'
+        && String(p.language || '').toLowerCase() === languageName.toLowerCase());
+}
+
+function startLanguagePlan(language) {
+    selectAgent('lana');
+    inputBox.value = `I'd like to start learning ${language.name}${language.focus ? ` (${language.focus})` : ''}. I'm starting from zero and can study about ${lanaSettings.dailyMinutes} minutes a day. Please put together my learning plan.`;
+    autoGrowInputBox();
+    sendMessage();
+}
+
+function renderLanaSettingsCard() {
+    const card = document.getElementById('lana-settings-card');
+    if (!card) return;
+    card.innerHTML = '';
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+
+    card.appendChild(el('h3', '', 'Languages to learn'));
+    card.appendChild(el('p', 'settings-section-desc', "Pick the language(s) you want to start learning. Lana builds each one into a project - every lesson is a task that opens in your Workspace, and she adds more lessons as she sees how you're doing."));
+
+    if (!lanaSettings.languages.length) card.appendChild(el('p', 'settings-section-desc', 'No languages yet - add one below.'));
+    lanaSettings.languages.forEach((language, index) => {
+        const row = el('div', 'social-row');
+        const info = el('div', 'social-row-info');
+        info.appendChild(el('div', 'social-row-name', language.name + (language.focus ? ` - ${language.focus}` : '')));
+        const plan = findLanguagePlan(language.name);
+        let status = 'No plan yet';
+        if (plan && plan.status === 'proposed') status = "Plan proposed - accept it in Lana's chat";
+        else if (plan) {
+            const total = plan.tasks.length;
+            const done = plan.tasks.filter(t => { const task = findWorkspaceTaskById(t.agent, t.taskId); return task && task.status === 'completed'; }).length;
+            status = `Plan in progress - ${done} of ${total} lessons done`;
+        }
+        info.appendChild(el('div', 'social-row-status', status));
+        const actions = el('div', 'social-row-actions');
+        if (plan && plan.status !== 'proposed') actions.appendChild(socialButton('Open plan', () => goToProject(plan.id)));
+        else if (!plan) actions.appendChild(socialButton('Start plan', () => startLanguagePlan(language)));
+        actions.appendChild(socialButton('Remove', () => { lanaSettings.languages.splice(index, 1); saveLanaSettings(); }));
+        row.appendChild(info);
+        row.appendChild(actions);
+        card.appendChild(row);
+    });
+
+    const add = el('div', 'lana-add-row');
+    const nameInput = el('input');
+    nameInput.type = 'text'; nameInput.placeholder = 'Language (e.g. Spanish)'; nameInput.setAttribute('list', 'lana-language-options');
+    const focusInput = el('input');
+    focusInput.type = 'text'; focusInput.placeholder = 'Dialect or focus (optional)';
+    const list = el('datalist');
+    list.id = 'lana-language-options';
+    LANA_COMMON_LANGUAGES.forEach(l => { const o = document.createElement('option'); o.value = l; list.appendChild(o); });
+    const addBtn = socialButton('Add language', () => {
+        const name = nameInput.value.trim();
+        if (!name) { nameInput.focus(); return; }
+        if (lanaSettings.languages.some(l => l.name.toLowerCase() === name.toLowerCase())) { nameInput.value = ''; return; }
+        lanaSettings.languages.push({ name, focus: focusInput.value.trim() });
+        saveLanaSettings();
+    });
+    add.appendChild(nameInput); add.appendChild(focusInput); add.appendChild(list); add.appendChild(addBtn);
+    card.appendChild(add);
+
+    const time = el('div', 'lana-time-row');
+    time.appendChild(el('label', '', 'Time I can study each day'));
+    const select = el('select');
+    [15, 30, 45, 60, 90, 120].forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m < 60 ? `${m} minutes` : (m === 60 ? '1 hour' : `${m / 60} hours`);
+        if (m === lanaSettings.dailyMinutes) o.selected = true;
+        select.appendChild(o);
+    });
+    select.addEventListener('change', () => { lanaSettings.dailyMinutes = +select.value; saveLanaSettings(); });
+    time.appendChild(select);
+    card.appendChild(time);
+}
+
 // ---- wiring (once, at startup) ----
 function initWorkspaceViewer() {
     wsEl('workspace-viewer').querySelectorAll('.ws-tool-btn').forEach(b => b.addEventListener('click', () => setWsTool(b.dataset.tool)));
@@ -14786,6 +15192,12 @@ function openFileInWorkspace(agent, fileId) {
 // page's Preview panel) can wrap it in their own toolbar/controls instead of
 // this one's plain filename display.
 function buildWorkspacePreviewBody(file, opts) {
+    // A lesson is interactive, so it only comes alive in the Workspace viewer.
+    if (file.fileType === 'lesson') {
+        return opts && opts.interactive
+            ? `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`
+            : '<div class="wp-preview-body"><div class="wp-preview-unavailable">Open this lesson in the Workspace to work through it.</div></div>';
+    }
     // A web page - made by the team, or a .html file that came in without a type.
     if (wsIsHtmlFile(file) && file.data) {
         if (opts && opts.codeView) {
@@ -14835,7 +15247,7 @@ function buildWorkspacePreviewBody(file, opts) {
 // preview's markup doesn't map back to its source CSV/pptx-script content, and a
 // raw upload has no source text at all, so editing stays off for those.
 function isFileContentEditable(file) {
-    return !!file.content && file.fileType !== 'pdf' && file.fileType !== 'xlsx' && file.fileType !== 'csv' && file.fileType !== 'pptx' && file.fileType !== 'html';
+    return !!file.content && file.fileType !== 'lesson' && file.fileType !== 'pdf' && file.fileType !== 'xlsx' && file.fileType !== 'csv' && file.fileType !== 'pptx' && file.fileType !== 'html';
 }
 
 function buildWorkspacePreviewToolbar(file, extraButtonsHtml) {
@@ -15215,8 +15627,13 @@ function acceptProject(chatAgent, msgIndex) {
     // Same array reference as projects[id].tasks (set up in upsertProjectProposal),
     // so writing taskId here keeps the Projects sidebar's copy in sync for free.
     let firstCreated = null;
+    const isLanguagePlan = msg.projectProposal.kind === 'language';
     msg.projectProposal.tasks.forEach(taskEntry => {
-        const created = createProjectTaskEntry(taskEntry.agent, msg.projectProposal.id, msg.projectProposal.name, taskEntry.task, acceptedAt, taskEntry.name);
+        // Lessons have nothing to plan - the lesson itself is the work.
+        const created = isLanguagePlan
+            ? createProjectTaskEntry(taskEntry.agent, msg.projectProposal.id, msg.projectProposal.name, taskEntry.task, acceptedAt, taskEntry.name, 'personal', true)
+            : createProjectTaskEntry(taskEntry.agent, msg.projectProposal.id, msg.projectProposal.name, taskEntry.task, acceptedAt, taskEntry.name);
+        if (isLanguagePlan) markLessonTask(created, msg.projectProposal.language, msg.projectProposal.languageCode);
         taskEntry.taskId = created.id;
         if (!firstCreated) firstCreated = { agent: taskEntry.agent, task: created };
     });
@@ -16473,7 +16890,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 attachments: attachments || [],
                 task_context: taskContext,
                 project_context: projectContext,
-                is_task_run: !!taskId
+                is_task_run: !!taskId,
+                is_lesson: !!(taskId && (findWorkspaceTaskById(agent, taskId) || {}).isLesson)
             }),
             signal
         });
@@ -16573,6 +16991,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             updateAgentBadge(agent);
         }
         if (projectProposal) displayProjectsList();
+        if (agent === 'lana' && data.add_lessons && data.add_lessons.length) applyAddedLessons(agent, data.add_lessons);
 
         // Once this agent calls update_task with a settled change to the
         // project task Francis is discussing (see discussInfo above), apply
@@ -19155,7 +19574,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 panel.className = 'settings-subtab-panel';
                 panel.id = `settings-agent-panel-${agent}`;
                 // Sasha is the one agent with settings so far: the social accounts she can post to.
-                panel.innerHTML = agent === 'sasha' ? '<div id="social-accounts-card"></div>' : '<p class="settings-section-desc">Nothing here yet.</p>';
+                panel.innerHTML = agent === 'sasha' ? '<div id="social-accounts-card"></div>'
+                    : agent === 'lana' ? '<div id="lana-settings-card"></div>'
+                    : '<p class="settings-section-desc">Nothing here yet.</p>';
                 panels.appendChild(panel);
             });
             showAgentSettingsSubtab(agents[0]);
@@ -19165,6 +19586,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.querySelectorAll('.settings-subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.agent === agent));
             document.querySelectorAll('.settings-subtab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-agent-panel-${agent}`));
             if (agent === 'sasha') loadSocialStatus();
+            if (agent === 'lana') loadLanaSettings();
         }
 
         // --- Global Settings Save -------------------------------------------
@@ -26118,6 +26540,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             loadTodosData();
             loadRemindersData();
             startReminderAlerts();
+            loadLanaSettings();
             // Whatever is already waiting once the first loads settle is
             // old news - only what arrives after this counts as new.
             setTimeout(armNotifications, 5000);

@@ -4861,6 +4861,297 @@ def suggestions_reorder():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# --- Lana: language learning ------------------------------------------------
+# Settings (Settings > Agents > Lana) hold the languages Francis wants to learn
+# and how long he can study each day. Lana turns a language into a PROJECT: each
+# lesson is a task in it, prepared as an interactive lesson (create_lesson) that
+# opens in the Workspace, where he answers the exercises himself. When he
+# finishes a lesson its results go back to Lana, who can add more lessons to the
+# project (add_lessons) depending on how it went.
+LANA_SETTINGS_FILE = _data_path('lana_settings.json')
+lana_settings_lock = threading.Lock()
+LANA_DAILY_MINUTES = (15, 30, 45, 60, 90, 120)
+
+
+def load_lana_settings():
+    data = {}
+    if os.path.exists(LANA_SETTINGS_FILE):
+        try:
+            with open(LANA_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                data = loaded
+        except (json.JSONDecodeError, OSError):
+            pass
+    languages = [l for l in (data.get('languages') or []) if isinstance(l, dict) and str(l.get('name') or '').strip()]
+    minutes = data.get('dailyMinutes')
+    return {'languages': languages, 'dailyMinutes': minutes if minutes in LANA_DAILY_MINUTES else 30}
+
+
+def save_lana_settings(data):
+    with open(LANA_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+@app.route('/lana/settings', methods=['GET'])
+def lana_settings_get():
+    return jsonify({'success': True, 'settings': load_lana_settings()})
+
+
+@app.route('/lana/settings', methods=['POST'])
+def lana_settings_save():
+    try:
+        data = request.json or {}
+        languages = []
+        seen = set()
+        for raw in (data.get('languages') or [])[:8]:
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get('name') or '').strip()[:40]
+            if not name or name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            languages.append({
+                'id': re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or uuid.uuid4().hex[:8],
+                'name': name,
+                'focus': str(raw.get('focus') or '').strip()[:120]
+            })
+        try:
+            minutes = int(data.get('daily_minutes'))
+        except (TypeError, ValueError):
+            minutes = 30
+        if minutes not in LANA_DAILY_MINUTES:
+            minutes = 30
+        settings = {'languages': languages, 'dailyMinutes': minutes}
+        with lana_settings_lock:
+            save_lana_settings(settings)
+        return jsonify({'success': True, 'settings': settings})
+    except Exception as e:
+        print(f"Lana settings error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# What Lana is told about the languages Francis picked, every turn.
+def get_lana_context():
+    settings = load_lana_settings()
+    languages = settings['languages']
+    if languages:
+        listing = "; ".join(l['name'] + (f" ({l['focus']})" if l.get('focus') else '') for l in languages)
+        lang_line = f"Languages Francis chose to learn in Settings: {listing}."
+    else:
+        lang_line = "Francis hasn't picked a language to learn in Settings yet - if he wants to start one, ask which."
+    return (
+        "\n\nLANGUAGE SETTINGS (set by Francis in Settings > Agents > Lana): "
+        f"{lang_line} He can study about {settings['dailyMinutes']} minutes a day. "
+        "Use these instead of asking again. Only ask what you still need (goal, preferred style, level if he isn't a "
+        "complete beginner), one question at a time."
+    )
+
+
+LANA_LESSON_RULES = (
+    "\n\nHow Lana's lessons work: a language plan is a PROJECT and every lesson is a task in it. When you and Francis "
+    "have what you need to build the plan, call propose_language_plan with the first batch of lessons (about 5 to 8, "
+    "each sized to his daily study time) - he accepts it with the card, and nothing starts until he does. The plan "
+    "doesn't have to list every lesson up front: you add more as he goes. Each lesson is prepared when its task is "
+    "started: you call create_lesson and it opens in his Workspace as an interactive page where he reads the lesson and "
+    "answers the exercises himself (multiple choice, typed answers, translations, with a play button for hearing words). "
+    "When he finishes one, his results come to you as a message: tell him how he did - specific, warm, honest - and if "
+    "anything didn't stick, call add_lessons to put extra practice lessons into his plan right after that one (several "
+    "if he really struggled); if he did well, don't add filler. Never move him forward on something he hasn't shown he "
+    "understands - that's what the added lessons are for.\n\n"
+    "Translator: any text Francis pastes into your chat is something to translate. Translate it into the language he "
+    "asks for. If he pastes text without saying which language, ask in one short line (offer the languages he's learning, "
+    "plus English). Give the translation first and clearly, then only the notes that matter - tone, formality, regional "
+    "differences, idioms that don't carry over."
+)
+
+LANA_TASK_RUN_RULES = (
+    "\n\nThis task is preparing ONE interactive lesson. Call create_lesson exactly once with the complete, finished lesson "
+    "(do not use create_file, and do not describe the lesson in chat instead). Sized to his daily study time. Include "
+    "simple explanations, real-life examples with pronunciation help, and a short set of exercises (usually 6 to 10) "
+    "that check he really understood - each with the correct answer and a one-sentence explanation shown if he gets it "
+    "wrong. Start from what the lesson history in the message says he already knows and where he struggled. Afterwards "
+    "reply in a sentence or two."
+)
+
+PROPOSE_LANGUAGE_PLAN_TOOL = {
+    "name": "propose_language_plan",
+    "description": (
+        "Call this once you know enough to build Francis's learning plan for ONE language (language, daily study time and "
+        "goal are known - Settings usually has the first two). It posts the plan as a project with an Accept button; every "
+        "lesson is a task in it, done in order. Give the first batch only (about 5 to 8 lessons) - you add more later "
+        "with add_lessons as you see how he does. Cover the 90-day arc in the project summary. Don't call it again for "
+        "small questions after proposing; an unaccepted proposal is updated in place if you call it again."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "language": {"type": "string", "description": "The language being learned, e.g. \"Spanish\"."},
+            "language_code": {"type": "string", "description": "BCP-47 code for hearing it spoken, e.g. \"es-MX\", \"fr-FR\", \"ja-JP\"."},
+            "name": {"type": "string", "description": "Project name, e.g. \"Spanish in 90 Days\"."},
+            "summary": {"type": "string", "description": "2-4 sentences in your own voice: the arc of the 90 days, what he should be able to do by each stage, and how you'll measure progress."},
+            "lessons": {
+                "type": "array",
+                "description": "The first lessons, in order.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Short title, e.g. \"Lesson 1: Hello and Goodbye\"."},
+                        "task": {"type": "string", "description": "What this lesson teaches and practices, in 1-3 sentences, so it can be prepared later without this conversation."}
+                    },
+                    "required": ["name", "task"]
+                },
+                "minItems": 3
+            }
+        },
+        "required": ["language", "name", "summary", "lessons"]
+    }
+}
+
+CREATE_LESSON_TOOL = {
+    "name": "create_lesson",
+    "description": (
+        "Only while preparing a lesson task. Builds the lesson as an interactive page in Francis's Workspace. Write all "
+        "teaching text in English (his language) with the target-language words/phrases in the fields made for them."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "language": {"type": "string"},
+            "language_code": {"type": "string", "description": "BCP-47 code, e.g. \"es-MX\"."},
+            "level": {"type": "string", "description": "e.g. \"Absolute beginner\", \"Beginner 2\"."},
+            "objective": {"type": "string", "description": "One sentence: what he'll be able to do after this lesson."},
+            "estimated_minutes": {"type": "integer"},
+            "sections": {
+                "type": "array",
+                "description": "The teaching, in order: a simple explanation, then examples, pronunciation tips, a bit of earlier review.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "heading": {"type": "string"},
+                        "text": {"type": "string", "description": "Plain text explanation; separate paragraphs with a blank line."},
+                        "examples": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "target": {"type": "string", "description": "The word or phrase in the target language."},
+                                    "translation": {"type": "string"},
+                                    "pronunciation": {"type": "string", "description": "A respelling or sound-by-sound tip in English letters."}
+                                },
+                                "required": ["target", "translation"]
+                            }
+                        }
+                    },
+                    "required": ["heading", "text"]
+                }
+            },
+            "exercises": {
+                "type": "array",
+                "description": "Short exercises he answers on the page.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": ["choice", "fill", "translate"], "description": "choice = pick one option; fill = type the missing/asked word; translate = type a translation."},
+                        "prompt": {"type": "string"},
+                        "options": {"type": "array", "items": {"type": "string"}, "description": "For choice: 3-4 options, one of them exactly the answer."},
+                        "answer": {"type": "string", "description": "The correct answer."},
+                        "accepted": {"type": "array", "items": {"type": "string"}, "description": "Other answers that are also right (fill/translate)."},
+                        "explanation": {"type": "string", "description": "One sentence on why, shown after he checks."},
+                        "speak": {"type": "string", "description": "Optional target-language text he can play aloud for this question (a listening exercise)."}
+                    },
+                    "required": ["type", "prompt", "answer"]
+                },
+                "minItems": 3
+            },
+            "wrap_up": {"type": "string", "description": "A short encouraging close and what's next."}
+        },
+        "required": ["title", "language", "sections", "exercises"]
+    }
+}
+
+ADD_LESSONS_TOOL = {
+    "name": "add_lessons",
+    "description": (
+        "Only in reply to Francis's results for a finished lesson: add extra lessons to his plan, placed right after the "
+        "lesson he just did, when something didn't stick (a review of the shaky material, from a different angle, a bit "
+        "more practice). Skip it when he did well - don't add filler."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "lessons": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "Short title, e.g. \"Review: Ser vs Estar\"."},
+                        "task": {"type": "string", "description": "What to re-teach and practice, and which mistakes it targets."}
+                    },
+                    "required": ["name", "task"]
+                },
+                "minItems": 1,
+                "maxItems": 4
+            }
+        },
+        "required": ["lessons"]
+    }
+}
+
+
+# Cleans what the model passed to create_lesson into the lesson the Workspace
+# page renders (or None if it can't be made into a usable lesson).
+def _clean_lesson(raw):
+    def text(value, limit):
+        return str(value or '').strip()[:limit]
+
+    title = text(raw.get('title'), 120)
+    sections = []
+    for sec in (raw.get('sections') or [])[:12]:
+        if not isinstance(sec, dict) or not text(sec.get('heading'), 120):
+            continue
+        examples = []
+        for ex in (sec.get('examples') or [])[:14]:
+            if isinstance(ex, dict) and text(ex.get('target'), 300) and text(ex.get('translation'), 300):
+                examples.append({
+                    'target': text(ex.get('target'), 300), 'translation': text(ex.get('translation'), 300),
+                    'pronunciation': text(ex.get('pronunciation'), 300)
+                })
+        sections.append({'heading': text(sec.get('heading'), 120), 'text': text(sec.get('text'), 4000), 'examples': examples})
+    exercises = []
+    for ex in (raw.get('exercises') or [])[:20]:
+        if not isinstance(ex, dict):
+            continue
+        kind = text(ex.get('type'), 20).lower()
+        prompt = text(ex.get('prompt'), 500)
+        answer = text(ex.get('answer'), 300)
+        if kind not in ('choice', 'fill', 'translate') or not prompt or not answer:
+            continue
+        item = {
+            'type': kind, 'prompt': prompt, 'answer': answer, 'explanation': text(ex.get('explanation'), 500),
+            'speak': text(ex.get('speak'), 300)
+        }
+        if kind == 'choice':
+            options = [text(o, 200) for o in (ex.get('options') or []) if text(o, 200)][:5]
+            if answer not in options:
+                options.append(answer)
+            if len(options) < 2:
+                continue
+            item['options'] = options
+        else:
+            item['accepted'] = [text(a, 300) for a in (ex.get('accepted') or []) if text(a, 300)][:8]
+        exercises.append(item)
+    if not title or not sections or len(exercises) < 3:
+        return None
+    return {
+        'title': title, 'language': text(raw.get('language'), 40), 'languageCode': text(raw.get('language_code'), 12),
+        'level': text(raw.get('level'), 60), 'objective': text(raw.get('objective'), 300),
+        'estimatedMinutes': raw.get('estimated_minutes') if isinstance(raw.get('estimated_minutes'), int) else None,
+        'sections': sections, 'exercises': exercises, 'wrapUp': text(raw.get('wrap_up'), 600)
+    }
+
+
 # --- Reminders --------------------------------------------------------------
 # A reminder is a bit of information pinned to a day/time on the calendar - not
 # something to do, so it never takes up time there and can sit on top of anything
@@ -7091,6 +7382,8 @@ def chat():
         task_context = str(data.get('task_context', '') or '').strip()
         project_context = str(data.get('project_context', '') or '').strip()
         is_task_run = bool(data.get('is_task_run'))
+        # A Lana task that is preparing one interactive lesson (see create_lesson).
+        is_lesson_run = bool(data.get('is_lesson')) and agent == 'lana' and is_task_run
 
         print(f"Agent: {agent}, Message: {message}")
 
@@ -7148,6 +7441,11 @@ def chat():
                 "right icon on it on the Calendar page, so get it right. Leave origin out entirely for any "
                 "other event you create with no such quote."
             )
+
+        if agent == 'lana':
+            system_prompt += get_lana_context() + LANA_LESSON_RULES
+            if is_lesson_run:
+                system_prompt += LANA_TASK_RUN_RULES
 
         # task_context is only sent when Francis is discussing one specific
         # task from a PROJECT (see the "Discuss with Manny" flow on a project
@@ -7235,8 +7533,13 @@ def chat():
             tools.append(PROPOSE_PROJECT_TOOL)
         # Files only come out of a task, so the task's page can hold them and
         # Francis can review them - never from a plain chat.
-        if is_task_run:
+        if is_task_run and not is_lesson_run:
             tools.append(CREATE_FILE_TOOL)
+        if agent == 'lana':
+            tools.append(PROPOSE_LANGUAGE_PLAN_TOOL)
+            tools.append(ADD_LESSONS_TOOL)
+            if is_lesson_run:
+                tools.append(CREATE_LESSON_TOOL)
         if agent == 'sasha' and is_task_run:
             tools.append(DRAFT_SOCIAL_POST_TOOL)
         if task_context:
@@ -7332,6 +7635,7 @@ def chat():
         refer = None
         propose_project = None
         propose_tasks = []
+        add_lessons = []
         created_files = []
         social_draft = None
         task_update = None
@@ -7419,6 +7723,34 @@ def chat():
                             'task': (project_summary + "\n\n" if project_summary else '') + steps,
                             'name': project_name
                         })
+            elif block_name == 'propose_language_plan' and agent == 'lana':
+                block_input = block.input or {}
+                lessons = [
+                    {'agent': 'lana', 'task': str(x.get('task') or '').strip(), 'name': str(x.get('name') or '').strip()[:100]}
+                    for x in (block_input.get('lessons') or [])[:12]
+                    if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip()
+                ]
+                plan_name = str(block_input.get('name') or '').strip()[:120]
+                if lessons and plan_name:
+                    propose_project = {
+                        'name': plan_name, 'summary': str(block_input.get('summary') or '').strip(),
+                        'tasks': lessons, 'kind': 'language',
+                        'language': str(block_input.get('language') or '').strip()[:40],
+                        'languageCode': str(block_input.get('language_code') or '').strip()[:12]
+                    }
+            elif block_name == 'create_lesson' and is_lesson_run:
+                lesson = _clean_lesson(block.input or {})
+                if lesson:
+                    lesson_json = json.dumps(lesson, ensure_ascii=False)
+                    created_files.append({
+                        'name': lesson['title'], 'mimeType': 'application/json',
+                        'data': base64.b64encode(lesson_json.encode('utf-8')).decode('ascii'),
+                        'fileType': 'lesson', 'content': lesson_json
+                    })
+            elif block_name == 'add_lessons' and agent == 'lana':
+                for x in ((block.input or {}).get('lessons') or [])[:4]:
+                    if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip():
+                        add_lessons.append({'task': str(x['task']).strip(), 'name': str(x['name']).strip()[:100]})
             elif block_name == 'propose_task':
                 block_input = block.input or {}
                 task_text = str(block_input.get('task', '')).strip()
@@ -7558,6 +7890,7 @@ def chat():
             'refer': refer,
             'propose_project': propose_project,
             'propose_tasks': propose_tasks,
+            'add_lessons': add_lessons,
             'created_files': created_files,
             'social_draft': social_draft,
             'task_update': task_update,

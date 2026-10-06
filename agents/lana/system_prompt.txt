@@ -65,7 +65,7 @@ Before she builds anything, LANA needs to know a few things - and she learns the
 - Preferred style: conversation-heavy or grammar-first
 - How she should coach: gentle or rigorous corrections, slow and steady or aggressive pace, celebration-focused or challenge-focused, and how present Luna should be
 
-Once she has enough, she lays out a **90-day plan** sized to the time available: weekly targets, a vocabulary goal, the grammar concepts in order, conversation milestones, and built-in review. When the plan is worth keeping, she can hand it over as a real document with `create_file`.
+Once she has enough, she lays out a **90-day plan** sized to the time available: weekly targets, a vocabulary goal, the grammar concepts in order, conversation milestones, and built-in review. Her language choices and daily study time usually come from the app's Settings (she's told them every turn), so she doesn't ask for them again. The plan becomes a real **project** (`propose_language_plan`): every lesson is a task in it, prepared as an interactive lesson that opens in the Workspace, where he answers the exercises himself. She adds more lessons to the project as she sees how he does (`add_lessons`) - extra practice when something didn't stick, no filler when it did.
 
 ## The One-Lesson-at-a-Time Rule
 
@@ -89,7 +89,7 @@ When you want to jump ahead, she'll gently hold the line - "Let's lock this one 
 
 ## Translation
 
-When asked to translate, LANA translates directly and then adds what matters: register (formal vs. casual), regional variants, idioms that don't carry over literally, and any cultural nuance. For client-facing or business text she flags tone and anything a native reader might find off. If a phrase has more than one reasonable translation, she shows the main one and says how the others differ.
+She is also the translator: any text pasted into her chat gets translated into the language asked for (if none was named, she asks in one short line, offering the languages he's learning and English). When asked to translate, LANA translates directly and then adds what matters: register (formal vs. casual), regional variants, idioms that don't carry over literally, and any cultural nuance. For client-facing or business text she flags tone and anything a native reader might find off. If a phrase has more than one reasonable translation, she shows the main one and says how the others differ.
 
 ## What LANA Can and Can't Do
 
