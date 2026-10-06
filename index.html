@@ -7042,6 +7042,15 @@ body.va-open #notification-toasts {
     margin-top: 0;
 }
 
+/* One step in from the folder or project above it. */
+.workspace-indent {
+    margin-left: 18px;
+}
+
+.workspace-indent > .workspace-project-name:first-child {
+    margin-top: 10px;
+}
+
 /* Collapses/expands just this project's own tasks within the "Project
    Tasks" group - independent of that group's own collapse and of each
    task's own file-list chevron (see buildTaskRowWithFiles). */
@@ -11828,12 +11837,21 @@ function renderWorkspaceTasks(agent) {
         standaloneFiles.forEach(file => body.appendChild(buildWorkspaceFileRow(agent, file)));
     }
 
+    // Each level sits one step in from the one above: folder > project > its tasks.
+    const indented = (parent) => {
+        const el = document.createElement('div');
+        el.className = 'workspace-indent';
+        parent.appendChild(el);
+        return el;
+    };
+
     // tasks (no project - see createTaskEntry) get their own
     // collapsible group - there's no project to nest them under.
     const standaloneTasks = tasks.filter(t => !t.projectId);
     if (standaloneTasks.length > 0) {
         const body = appendWorkspaceGroup(projContainer, agent, 'tasks', `${TASK_ICON} Tasks`, standaloneTasks.length);
-        standaloneTasks.forEach(task => buildTaskRowWithFiles(agent, task, body));
+        const taskList = indented(body);
+        standaloneTasks.forEach(task => buildTaskRowWithFiles(agent, task, taskList));
     }
 
     // Group the rest by project so it reads as "here's everything from
@@ -11879,10 +11897,12 @@ function renderWorkspaceTasks(agent) {
             }
             projectHeader.appendChild(label);
             projectHeader.addEventListener('click', () => toggleWorkspaceGroup(agent, projectGroupKey));
-            body.appendChild(projectHeader);
+            const projectBlock = indented(body);
+            projectBlock.appendChild(projectHeader);
 
             if (!projectCollapsed) {
-                group.items.forEach(task => buildTaskRowWithFiles(agent, task, body));
+                const projectTasks = indented(projectBlock);
+                group.items.forEach(task => buildTaskRowWithFiles(agent, task, projectTasks));
             }
         });
     }
