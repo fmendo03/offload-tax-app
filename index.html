@@ -21500,6 +21500,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             renderTodosPreviewPane();
         }
 
+        // Clicking empty space on the To-Do page puts the details away. Buttons, fields,
+        // the New To-Do form, other rows and the details panel itself don't count, and
+        // nothing closes while a to-do is being edited.
+        document.addEventListener('click', (e) => {
+            if (selectedTodoId === null || editingTodoId) return;
+            const view = document.getElementById('todos-view');
+            if (!view || view.style.display === 'none' || !view.contains(e.target)) return;
+            if (e.target.closest('.topics-item, .todos-details-pane, button, input, select, textarea, label, a, .todos-new-bar-collapse, [contenteditable="true"]')) return;
+            selectedTodoId = null;
+            renderTodosPage();
+        });
+
         function toggleTodoSelection(todoId) {
             if (selectedTodoIds.has(todoId)) selectedTodoIds.delete(todoId);
             else selectedTodoIds.add(todoId);
@@ -21586,7 +21598,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
             row.appendChild(badges);
 
-            row.addEventListener('click', () => { selectedTodoId = todo.id; renderTodosPage(); });
+            // Click selects it (and opens the details); clicking the selected one again
+            // closes them. The second click of a double-click doesn't count.
+            row.addEventListener('click', (e) => {
+                if (e.detail > 1) return;
+                if (selectedTodoId === todo.id) { selectedTodoId = null; editingTodoId = null; }
+                else selectedTodoId = todo.id;
+                renderTodosPage();
+            });
             // Double-clicking a scheduled to-do takes you to its card on the
             // Calendar, which flashes.
             if (isTodoScheduled(todo) && !todo.completed) {
@@ -21662,6 +21681,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const emptyEl = document.getElementById('todos-preview-empty');
             const contentEl = document.getElementById('todos-preview-content');
             const todo = todosList.find(t => t.id === selectedTodoId);
+
+            // The details panel only exists while a to-do is selected - the board
+            // takes the whole page otherwise.
+            const pane = document.querySelector('#todos-view .todos-details-pane');
+            if (pane) pane.style.display = todo ? '' : 'none';
 
             if (!todo) {
                 emptyEl.style.display = 'block';
