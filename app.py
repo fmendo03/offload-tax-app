@@ -4950,19 +4950,24 @@ def get_lana_context():
 
 LANA_LESSON_RULES = (
     "\n\nHow Lana's lessons work: a language plan is a PROJECT and every lesson is a task in it. When you and Francis "
-    "have what you need to build the plan, call propose_language_plan with the full OUTLINE of the course: MODULES (4 to "
-    "6 for roughly 90 days, each with a goal), each holding LESSONS (each sized to his daily study time), each lesson "
-    "listing the TOPICS it covers. Put a cumulative REVIEW lesson (review=true) after about every three lessons - it "
-    "covers everything learned to date, so nothing fades. He accepts the plan with the card and nothing starts until he "
-    "does. Only the first module's lessons become tasks right away; each next module's lessons are added to the project "
-    "automatically when he finishes the current one, and the app also inserts a review if one is due. Each lesson is "
-    "prepared when its task is started: you call create_lesson and it opens in his Workspace as an interactive page "
-    "where he reads the lesson and answers the exercises himself (multiple choice, typed answers, translations, with a "
-    "play button for hearing words). When he finishes one, his results come to you as a message: tell him how he did - "
-    "specific, warm, honest - and if anything didn't stick, call add_lessons to put extra practice lessons into his plan "
-    "right after that one (several if he really struggled); if he did well, don't add filler. He can redo any finished "
-    "lesson as often as he likes, but the next lesson only opens once the one before it is completed - that's what the "
-    "added lessons and reviews are for.\n\n"
+    "have what you need to build the plan, call propose_language_plan with the course OUTLINE, written the way a good "
+    "course syllabus reads: MODULES (about 3 for 90 days, each with a day range like \"Days 1-30\" and a goal). The FIRST "
+    "module is spelled out as numbered LESSONS (about 6 to 8, sized to his daily study time), each with its specific TOPICS "
+    "(the actual words, forms and skills it teaches - concrete, like \"all six forms of avere\", not vague). The LATER "
+    "modules are only a ROADMAP: a short list of what each will cover. You turn a roadmap module into real lessons once "
+    "he finishes the module before it, based on how he did. Put a cumulative REVIEW lesson (review=true) after about every "
+    "three lessons - it covers everything learned to date. Every lesson also ends with a short review of earlier material. "
+    "Every module ends with a QUIZ that the app adds itself (he can retake it as often as he likes, with new questions each "
+    "time). In the plan summary, say the pace plainly: if a set of material doesn't stick you'll add a review lesson before "
+    "moving on - better than rushing. He accepts the plan with the card and nothing starts until he does. Each lesson is "
+    "prepared when its task is started: you call create_lesson and it opens in his Workspace as an interactive page where "
+    "he reads the lesson and answers the exercises himself (multiple choice, typed answers, translations, with a play "
+    "button for hearing words). When he finishes a lesson or quiz, his results come to you as a message: tell him how he "
+    "did - specific, warm, honest - and if anything didn't stick, call add_lessons to put extra practice lessons into his "
+    "plan right after it (several if he really struggled); if he did well, don't add filler. When he finishes a module's "
+    "quiz, his message will ask you to build the next roadmap module's lessons: call add_lessons with `module` set to "
+    "that module's name and the lessons (with topics) tuned to how he's been doing. He can redo any finished lesson as "
+    "often as he likes, but the next lesson only opens once the one before it is completed.\n\n"
     "Translator: any text Francis pastes into your chat is something to translate. Translate it into the language he "
     "asks for. If he pastes text without saying which language, ask in one short line (offer the languages he's learning, "
     "plus English). Give the translation first and clearly, then only the notes that matter - tone, formality, regional "
@@ -4976,51 +4981,58 @@ LANA_TASK_RUN_RULES = (
     "that check he really understood - each with the correct answer and a one-sentence explanation shown if he gets it "
     "wrong. Start from what the lesson history in the message says he already knows and where he struggled. If the "
     "message says this is a REVIEW lesson, build it to cover everything learned to date: mix the topics from every earlier "
-    "lesson it lists (more weight on what he missed), with no new material. Afterwards reply in a sentence or two."
+    "lesson it lists (more weight on what he missed), with no new material. Every other lesson ends with a short review "
+    "of earlier material: its last couple of exercises revisit what the lesson history lists. Afterwards reply in a sentence or two."
 )
 
 PROPOSE_LANGUAGE_PLAN_TOOL = {
     "name": "propose_language_plan",
     "description": (
         "Call this once you know enough to build Francis's learning plan for ONE language (language, daily study time and "
-        "goal are known - Settings usually has the first two). It posts the plan's OUTLINE - modules, each with lessons, "
-        "each lesson with its topics - as a project with an Accept button; every lesson is a task, done in order. Cover the "
-        "whole course (about 90 days, 4-6 modules). Put a cumulative review lesson (review=true) after about every three "
-        "lessons; it covers everything learned to date. Only the first module's lessons become tasks now; later modules' "
-        "lessons are added automatically as he finishes each module. Don't call it again for small questions after "
+        "goal are known - Settings usually has the first two). It posts the plan's OUTLINE as a project with an Accept "
+        "button. Write it like a course syllabus: about 3 modules for ~90 days, each with a day range and goal. Only the "
+        "FIRST module has lessons (about 6-8, each with concrete topics); the later modules are a short roadmap of what "
+        "they'll cover, which you turn into lessons later. Put a cumulative review lesson (review=true) after about every "
+        "three lessons. Don't add the module quizzes - the app does. Don't call it again for small questions after "
         "proposing; an unaccepted proposal is updated in place if you call it again."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "language": {"type": "string", "description": "The language being learned, e.g. \"Spanish\"."},
-            "language_code": {"type": "string", "description": "BCP-47 code for hearing it spoken, e.g. \"es-MX\", \"fr-FR\", \"ja-JP\"."},
-            "name": {"type": "string", "description": "Project name, e.g. \"Spanish in 90 Days\"."},
-            "summary": {"type": "string", "description": "2-4 sentences in your own voice: the arc of the 90 days, what he should be able to do by each stage, and how you'll measure progress."},
+            "language": {"type": "string", "description": "The language being learned, e.g. \"Italian\"."},
+            "language_code": {"type": "string", "description": "BCP-47 code for hearing it spoken, e.g. \"it-IT\", \"es-MX\", \"ja-JP\"."},
+            "name": {"type": "string", "description": "Project name, e.g. \"Italian in 90 Days\"."},
+            "summary": {"type": "string", "description": "2-4 sentences in your own voice: the arc of the 90 days, what he should be able to do by each stage, and a note on pace (if something doesn't stick you'll add a review before moving on)."},
             "modules": {
                 "type": "array",
                 "description": "The course outline, in order.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "e.g. \"Module 1: First Conversations\"."},
+                        "name": {"type": "string", "description": "e.g. \"Module 1: First Words and Family\"."},
+                        "days": {"type": "string", "description": "e.g. \"Days 1-30\"."},
                         "goal": {"type": "string", "description": "What he can do when the module is finished."},
                         "lessons": {
                             "type": "array",
+                            "description": "FIRST module only: the numbered lessons, in order.",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "name": {"type": "string", "description": "Short title, e.g. \"Lesson 1: Hello and Goodbye\" or \"Review: Lessons 1-3\"."},
+                                    "name": {"type": "string", "description": "Short title, e.g. \"Sounds and Hello\" or \"Numbers + Review\"."},
                                     "task": {"type": "string", "description": "What this lesson teaches and practices, in 1-3 sentences, so it can be prepared later without this conversation."},
-                                    "topics": {"type": "array", "items": {"type": "string"}, "description": "2-5 short topics it covers, e.g. \"greetings\", \"introducing yourself\"."},
+                                    "topics": {"type": "array", "items": {"type": "string"}, "description": "The specific things it covers, e.g. \"all six forms of essere\", \"ciao, buongiorno, buonasera\"."},
                                     "review": {"type": "boolean", "description": "True for a cumulative review of everything learned so far."}
                                 },
                                 "required": ["name", "task", "topics"]
-                            },
-                            "minItems": 2
+                            }
+                        },
+                        "roadmap": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "LATER modules only: a short list of what the module will cover (turned into lessons later)."
                         }
                     },
-                    "required": ["name", "goal", "lessons"]
+                    "required": ["name", "goal"]
                 },
                 "minItems": 2
             }
@@ -5109,7 +5121,8 @@ ADD_LESSONS_TOOL = {
                     "properties": {
                         "name": {"type": "string", "description": "Short title, e.g. \"Review: Ser vs Estar\"."},
                         "task": {"type": "string", "description": "What to re-teach and practice, and which mistakes it targets."},
-                        "topics": {"type": "array", "items": {"type": "string"}, "description": "The topics it covers."}
+                        "topics": {"type": "array", "items": {"type": "string"}, "description": "The topics it covers."},
+                        "module": {"type": "string", "description": "Only when turning a roadmap module into lessons after he finishes the module before it: that module's name. Leave out for extra practice."}
                     },
                     "required": ["name", "task"]
                 },
@@ -5122,27 +5135,12 @@ ADD_LESSONS_TOOL = {
 }
 
 
-# Cleans what the model passed to create_lesson into the lesson the Workspace
-# page renders (or None if it can't be made into a usable lesson).
-def _clean_lesson(raw):
-    def text(value, limit):
-        return str(value or '').strip()[:limit]
+def _clean_exercises(raw_exercises, limit):
+    def text(value, size):
+        return str(value or '').strip()[:size]
 
-    title = text(raw.get('title'), 120)
-    sections = []
-    for sec in (raw.get('sections') or [])[:12]:
-        if not isinstance(sec, dict) or not text(sec.get('heading'), 120):
-            continue
-        examples = []
-        for ex in (sec.get('examples') or [])[:14]:
-            if isinstance(ex, dict) and text(ex.get('target'), 300) and text(ex.get('translation'), 300):
-                examples.append({
-                    'target': text(ex.get('target'), 300), 'translation': text(ex.get('translation'), 300),
-                    'pronunciation': text(ex.get('pronunciation'), 300)
-                })
-        sections.append({'heading': text(sec.get('heading'), 120), 'text': text(sec.get('text'), 4000), 'examples': examples})
     exercises = []
-    for ex in (raw.get('exercises') or [])[:20]:
+    for ex in (raw_exercises or [])[:limit]:
         if not isinstance(ex, dict):
             continue
         kind = text(ex.get('type'), 20).lower()
@@ -5164,6 +5162,29 @@ def _clean_lesson(raw):
         else:
             item['accepted'] = [text(a, 300) for a in (ex.get('accepted') or []) if text(a, 300)][:8]
         exercises.append(item)
+    return exercises
+
+
+# Cleans what the model passed to create_lesson into the lesson the Workspace
+# page renders (or None if it can't be made into a usable lesson).
+def _clean_lesson(raw):
+    def text(value, limit):
+        return str(value or '').strip()[:limit]
+
+    title = text(raw.get('title'), 120)
+    sections = []
+    for sec in (raw.get('sections') or [])[:12]:
+        if not isinstance(sec, dict) or not text(sec.get('heading'), 120):
+            continue
+        examples = []
+        for ex in (sec.get('examples') or [])[:14]:
+            if isinstance(ex, dict) and text(ex.get('target'), 300) and text(ex.get('translation'), 300):
+                examples.append({
+                    'target': text(ex.get('target'), 300), 'translation': text(ex.get('translation'), 300),
+                    'pronunciation': text(ex.get('pronunciation'), 300)
+                })
+        sections.append({'heading': text(sec.get('heading'), 120), 'text': text(sec.get('text'), 4000), 'examples': examples})
+    exercises = _clean_exercises(raw.get('exercises'), 20)
     if not title or not sections or len(exercises) < 3:
         return None
     return {
@@ -5172,6 +5193,72 @@ def _clean_lesson(raw):
         'estimatedMinutes': raw.get('estimated_minutes') if isinstance(raw.get('estimated_minutes'), int) else None,
         'sections': sections, 'exercises': exercises, 'wrapUp': text(raw.get('wrap_up'), 600)
     }
+
+
+QUIZ_TOOL = {
+    "name": "make_quiz",
+    "description": "Return the finished quiz.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "exercises": CREATE_LESSON_TOOL["input_schema"]["properties"]["exercises"]
+        },
+        "required": ["exercises"]
+    }
+}
+
+
+# A module quiz: fresh questions on the module's topics every time it's asked for,
+# so retaking it is real review rather than memorising the same questions.
+@app.route('/lana/quiz', methods=['POST'])
+def lana_quiz():
+    try:
+        data = request.json or {}
+        language = str(data.get('language') or '').strip()[:40]
+        module = str(data.get('module') or 'this module').strip()[:100]
+        topics = [str(t).strip()[:120] for t in (data.get('topics') or []) if str(t).strip()][:60]
+        if not language or not topics:
+            return jsonify({'success': False, 'error': 'A language and the module topics are required.'}), 400
+        avoid = [str(p).strip()[:200] for p in (data.get('avoid') or []) if str(p).strip()][-60:]
+        weak = [str(w).strip()[:200] for w in (data.get('weak') or []) if str(w).strip()][:12]
+        try:
+            count = max(8, min(16, int(data.get('count') or 12)))
+        except (TypeError, ValueError):
+            count = 12
+        level = str(data.get('level') or '').strip()[:60]
+        code = str(data.get('language_code') or '').strip()[:12]
+
+        prompt = (
+            f"Write a {count}-question quiz on {language} for the module \"{module}\". It must cover these topics "
+            f"fairly evenly, drawing on what the module taught: {'; '.join(topics)}.\n"
+            + (f"Learner level: {level}.\n" if level else '')
+            + (f"He has tended to miss: {'; '.join(weak)} - give those a little extra weight.\n" if weak else '')
+            + (f"These questions were already used in earlier attempts - every question must be NEW (different words, "
+               f"sentences and angles, not rewordings): {' | '.join(avoid)}\n" if avoid else '')
+            + "Mix the types: about half multiple choice, the rest typed (fill) and translations, and make at least two "
+              "of them listening questions by setting `speak` to the target-language text to play. Each question has the "
+              "correct answer (and `accepted` alternatives where fair) and a one-sentence explanation shown if he gets it "
+              "wrong. Teaching text in English; target-language words in the target language."
+        )
+        response = claude_create(
+            log_agent='lana', log_purpose='lana_quiz', model=CLAUDE_MODEL, max_tokens=6000,
+            system="You are Lana, a warm but rigorous language teacher writing a quiz. Return it with the make_quiz tool.",
+            messages=[{'role': 'user', 'content': prompt}],
+            tools=[QUIZ_TOOL], tool_choice={'type': 'tool', 'name': 'make_quiz'}
+        )
+        block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use' and b.name == 'make_quiz'), None)
+        exercises = _clean_exercises((block.input or {}).get('exercises') if block else None, 16)
+        if len(exercises) < 6:
+            return jsonify({'success': False, 'error': 'The quiz came back too short - try again.'}), 502
+        quiz = {
+            'title': f"{module} Quiz", 'kind': 'quiz', 'module': module, 'language': language, 'languageCode': code, 'level': level,
+            'objective': f"Check you've got everything in {module}. New questions every time you retake it.",
+            'topics': topics, 'sections': [], 'exercises': exercises, 'wrapUp': ''
+        }
+        return jsonify({'success': True, 'quiz': quiz})
+    except Exception as e:
+        print(f"Lana quiz error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # --- Reminders --------------------------------------------------------------
@@ -7752,21 +7839,24 @@ def chat():
                     if not isinstance(m, dict) or not str(m.get('name') or '').strip():
                         continue
                     module_lessons = []
-                    for x in (m.get('lessons') or [])[:10]:
+                    for x in (m.get('lessons') or [])[:12]:
                         if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip():
                             module_lessons.append({
                                 'name': str(x['name']).strip()[:100], 'task': str(x['task']).strip(),
-                                'topics': [str(t).strip()[:80] for t in (x.get('topics') or []) if str(t).strip()][:6],
+                                'topics': [str(t).strip()[:120] for t in (x.get('topics') or []) if str(t).strip()][:8],
                                 'review': bool(x.get('review'))
                             })
-                    if module_lessons:
-                        modules.append({'name': str(m['name']).strip()[:100], 'goal': str(m.get('goal') or '').strip()[:300], 'lessons': module_lessons})
+                    modules.append({
+                        'name': str(m['name']).strip()[:100], 'days': str(m.get('days') or '').strip()[:40],
+                        'goal': str(m.get('goal') or '').strip()[:300], 'lessons': module_lessons,
+                        'roadmap': [str(r).strip()[:200] for r in (m.get('roadmap') or []) if str(r).strip()][:8]
+                    })
                 plan_name = str(block_input.get('name') or '').strip()[:120]
-                if modules and plan_name:
+                if modules and modules[0]['lessons'] and plan_name:
                     propose_project = {
                         'name': plan_name, 'summary': str(block_input.get('summary') or '').strip(),
-                        # Only the first module becomes tasks now; the rest of the outline is
-                        # turned into tasks as each module is finished (see advanceOutline).
+                        # Only the first module becomes tasks now (plus its quiz, added by the app);
+                        # a roadmap module becomes lessons later, when Lana builds it.
                         'tasks': [dict(l, agent='lana') for l in modules[0]['lessons']],
                         'outline': {'modules': modules}, 'kind': 'language',
                         'language': str(block_input.get('language') or '').strip()[:40],
@@ -7786,7 +7876,8 @@ def chat():
                     if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip():
                         add_lessons.append({
                             'task': str(x['task']).strip(), 'name': str(x['name']).strip()[:100],
-                            'topics': [str(t).strip()[:80] for t in (x.get('topics') or []) if str(t).strip()][:6]
+                            'topics': [str(t).strip()[:120] for t in (x.get('topics') or []) if str(t).strip()][:8],
+                            'module': str(x.get('module') or '').strip()[:100]
                         })
             elif block_name == 'propose_task':
                 block_input = block.input or {}

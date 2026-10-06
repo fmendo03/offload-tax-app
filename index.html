@@ -2177,6 +2177,19 @@
 .lang-topics { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 0 18px; }
 .lang-topic { font-size: 10.5px; padding: 1px 7px; border-radius: 10px; background: #efe9c8; color: #6b5f36; }
 
+.lang-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 4px; }
+.lang-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #8a7a45; padding: 3px 6px; border-bottom: 1px solid #e3dcb8; }
+.lang-table td { padding: 5px 6px; vertical-align: top; border-bottom: 1px dashed #ece6c9; }
+.lang-table td:first-child { width: 28px; color: #8a7a45; }
+.lang-lesson-topics { color: #555; }
+.lang-lesson.done .lang-lesson-title { color: #1f7a49; }
+.lang-lesson.ready .lang-lesson-title { color: #b8860b; font-weight: 600; }
+.lang-lesson.upcoming .lang-lesson-title { color: #8a8a8a; }
+.lang-lesson.review .lang-lesson-title { font-style: italic; }
+.lang-lesson.quiz td { background: #f6f1d6; }
+.lang-roadmap-note { font-size: 11.5px; color: #8a7a45; font-style: italic; margin: 2px 0 2px; }
+.lang-roadmap { margin: 4px 0 0 18px; padding: 0; font-size: 12.5px; color: #555; }
+
 /* Lana's lessons (Workspace) and settings */
 .ws-viewer.ws-lesson .ws-tools, .ws-viewer.ws-lesson #ws-notes-toggle, .ws-viewer.ws-lesson #ws-notes-pane,
 .ws-viewer.ws-lesson #ws-download-btn, .ws-viewer.ws-lesson #ws-view-toggle { display: none !important; }
@@ -10270,6 +10283,12 @@ function upsertProjectProposal(agent, proposeProjectData) {
         projectProposal.language = proposeProjectData.language || '';
         projectProposal.languageCode = proposeProjectData.languageCode || '';
         projectProposal.outline = proposeProjectData.outline || null;
+        // Every module with lessons ends with a quiz (the task is made when the plan is accepted).
+        (projectProposal.outline ? projectProposal.outline.modules : []).forEach(mod => {
+            if ((mod.lessons || []).length && !mod.lessons.some(l => l.quiz)) {
+                mod.lessons.push({ name: `${mod.name.split(':')[0]} Quiz`, quiz: true, topics: moduleTopics(mod) });
+            }
+        });
     }
 
     projects[projectId] = {
@@ -13107,6 +13126,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
         alert(`This is step ${stepInfo.step} of its project - "${stepInfo.blocker.name || stepInfo.blocker.task}" has to be completed first.`);
         return;
     }
+    if (task.isQuiz) { await prepareModuleQuiz(agent, task); return; }
     task.status = 'in_progress';
     if (!task.startedAt) task.startedAt = new Date();
     // Starting work moves the conversation on - drop any pending project-task
@@ -14885,18 +14905,19 @@ function buildLessonHtml(file) {
     return `<div class="lesson" data-file-id="${file.id}">
         <div class="lesson-head">
             <h1>${escapeHtml(lesson.title)}</h1>
-            <div class="lesson-meta">${[lesson.language, lesson.level, lesson.estimatedMinutes ? `about ${lesson.estimatedMinutes} min` : ''].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+            <div class="lesson-meta">${[lesson.kind === 'quiz' ? 'Module quiz' : '', lesson.language, lesson.level, lesson.estimatedMinutes ? `about ${lesson.estimatedMinutes} min` : ''].filter(Boolean).map(escapeHtml).join(' · ')}</div>
             ${lesson.objective ? `<p class="lesson-objective">${escapeHtml(lesson.objective)}</p>` : ''}
         </div>
         ${sections}
         <section class="lesson-section lesson-practice">
-            <h2>Practice</h2>
+            <h2>${lesson.kind === 'quiz' ? 'Quiz' : 'Practice'}</h2>
             ${exercises}
             <div class="lesson-actions">
                 <button type="button" class="task-action-btn solid-start lesson-check-btn">Check my answers</button>
                 <button type="button" class="task-action-btn lesson-retry-btn">Start over</button>
                 <button type="button" class="task-action-btn solid-complete lesson-finish-btn" style="display:none;">Finish lesson &amp; send to Lana</button>
                 <button type="button" class="task-action-btn lesson-redo-btn" style="display:none;" title="Do this lesson again - as many times as you like">Redo this lesson</button>
+                <button type="button" class="task-action-btn lesson-newq-btn" style="display:none;" title="A fresh set of questions on the same topics - retake it as often as you like">Retake with new questions</button>
             </div>
             <div class="lesson-score"></div>
             ${lesson.wrapUp ? `<p class="lesson-wrapup">${escapeHtml(lesson.wrapUp)}</p>` : ''}
@@ -14933,7 +14954,9 @@ function showLessonResults(file, root) {
     root.querySelector('.lesson-finish-btn').style.display = progress.checked && !progress.submitted ? '' : 'none';
     root.querySelector('.lesson-check-btn').style.display = progress.submitted ? 'none' : '';
     root.querySelector('.lesson-retry-btn').style.display = progress.submitted ? 'none' : '';
-    root.querySelector('.lesson-redo-btn').style.display = progress.submitted ? '' : 'none';
+    const isQuiz = lesson.kind === 'quiz';
+    root.querySelector('.lesson-redo-btn').style.display = progress.submitted && !isQuiz ? '' : 'none';
+    root.querySelector('.lesson-newq-btn').style.display = isQuiz && (progress.checked || progress.submitted) ? '' : 'none';
     root.querySelectorAll('.lesson-input, .lesson-option input').forEach(el => { el.disabled = !!progress.submitted; });
 }
 
@@ -14977,6 +15000,8 @@ function wireLessonView(file, content) {
             content.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
             wireLessonView(file, content);
             content.closest('.ws-doc-scroll') && (content.closest('.ws-doc-scroll').scrollTop = 0);
+        } else if (e.target.closest('.lesson-newq-btn')) {
+            retakeQuiz(file, content, e.target.closest('.lesson-newq-btn'));
         } else if (e.target.closest('.lesson-finish-btn')) {
             submitLesson(file);
         }
@@ -15012,12 +15037,24 @@ async function submitLesson(file) {
     if (root) showLessonResults(file, root);
 
     const attempt = progress.attempts || 1;
-    const lines = [`I ${attempt > 1 ? `did "${lesson.title}" again (attempt ${attempt})` : `finished "${lesson.title}"`} (${lesson.language || 'language lesson'}). I got ${correct} of ${results.length}.`];
+    const isQuiz = lesson.kind === 'quiz';
+    const lines = [`I ${isQuiz ? `took the "${lesson.title}"` : (attempt > 1 ? `did "${lesson.title}" again` : `finished "${lesson.title}"`)}${attempt > 1 ? ` (attempt ${attempt})` : ''} (${lesson.language || 'language lesson'}). I got ${correct} of ${results.length}.`];
     if (missed.length) {
         lines.push('', 'What I missed:');
         missed.slice(0, 12).forEach(r => lines.push(`- ${r.ex.prompt} - I put "${r.answer || '(nothing)'}", the answer is "${r.ex.answer}"`));
     }
     lines.push('', "Please tell me how I did. If anything didn't stick, add lessons to my plan to practice it before we move on.");
+    // Finishing a module's quiz: Lana builds the next roadmap module, tuned to how it went.
+    const planProject = task && task.projectId ? projects[task.projectId] : null;
+    let nextModule = null;
+    if (isQuiz && planProject && planProject.outline) {
+        const mods = planProject.outline.modules;
+        const here = mods.findIndex(m => (m.lessons || []).some(l => l.taskId === task.id));
+        nextModule = here >= 0 ? mods.slice(here + 1).find(m => !(m.lessons || []).length && (m.roadmap || []).length) : null;
+        if (nextModule) {
+            lines.push('', `That finishes the module. Please turn the next module - "${nextModule.name}"${nextModule.days ? ` (${nextModule.days})` : ''} - into lessons now, tuned to how I've been doing. Its roadmap: ${nextModule.roadmap.join('; ')}. Use add_lessons with module set to "${nextModule.name}" and give each lesson its topics.`);
+        }
+    }
     if (!chatHistory[agent]) chatHistory[agent] = [];
     chatHistory[agent].push({ type: 'user', text: lines.join('\n'), lessonResults: true, timestamp: new Date() });
     saveToLocalStorage(agent);
@@ -15028,14 +15065,17 @@ async function submitLesson(file) {
     lanaPendingLesson = null;
 }
 
-// Lana adding practice lessons to the plan, right after the lesson just finished.
+// Lana adding lessons: extra practice goes right after the lesson just finished; lessons for a
+// roadmap module (marked with `module`) are built into that module, with its quiz.
 function applyAddedLessons(agent, lessons) {
     const pending = lanaPendingLesson;
     const finished = pending ? findWorkspaceTaskById(agent, pending.taskId) : null;
     const project = finished && finished.projectId ? projects[finished.projectId] : null;
     if (!project) return;
+    const forModule = lessons.filter(l => l.module);
+    if (forModule.length) addModuleLessons(agent, project, forModule[0].module, forModule);
     let after = finished.id;
-    lessons.forEach(lesson => { after = insertLessonAfter(agent, project, after, lesson).id; });
+    lessons.filter(l => !l.module).forEach(lesson => { after = insertLessonAfter(agent, project, after, lesson).id; });
     saveProjects();
     refreshTaskViewsForAgent(agent);
 }
@@ -15091,11 +15131,11 @@ function ensureReviewLesson(agent, project, finished) {
     let since = 0;
     for (let i = at; i >= 0; i--) {
         if (tasks[i].isReview && tasks[i].status === 'completed') break;
-        if (tasks[i].isLesson && !tasks[i].isReview && tasks[i].status === 'completed') since++;
+        if (tasks[i].isLesson && !tasks[i].isReview && !tasks[i].isQuiz && tasks[i].status === 'completed') since++;
     }
     if (since < LESSONS_BETWEEN_REVIEWS) return;
     if (tasks.slice(at + 1, at + 3).some(t => t.isReview && t.status !== 'completed')) return;
-    const lessonsDone = tasks.filter(t => t.isLesson && !t.isReview && t.status === 'completed').length;
+    const lessonsDone = tasks.filter(t => t.isLesson && !t.isReview && !t.isQuiz && t.status === 'completed').length;
     insertLessonAfter(agent, project, finished.id, {
         name: `Review: everything so far (${lessonsDone} lessons)`,
         task: 'Cumulative review of everything learned to date in this plan - a mix of the topics from every earlier lesson, with extra weight on what was missed. No new material.',
@@ -15103,29 +15143,131 @@ function ensureReviewLesson(agent, project, finished) {
     });
 }
 
-// When every lesson made so far is done, the next module of the outline becomes tasks.
-function advanceOutline(agent, project) {
-    if (!project.outline) return;
-    if (projectLessonTasks(project).some(t => t.status !== 'completed')) return;
-    const next = project.outline.modules.find(m => m.lessons.some(l => !l.taskId));
-    if (!next) return;
-    const lessons = next.lessons.filter(l => !l.taskId);
-    lessons.forEach(l => materializeOutlineLesson(agent, project, l));
-    postAgentChatMessage(agent, `That's the end of the last module - nice work! Next up: ${next.name}. ${lessons.length} new lesson${lessons.length === 1 ? '' : 's'} ${lessons.length === 1 ? 'is' : 'are'} in your plan.`);
+function agentOfPlan() { return 'lana'; }
+
+// Every topic the lessons of a module cover (what its quiz is about).
+function moduleTopics(mod) {
+    const seen = new Set();
+    (mod.lessons || []).filter(l => !l.quiz).forEach(l => (l.topics || []).forEach(t => seen.add(t)));
+    return Array.from(seen);
 }
 
-// A lesson task was just completed: keep reviews coming and open up the next module.
+// The quiz that closes a module: a task like any other, prepared on Start - but with fresh
+// questions every time it's retaken (see retakeQuiz).
+function addQuizTask(agent, project, mod, entry) {
+    const topics = moduleTopics(mod);
+    const name = entry ? entry.name : `${mod.name.split(':')[0]} Quiz`;
+    const created = createProjectTaskEntry(agent, project.id, project.name, `Quiz on everything in ${mod.name}. It can be retaken as often as you like - new questions every time.`, new Date(), name, 'personal', true);
+    markLessonTask(created, project.language, project.languageCode, { topics });
+    created.isQuiz = true;
+    created.moduleName = mod.name;
+    project.tasks.push({ agent, task: created.task, name, topics, quiz: true, taskId: created.id });
+    if (entry) entry.taskId = created.id;
+    else mod.lessons.push({ name, quiz: true, topics, taskId: created.id });
+    return created;
+}
+
+function findOutlineModule(project, name) {
+    const mods = project.outline ? project.outline.modules : [];
+    const wanted = String(name || '').toLowerCase();
+    return mods.find(m => m.name.toLowerCase() === wanted)
+        || mods.find(m => wanted && (m.name.toLowerCase().includes(wanted) || wanted.includes(m.name.toLowerCase())))
+        || mods.find(m => !(m.lessons || []).length);
+}
+
+// A roadmap module becomes lessons (and its quiz) once Lana builds it.
+function addModuleLessons(agent, project, moduleName, lessons) {
+    const mod = findOutlineModule(project, moduleName);
+    if (!mod) return;
+    lessons.forEach(l => {
+        const spec = { name: l.name, task: l.task, topics: l.topics || [], review: false };
+        mod.lessons = mod.lessons || [];
+        mod.lessons.push(spec);
+        materializeOutlineLesson(agent, project, spec);
+    });
+    addQuizTask(agent, project, mod);
+}
+
+async function requestQuiz(body) {
+    const response = await fetch('/lana/quiz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Could not make the quiz.');
+    return data.quiz;
+}
+
+function lessonToBase64(json) {
+    return btoa(unescape(encodeURIComponent(json)));
+}
+
+// Starting a quiz task: no chat turn - the quiz is written straight away.
+async function prepareModuleQuiz(agent, task) {
+    task.status = 'in_progress';
+    task.startedAt = task.startedAt || new Date();
+    refreshTaskViewsForAgent(agent);
+    const project = task.projectId ? projects[task.projectId] : null;
+    const mod = project && project.outline ? project.outline.modules.find(m => (m.lessons || []).some(l => l.taskId === task.id)) : null;
+    const weak = [];
+    (mod ? mod.lessons : []).forEach(l => {
+        const t = l.taskId ? findWorkspaceTaskById(agent, l.taskId) : null;
+        if (t && t.lessonResult) weak.push(...(t.lessonResult.missed || []));
+    });
+    try {
+        const quiz = await requestQuiz({ language: task.language, language_code: task.languageCode, module: task.moduleName || task.name, topics: task.lessonTopics, avoid: [], weak: weak.slice(-12) });
+        const json = JSON.stringify(quiz);
+        completeProjectTaskFromChat(agent, task.id, [{ name: task.name, mimeType: 'application/json', data: lessonToBase64(json), fileType: 'lesson', content: json }]);
+    } catch (error) {
+        console.error('Quiz failed:', error);
+        task.status = 'paused';
+        refreshTaskViewsForAgent(agent);
+        alert(`Couldn't write the quiz: ${error.message} Press Resume to try again.`);
+    }
+}
+
+// New questions on the same topics, none repeated from earlier attempts.
+async function retakeQuiz(file, content, button) {
+    const lesson = parseLesson(file);
+    if (!lesson) return;
+    const agent = lessonOwnerAgent(file);
+    const progress = file.lessonProgress || {};
+    const history = (file.quizHistory || []).concat(lesson.exercises.map(e => e.prompt));
+    const weak = lesson.exercises.filter((e, i) => ['wrong', 'blank'].includes(gradeLessonExercise(e, (progress.answers || {})[i]))).map(e => `${e.prompt} (answer: ${e.answer})`);
+    button.disabled = true;
+    const label = button.textContent;
+    button.textContent = 'Writing new questions…';
+    try {
+        const quiz = await requestQuiz({ language: lesson.language, language_code: lesson.languageCode, module: lesson.module || lesson.title.replace(/ Quiz$/, ''), topics: lesson.topics, level: lesson.level, avoid: history, weak });
+        const json = JSON.stringify(quiz);
+        file.quizHistory = history;
+        file.content = json;
+        file.data = lessonToBase64(json);
+        file.lessonProgress = { answers: {}, checked: false, submitted: false, attempts: (progress.attempts || 1) + 1 };
+        saveWorkspaceFiles();
+        content.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
+        wireLessonView(file, content);
+        const scroller = content.closest('.ws-doc-scroll');
+        if (scroller) scroller.scrollTop = 0;
+    } catch (error) {
+        console.error('Retake failed:', error);
+        alert(`Couldn't write new questions: ${error.message}`);
+        button.disabled = false;
+        button.textContent = label;
+    }
+}
+
+// A lesson task was just completed: keep reviews coming. (A finished quiz is handled by
+// the message to Lana, who builds the next module.)
 function onLessonCompleted(agent, task) {
     const project = task.projectId ? projects[task.projectId] : null;
     if (!project) return;
-    ensureReviewLesson(agent, project, task);
-    advanceOutline(agent, project);
+    if (!task.isQuiz) ensureReviewLesson(agent, project, task);
     saveProjects();
     refreshTaskViewsForAgent(agent);
 }
 
-// The outline: modules, their lessons, and each lesson's topics. `project` can be a
-// project or a not-yet-accepted proposal.
+// The outline, laid out like a course syllabus: each module with its day range and goal, then
+// either its numbered lessons with topics (and the quiz that closes it) or - for a module that
+// hasn't been built yet - the roadmap of what it will cover. `project` can be a project or a
+// not-yet-accepted proposal.
 function buildLanguageOutlineEl(project) {
     const wrap = document.createElement('div');
     wrap.className = 'lang-outline';
@@ -15142,26 +15284,41 @@ function buildLanguageOutlineEl(project) {
         m.className = 'lang-module';
         const head = document.createElement('div');
         head.className = 'lang-module-head';
-        head.textContent = mod.name;
+        head.textContent = mod.name + (mod.days ? ` (${mod.days})` : '');
         m.appendChild(head);
         if (mod.goal) { const g = document.createElement('div'); g.className = 'lang-module-goal'; g.textContent = mod.goal; m.appendChild(g); }
-        mod.lessons.forEach(lesson => {
-            const st = statusOf(lesson);
-            const row = document.createElement('div');
-            row.className = `lang-lesson ${st.cls}` + (lesson.review ? ' review' : '');
-            const title = document.createElement('div');
-            title.className = 'lang-lesson-title';
-            title.textContent = `${st.icon} ${lesson.review ? '🔁 ' : ''}${lesson.name}`;
-            title.title = st.label;
-            row.appendChild(title);
-            if ((lesson.topics || []).length) {
-                const topics = document.createElement('div');
-                topics.className = 'lang-topics';
-                lesson.topics.forEach(t => { const chip = document.createElement('span'); chip.className = 'lang-topic'; chip.textContent = t; topics.appendChild(chip); });
-                row.appendChild(topics);
-            }
-            m.appendChild(row);
-        });
+        if ((mod.lessons || []).length) {
+            const table = document.createElement('table');
+            table.className = 'lang-table';
+            table.innerHTML = '<tr><th>#</th><th>Lesson</th><th>Topics</th></tr>';
+            let n = 0;
+            mod.lessons.forEach(lesson => {
+                const st = statusOf(lesson);
+                const row = document.createElement('tr');
+                row.className = `lang-lesson ${st.cls}` + (lesson.review ? ' review' : '') + (lesson.quiz ? ' quiz' : '');
+                const num = document.createElement('td');
+                num.textContent = lesson.quiz ? '★' : String(++n);
+                const title = document.createElement('td');
+                title.className = 'lang-lesson-title';
+                title.textContent = `${st.icon} ${lesson.review ? '🔁 ' : ''}${lesson.name}`;
+                title.title = st.label;
+                const topics = document.createElement('td');
+                topics.className = 'lang-lesson-topics';
+                topics.textContent = lesson.quiz ? 'New questions on everything in this module each time - retake it as often as you like' : (lesson.topics || []).join(', ');
+                row.appendChild(num); row.appendChild(title); row.appendChild(topics);
+                table.appendChild(row);
+            });
+            m.appendChild(table);
+        } else if ((mod.roadmap || []).length) {
+            const note = document.createElement('div');
+            note.className = 'lang-roadmap-note';
+            note.textContent = "Roadmap - turned into lessons once the module before it is done, based on how you do.";
+            m.appendChild(note);
+            const list = document.createElement('ul');
+            list.className = 'lang-roadmap';
+            mod.roadmap.forEach(r => { const li = document.createElement('li'); li.textContent = r; list.appendChild(li); });
+            m.appendChild(list);
+        }
         wrap.appendChild(m);
     });
     return wrap;
@@ -15177,7 +15334,7 @@ function lessonRunContext(task) {
         for (const entry of project.tasks) {
             if (entry.taskId === task.id) break;
             const earlier = findWorkspaceTaskById(entry.agent, entry.taskId);
-            if (!earlier || !earlier.isLesson || earlier.status !== 'completed') continue;
+            if (!earlier || !earlier.isLesson || earlier.isQuiz || earlier.status !== 'completed') continue;
             const r = earlier.lessonResult;
             history.push(`- ${earlier.name}${earlier.lessonTopics && earlier.lessonTopics.length ? ` [topics: ${earlier.lessonTopics.join(', ')}]` : ''}${r ? `: ${r.score}/${r.total}${r.missed && r.missed.length ? `; missed: ${r.missed.join('; ')}` : ''}` : ''}`);
         }
@@ -15799,6 +15956,12 @@ function acceptProject(chatAgent, msgIndex) {
         taskEntry.taskId = created.id;
         if (!firstCreated) firstCreated = { agent: taskEntry.agent, task: created };
     });
+    if (isLanguagePlan && msg.projectProposal.outline && projects[msg.projectProposal.id]) {
+        const planProject = projects[msg.projectProposal.id];
+        const firstModule = msg.projectProposal.outline.modules[0];
+        const quizEntry = firstModule.lessons.find(l => l.quiz && !l.taskId);
+        if (quizEntry) addQuizTask(agentOfPlan(msg.projectProposal), planProject, firstModule, quizEntry);
+    }
     // Files shared in this chat before the project was proposed go under its first step.
     if (firstCreated) attachRecentChatFilesToTask(chatAgent, msgIndex, firstCreated.agent, firstCreated.task);
     saveWorkspaceTasks();
