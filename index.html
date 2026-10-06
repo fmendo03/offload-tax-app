@@ -3625,6 +3625,16 @@
             pointer-events: none;
         }
 
+        /* Completed to-dos: still visible, but clearly finished - the time is open. */
+        .bulk-schedule-preview-block-readonly.done {
+            background: rgba(46, 157, 87, 0.08);
+            border-left-color: #2e9d57;
+            border: 1px dashed rgba(46, 157, 87, 0.5);
+            border-left: 3px solid #2e9d57;
+            color: #2e7d4a;
+            text-decoration: line-through;
+        }
+
         /* A to-do this run of Schedule/drag-drop actually placed - accented
            and draggable to nudge it to a different day/time right here (see
            renderBulkSchedulePreviewCalendar/placeBulkScheduleDrop). */
@@ -23309,8 +23319,15 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             block.dataset.origin = e.origin || '';
             block.style.top = `${startMin / 60 * CALENDAR_PX_PER_HOUR}px`;
             block.style.height = `${Math.max(14, durationMin / 60 * CALENDAR_PX_PER_HOUR - 1)}px`;
-            block.textContent = e.title;
-            block.title = e.title;
+            if (isCompletedTodoEvent(e)) {
+                // Done - shown so you can see what you got through, but the time is open.
+                block.classList.add('done');
+                block.textContent = `✓ ${e.title}`;
+                block.title = `${e.title} - completed, so this time is free to schedule`;
+            } else {
+                block.textContent = e.title;
+                block.title = e.title;
+            }
             return block;
         }
 
@@ -23440,6 +23457,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const ranges = [];
             (calendarEvents || []).forEach(e => {
                 if (e.status === 'cancelled' || e.allDay || e.origin === 'lunch') return;
+                if (isCompletedTodoEvent(e)) return;   // done - that time is free again
                 if (!(e.start || '').startsWith(dateKey)) return;
                 const s = new Date(e.start);
                 const en = e.end ? new Date(e.end) : new Date(s.getTime() + 30 * 60000);
@@ -23455,6 +23473,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 });
             });
             return ranges;
+        }
+
+        // A calendar card belonging to a to-do that's been completed.
+        function isCompletedTodoEvent(e) {
+            const todo = findTodoForCalendarEvent(e.id);
+            return !!(todo && todo.completed);
         }
 
         function bulkScheduleRangesOverlap(aStart, aEnd, bStart, bEnd) {

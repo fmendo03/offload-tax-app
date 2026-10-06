@@ -4400,6 +4400,16 @@ def todos_bulk_schedule():
 
             working_events = load_calendar_events()
 
+            # A completed to-do's calendar time is free again - the work is done, so
+            # its card (which stays on the calendar as a record) shouldn't block
+            # anything from being scheduled there. Only hidden from the free-slot
+            # search below; the cards themselves are never touched or removed.
+            freed_event_ids = set()
+            for t in todos:
+                if t.get('completed'):
+                    freed_event_ids.update(_normalize_todo_event_ids(t))
+            freed_event_ids |= {e.get('id') for e in working_events if e.get('splitOf') in freed_event_ids}
+
             # Placements the popup already has staged locally but hasn't
             # saved yet (see bulkScheduleStagedPlacements/previewBulkScheduleTodos)
             # - without these, scheduling a second batch in the same popup
@@ -4419,7 +4429,9 @@ def todos_bulk_schedule():
 
             def day_events_for(day):
                 day_iso = day.isoformat()
-                return [e for e in working_events if e.get('status') != 'cancelled' and (e.get('start') or '').startswith(day_iso)]
+                return [e for e in working_events
+                        if e.get('status') != 'cancelled' and e.get('id') not in freed_event_ids
+                        and (e.get('start') or '').startswith(day_iso)]
 
             # If a plain search finds no room for `duration` on `day`, and
             # that day has a real Lunch card on it, tries repositioning
