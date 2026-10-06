@@ -9003,7 +9003,7 @@ body.va-open #notification-toasts {
             playBubblePop();
 
             const container = document.getElementById('notification-toasts');
-            while (container.children.length >= 4) container.firstElementChild.remove();
+            while (container.children.length >= 8) container.firstElementChild.remove();   // only a pile-up guard - they otherwise stay until dismissed
 
             const toast = document.createElement('div');
             toast.className = 'notification-toast';
@@ -9027,8 +9027,8 @@ body.va-open #notification-toasts {
                 dismiss();
                 selectAgent(agent);
             });
+            // Stays until you click it (opens that agent) or its ×.
             container.appendChild(toast);
-            setTimeout(dismiss, 8000);
         }
 
         function updateAgentFlash() {
@@ -18488,7 +18488,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     col.appendChild(nowLine);
                 }
 
-                (byDay[key] || []).filter(e => !e.allDay).forEach(e => col.appendChild(buildCalendarWeekEventBlock(e)));
+                const timedEvents = (byDay[key] || []).filter(e => !e.allDay);
+                timedEvents.forEach(e => col.appendChild(buildCalendarWeekEventBlock(e)));
+                layoutOverlappingCalendarEvents(col, timedEvents);
 
                 // A plain click just marks a single slot (so it's clear what
                 // you're about to add before committing to it); clicking and
@@ -19489,6 +19491,46 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 alert(result.error || 'Could not save that change - it has been reset.');
                 renderCalendarWeek();
             }
+        }
+
+        // Cards that overlap in time normally pile on top of each other. When any of
+        // the overlapping cards is a completed to-do, the whole group is laid out
+        // side by side instead, so the finished one stays readable next to whatever
+        // got scheduled over its time.
+        function layoutOverlappingCalendarEvents(col, events) {
+            const items = events.map(e => {
+                const start = new Date(e.start);
+                const end = e.end ? new Date(e.end) : new Date(start.getTime() + 30 * 60000);
+                const startMin = start.getHours() * 60 + start.getMinutes();
+                const durationMin = Math.max(16 / CALENDAR_PX_PER_HOUR * 60, Math.min((end - start) / 60000, 24 * 60 - startMin));
+                return { e, startMin, endMin: startMin + durationMin };
+            }).sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+            const clusters = [];
+            let current = null;
+            items.forEach(item => {
+                if (current && item.startMin < current.end) { current.items.push(item); current.end = Math.max(current.end, item.endMin); }
+                else { current = { items: [item], end: item.endMin }; clusters.push(current); }
+            });
+
+            clusters.forEach(cluster => {
+                if (cluster.items.length < 2 || !cluster.items.some(it => isCalendarEventTodoCompleted(it.e))) return;
+                const laneEnds = [];
+                cluster.items.forEach(item => {
+                    let lane = laneEnds.findIndex(end => end <= item.startMin);
+                    if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
+                    laneEnds[lane] = item.endMin;
+                    item.lane = lane;
+                });
+                const lanes = laneEnds.length;
+                cluster.items.forEach(item => {
+                    const block = col.querySelector(`.calendar-week-event[data-event-id="${item.e.id}"]`);
+                    if (!block) return;
+                    block.style.right = 'auto';
+                    block.style.left = `calc(2px + ${item.lane} * (100% - 4px) / ${lanes})`;
+                    block.style.width = `calc((100% - 4px) / ${lanes} - 2px)`;
+                });
+            });
         }
 
         function buildCalendarWeekEventBlock(e) {
