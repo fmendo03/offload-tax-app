@@ -9111,9 +9111,13 @@ body.va-open #notification-toasts {
             showAgentNotification(agent, 'Ready for your review', notifyPreview(taskName));
         }
 
-        function showAgentNotification(agent, label, text) {
-            flashingAgents.add(agent);
-            updateAgentFlash();
+        // opts.stayHere: a heads-up that doesn't send you anywhere or flash the agent's
+        // card (a reminder) - clicking it just dismisses it.
+        function showAgentNotification(agent, label, text, opts = {}) {
+            if (!opts.stayHere) {
+                flashingAgents.add(agent);
+                updateAgentFlash();
+            }
             playBubblePop();
 
             const container = document.getElementById('notification-toasts');
@@ -9139,7 +9143,7 @@ body.va-open #notification-toasts {
             toast.addEventListener('click', (e) => {
                 if (e.target.closest('.notification-toast-close')) { dismiss(); return; }
                 dismiss();
-                selectAgent(agent);
+                if (!opts.stayHere) selectAgent(agent);
             });
             // Stays until you click it (opens that agent) or its ×.
             container.appendChild(toast);
@@ -21639,6 +21643,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 if (data.success) {
                     remindersList = data.reminders || [];
                     afterRemindersChanged();
+                    checkDueReminders();
                 }
             } catch (error) {
                 console.error('Failed to load reminders:', error);
@@ -21763,6 +21768,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const data = await response.json();
                 if (!data.success) { alert(data.error || 'Could not save that reminder.'); return false; }
                 remindersList = data.reminders || [];
+                markReminderPastOccurrencesFired(reminderId || data.reminder_id);
                 afterRemindersChanged();
                 return true;
             } catch (error) {
@@ -21900,6 +21906,71 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 lane.appendChild(bell);
             });
             return lane;
+        }
+
+        // ---- the pop-up and sound when one comes due ----
+        // Ashanti pops up (the same toast and sound as her other notifications) when a
+        // reminder's time arrives, and it stays until dismissed. Checked every few
+        // seconds while the app is open; one that came due while it was closed shows
+        // up on open if that was within the last half hour. Each occurrence only ever
+        // pops once (remembered in this browser).
+        const REMINDER_ALERT_WINDOW_MIN = 30;
+        let reminderAlertTimer = null;
+
+        function loadRemindersFired() {
+            try { return JSON.parse(localStorage.getItem('remindersFired') || '{}') || {}; } catch (e) { return {}; }
+        }
+
+        function saveRemindersFired(fired) {
+            const cutoff = Date.now() - 3 * 24 * 3600 * 1000;
+            Object.keys(fired).forEach(k => { if (fired[k] < cutoff) delete fired[k]; });
+            try { localStorage.setItem('remindersFired', JSON.stringify(fired)); } catch (e) { /* storage unavailable */ }
+        }
+
+        function showReminderAlert(rem) {
+            const text = rem.description ? `${rem.title} - ${rem.description}` : rem.title;
+            showAgentNotification('ashanti', '🔔 Reminder', text, { stayHere: true });
+        }
+
+        function checkDueReminders() {
+            if (!remindersList.length) return;
+            const now = new Date();
+            const fired = loadRemindersFired();
+            let changed = false;
+            [0, 1].forEach(back => {
+                const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back);
+                const key = calendarDateKey(day);
+                remindersList.forEach(rem => {
+                    if (!reminderOccursOn(rem, key)) return;
+                    const due = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, reminderMinutes(rem));
+                    const minutesAgo = (now - due) / 60000;
+                    if (minutesAgo < 0 || minutesAgo > REMINDER_ALERT_WINDOW_MIN) return;
+                    const firedKey = `${rem.id}|${key}|${rem.time}`;
+                    if (fired[firedKey]) return;
+                    fired[firedKey] = now.getTime();
+                    changed = true;
+                    showReminderAlert(rem);
+                });
+            });
+            if (changed) saveRemindersFired(fired);
+        }
+
+        // A reminder saved with a time that has already passed today shouldn't
+        // pop up the moment it's saved.
+        function markReminderPastOccurrencesFired(reminderId) {
+            const rem = remindersList.find(r => r.id === reminderId);
+            if (!rem) return;
+            const now = new Date();
+            const key = calendarDateKey(now);
+            if (!reminderOccursOn(rem, key) || reminderMinutes(rem) > now.getHours() * 60 + now.getMinutes()) return;
+            const fired = loadRemindersFired();
+            fired[`${rem.id}|${key}|${rem.time}`] = now.getTime();
+            saveRemindersFired(fired);
+        }
+
+        function startReminderAlerts() {
+            if (reminderAlertTimer) return;
+            reminderAlertTimer = setInterval(checkDueReminders, 15000);
         }
 
         // ---- the Reminders page ----
@@ -26022,6 +26093,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             // itself is never opened this session.
             loadTodosData();
             loadRemindersData();
+            startReminderAlerts();
             // Whatever is already waiting once the first loads settle is
             // old news - only what arrives after this counts as new.
             setTimeout(armNotifications, 5000);
