@@ -6995,17 +6995,28 @@ def tasks_plan():
             + TASK_PLAN_CAPABILITIES + (TASK_PLAN_SASHA_NOTE if agent == 'sasha' else '') + "\n\n"
             "Return ONLY a JSON object with these keys:\n"
             "- goal: one or two sentences on what will get done and why it is worth doing.\n"
-            "- steps: 3 to 6 short, concrete steps in the order the agent will take them, each starting with a verb.\n"
+            "- steps: 3 to 6 steps in the order the agent will take them. Each step is an object with two keys: "
+            "\"title\" (what the step is, as a short action of 2 to 6 words starting with a verb, no colon - for example "
+            "\"Review the existing file\") and \"detail\" (one plain sentence on what will take place in that step).\n"
             "- output: one or two sentences on exactly what Francis receives at the end - the deliverable and its "
             "format (for example, a two-page Word document, or a short written summary in chat)."
         )
         response = claude_create(
-            log_agent=agent, log_purpose='task_plan', model=CLAUDE_MODEL, max_tokens=900,
+            log_agent=agent, log_purpose='task_plan', model=CLAUDE_MODEL, max_tokens=1400,
             messages=[{'role': 'user', 'content': prompt}]
         )
         raw = _first_json_object("".join(b.text for b in response.content if getattr(b, 'type', None) == 'text'))
         goal = str(raw.get('goal') or '').strip()
-        plan_steps = [str(x).strip() for x in (raw.get('steps') or []) if str(x).strip()][:7]
+        plan_steps = []
+        for item in (raw.get('steps') or [])[:7]:
+            if isinstance(item, dict):
+                step_title = str(item.get('title') or '').replace(':', ' ').strip()
+                step_detail = str(item.get('detail') or '').strip()
+                step = f"{step_title}: {step_detail}" if step_title and step_detail else (step_title or step_detail)
+            else:
+                step = str(item).strip()
+            if step:
+                plan_steps.append(step)
         output = str(raw.get('output') or '').strip()
         if not (goal and plan_steps and output):
             raise ValueError('The plan came back incomplete.')

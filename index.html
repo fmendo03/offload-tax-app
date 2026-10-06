@@ -10575,7 +10575,9 @@ function appendTaskTreeRow(container, agent, task, taskExpanded) {
     // On this page (every agent's tasks at once) a plan only opens for the
     // selected task, one in review, or one Francis opened himself - not for
     // every not-started task, which would make the list endless.
-    const showPlan = taskExpanded || taskPlanOpen[task.id] === true || (task.status === 'in_review' && taskPlanOpen[task.id] !== false);
+    // Collapsed means collapsed: no description (even in review - the Approve
+    // button is on the row itself).
+    const showPlan = taskExpanded || taskPlanOpen[task.id] === true;
     const planPanel = buildTaskPlanPanel(agent, task, showPlan);
     if (planPanel) container.appendChild(planPanel);
 
@@ -12382,6 +12384,14 @@ async function requestTaskPlan(agent, taskId) {
     refreshTaskViewsForAgent(agent);
 }
 
+// A step reads "Title: what will take place" - the title in bold, the rest plain.
+function planStepHtml(step) {
+    const text = String(step);
+    const at = text.indexOf(': ');
+    if (at > 0 && at <= 80) return `<li><strong>${escapeHtml(text.slice(0, at + 1))}</strong> ${escapeHtml(text.slice(at + 2))}</li>`;
+    return `<li>${escapeHtml(text)}</li>`;
+}
+
 function taskPlanSectionHtml(task) {
     const plan = task.plan;
     if (!plan) return '';
@@ -12389,7 +12399,7 @@ function taskPlanSectionHtml(task) {
         <div class="task-plan-label">What will get done</div>
         <div>${escapeHtml(plan.goal)}</div>
         <div class="task-plan-label">Steps</div>
-        <ol>${(plan.steps || []).map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+        <ol>${(plan.steps || []).map(planStepHtml).join('')}</ol>
         <div class="task-plan-label">Final output</div>
         <div>${escapeHtml(plan.output)}</div>
     `;
