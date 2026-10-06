@@ -4849,6 +4849,138 @@ def suggestions_reorder():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# --- Reminders --------------------------------------------------------------
+# A reminder is a bit of information pinned to a day/time on the calendar - not
+# something to do, so it never takes up time there and can sit on top of anything
+# (see the reminder strip in renderCalendarWeek). Each one has a first date and
+# time and an optional repeat; the repeats themselves are worked out in the
+# browser for whichever days are on screen, so only the definition is stored.
+REMINDERS_FILE = _data_path('reminders.json')
+reminders_lock = threading.Lock()
+_REMINDER_REPEATS = ('none', 'daily', 'weekdays', 'weekly', 'monthly', 'yearly')
+
+
+def load_reminders():
+    if os.path.exists(REMINDERS_FILE):
+        try:
+            with open(REMINDERS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    return []
+
+
+def save_reminders(data):
+    with open(REMINDERS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+
+# Reads and checks the fields a reminder form sends. Returns (fields, None) with
+# only the fields that were present (so an update can change just some), or
+# (None, error_message).
+def _reminder_fields(data, creating):
+    fields = {}
+    if creating or 'title' in data:
+        title = str(data.get('title') or '').strip()
+        if not title:
+            return None, 'Please give the reminder a title.'
+        fields['title'] = title[:200]
+    if 'description' in data:
+        fields['description'] = str(data.get('description') or '').strip()[:2000]
+    if creating or 'date' in data:
+        try:
+            fields['date'] = date.fromisoformat(str(data.get('date'))).isoformat()
+        except (ValueError, TypeError):
+            return None, 'Please choose a date.'
+    if creating or 'time' in data:
+        time_str = str(data.get('time') or '09:00').strip()
+        try:
+            _minutes_from_hhmm(time_str)
+        except Exception:
+            return None, 'Please choose a time.'
+        fields['time'] = time_str
+    if creating or 'repeat' in data:
+        repeat = str(data.get('repeat') or 'none').strip().lower()
+        fields['repeat'] = repeat if repeat in _REMINDER_REPEATS else 'none'
+    if 'end_date' in data:
+        raw_end = data.get('end_date')
+        if raw_end:
+            try:
+                fields['endDate'] = date.fromisoformat(str(raw_end)).isoformat()
+            except (ValueError, TypeError):
+                return None, 'Invalid end date.'
+        else:
+            fields['endDate'] = None
+    return fields, None
+
+
+@app.route('/reminders', methods=['GET'])
+def reminders_list():
+    return jsonify({'success': True, 'reminders': load_reminders()})
+
+
+@app.route('/reminders', methods=['POST'])
+def reminders_create():
+    try:
+        fields, error = _reminder_fields(request.json or {}, creating=True)
+        if error:
+            return jsonify({'success': False, 'error': error}), 400
+        with reminders_lock:
+            reminders = load_reminders()
+            reminder = {
+                'id': uuid.uuid4().hex, 'userId': current_user_id(),
+                'description': '', 'endDate': None,
+                'createdAt': now_local().isoformat()
+            }
+            reminder.update(fields)
+            if reminder.get('endDate') and reminder['endDate'] < reminder['date']:
+                return jsonify({'success': False, 'error': 'The end date has to be after the first date.'}), 400
+            reminders.append(reminder)
+            save_reminders(reminders)
+        return jsonify({'success': True, 'reminders': reminders, 'reminder_id': reminder['id']})
+    except Exception as e:
+        print(f"Reminder create error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/reminders/<reminder_id>', methods=['POST'])
+def reminders_update(reminder_id):
+    try:
+        fields, error = _reminder_fields(request.json or {}, creating=False)
+        if error:
+            return jsonify({'success': False, 'error': error}), 400
+        with reminders_lock:
+            reminders = load_reminders()
+            reminder = next((r for r in reminders if r['id'] == reminder_id), None)
+            if not reminder:
+                return jsonify({'success': False, 'error': 'Reminder not found'}), 404
+            reminder.update(fields)
+            if reminder.get('endDate') and reminder['endDate'] < reminder['date']:
+                return jsonify({'success': False, 'error': 'The end date has to be after the first date.'}), 400
+            save_reminders(reminders)
+        return jsonify({'success': True, 'reminders': reminders})
+    except Exception as e:
+        print(f"Reminder update error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/reminders/<reminder_id>', methods=['DELETE'])
+def reminders_delete(reminder_id):
+    try:
+        with reminders_lock:
+            reminders = load_reminders()
+            remaining = [r for r in reminders if r['id'] != reminder_id]
+            if len(remaining) == len(reminders):
+                return jsonify({'success': False, 'error': 'Reminder not found'}), 404
+            save_reminders(remaining)
+        return jsonify({'success': True, 'reminders': remaining})
+    except Exception as e:
+        print(f"Reminder delete error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/')
 def index():
     # no-cache = the browser re-checks on every load, so an update to the page
