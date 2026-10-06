@@ -6945,8 +6945,10 @@ body.va-open #notification-toasts {
 .workspace-tasks-list {
     padding: 12px 16px;
     overflow-y: auto;
-    flex: 0 0 33%;
-    border-bottom: 1px solid #e0e0e0;
+    /* Fills the whole tab - it used to share the space with a preview panel
+       underneath, which now lives in the Workspace tab. */
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .workspace-tasks-empty {
