@@ -20333,8 +20333,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const response = await fetch('/calendar/checkins/today');
                 const data = await response.json();
                 if (!data.success || !data.checkin) return;
-                calendarCheckinData = data.checkin;
-                renderChatInsightCards();
+                // The check-in is a real message in Ashanti's chat (not a separate
+                // card with a "Got it" button), so it counts as unread like any
+                // other, you answer it by just replying, and she knows exactly what
+                // you're answering because it's part of the conversation she sees.
+                if (!chatHistory.ashanti) chatHistory.ashanti = [];
+                chatHistory.ashanti.push({ type: 'agent', text: data.checkin.message, calendarCheckin: true, timestamp: new Date() });
+                saveToLocalStorage('ashanti');
+                if (currentAgent === 'ashanti') { displayMessages('ashanti'); markAgentRead('ashanti'); }
                 updateAllBadges();
                 if (currentAgent) updateChatPendingBadge(currentAgent);
             } catch (error) {
