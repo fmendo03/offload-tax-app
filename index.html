@@ -8979,7 +8979,7 @@ body.va-open #notification-toasts {
         // tab - see countMessageTabItems.)
         function countChatPendingItems(agent) {
             const unreadMessages = Math.max(0, countAgentMessages(agent) - (lastReadCounts[agent] || 0));
-            return unreadMessages + countPendingCalendarCheckin(agent) + countPendingTodoMorningCheckin(agent);
+            return unreadMessages;
         }
 
         // Unanswered "About you / your firm" questions plus pending suggestions
@@ -9074,6 +9074,24 @@ body.va-open #notification-toasts {
             return clean.length > max ? clean.slice(0, max - 1) + '…' : clean;
         }
 
+        // An agent saying something to you, as an ordinary message in their chat. Every
+        // pop-up notification is for a chat message like this - the pop-up, badge and
+        // sound all come from the message arriving (see detectNewNotifications) - and
+        // because it's in the conversation, the agent knows what you're answering when
+        // you reply.
+        function postAgentChatMessage(agent, text, extra = {}) {
+            if (!chatHistory[agent]) chatHistory[agent] = [];
+            chatHistory[agent].push(Object.assign({ type: 'agent', text, timestamp: new Date() }, extra));
+            saveToLocalStorage(agent);
+            if (isViewingAgentChat(agent)) {
+                displayMessages(agent);
+                markAgentRead(agent);
+                playBubblePop();   // you're already looking at it, so no pop-up - still worth a sound
+            }
+            updateAllBadges();
+            if (currentAgent) updateChatPendingBadge(currentAgent);
+        }
+
         function detectNewNotifications(agent) {
             if (!notificationsArmed) return;
             const prev = notifySnapshot[agent];
@@ -9083,43 +9101,30 @@ body.va-open #notification-toasts {
 
             if (next.unread > prev.unread) {
                 const last = [...(chatHistory[agent] || [])].reverse().find(m => m.type === 'agent');
-                // A finished task already gets its own "Task complete"
-                // alert (see completeProjectTaskFromChat) - this is just
-                // the chat notice that accompanies it.
-                if (last && !/^I've completed the /.test(last.text || '')) {
-                    const label = last.projectProposal || last.taskProposal ? 'New proposal'
+                // The pop-up is for the chat message itself - what it says is what you see.
+                if (last) {
+                    const label = last.reminder ? '🔔 Reminder'
+                        : (last.calendarCheckin || last.todoCheckin) ? 'Checking in'
+                        : /^I've completed the /.test(last.text || '') ? 'Ready for your review'
+                        : last.projectProposal || last.taskProposal ? 'New proposal'
                         : last.generatedFiles ? 'Sent you a file' : 'New unread message';
                     showAgentNotification(agent, label, notifyPreview(last.text));
                 }
             }
-            const newPrompts = next.prompts.filter(p => !prev.prompts.includes(p));
-            if (newPrompts.length) {
-                showAgentNotification(agent, 'New prompt', notifyPreview(newPrompts[0]));
-            }
-            if (next.calendarCheckin > prev.calendarCheckin && calendarCheckinData) {
-                showAgentNotification(agent, 'Checking in', notifyPreview(calendarCheckinData.message));
-            }
-            if (next.todoCheckin > prev.todoCheckin) {
-                showAgentNotification(agent, 'Checking in',
-                    `${next.todoCheckin} to-do${next.todoCheckin === 1 ? '' : 's'} didn't get finished - done, or reschedule?`);
-            }
+            // New questions/suggestions in the Messages tab only get a badge - they
+            // aren't chat messages, so they don't pop up.
         }
 
         // An agent finishing a task is the one event not visible in the
         // counts above (Francis marking one complete himself is too), so it
         // calls this directly.
-        function notifyTaskComplete(agent, taskName) {
-            if (!notificationsArmed || isViewingAgentChat(agent)) return;
-            showAgentNotification(agent, 'Ready for your review', notifyPreview(taskName));
-        }
+        // The pop-up for it is the agent's own chat message announcing the finished
+        // work (see detectNewNotifications) - nothing separate to show here.
+        function notifyTaskComplete(agent, taskName) {}
 
-        // opts.stayHere: a heads-up that doesn't send you anywhere or flash the agent's
-        // card (a reminder) - clicking it just dismisses it.
-        function showAgentNotification(agent, label, text, opts = {}) {
-            if (!opts.stayHere) {
-                flashingAgents.add(agent);
-                updateAgentFlash();
-            }
+        function showAgentNotification(agent, label, text) {
+            flashingAgents.add(agent);
+            updateAgentFlash();
             playBubblePop();
 
             const container = document.getElementById('notification-toasts');
@@ -9145,7 +9150,7 @@ body.va-open #notification-toasts {
             toast.addEventListener('click', (e) => {
                 if (e.target.closest('.notification-toast-close')) { dismiss(); return; }
                 dismiss();
-                if (!opts.stayHere) selectAgent(agent);
+                selectAgent(agent);
             });
             // Stays until you click it (opens that agent) or its ×.
             container.appendChild(toast);
@@ -13391,7 +13396,7 @@ function addFileWorkspaceTask(agent, createdFile) {
     if (!task) return;
     createWorkspaceFile(agent, task.id, createdFile);
     refreshTaskViewsForAgent(agent);
-    notifyTaskComplete(agent, task.name);
+    postAgentChatMessage(agent, `I've completed the task "${task.name}" - it's in Projects & Tasks, ready for your review.`);
 }
 
 // One-time cleanup: generated files (they carry a fileType) that were saved
@@ -20337,12 +20342,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 // card with a "Got it" button), so it counts as unread like any
                 // other, you answer it by just replying, and she knows exactly what
                 // you're answering because it's part of the conversation she sees.
-                if (!chatHistory.ashanti) chatHistory.ashanti = [];
-                chatHistory.ashanti.push({ type: 'agent', text: data.checkin.message, calendarCheckin: true, timestamp: new Date() });
-                saveToLocalStorage('ashanti');
-                if (currentAgent === 'ashanti') { displayMessages('ashanti'); markAgentRead('ashanti'); }
-                updateAllBadges();
-                if (currentAgent) updateChatPendingBadge(currentAgent);
+                postAgentChatMessage('ashanti', data.checkin.message, { calendarCheckin: true });
             } catch (error) {
                 console.error('Failed to load calendar check-in:', error);
             }
@@ -20406,9 +20406,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const data = await response.json();
                 if (!data.success || !data.checkin) return;
                 todoMorningCheckinData = data.checkin;
+                const titles = data.checkin.todos.map(t => `"${t.title}"`).join(', ');
+                const n = data.checkin.todos.length;
+                postAgentChatMessage('ashanti',
+                    `Hey Francis, ${n === 1 ? "this to-do didn't get finished" : `these ${n} to-dos didn't get finished`} by the end of ${n === 1 ? 'its' : 'their'} scheduled day: ${titles}. `
+                    + `${n === 1 ? 'Is it done, or should I find it a new time' : 'Are they done, or should I find them new times'}? You can tap Done or Reschedule below, or just tell me here.`,
+                    { todoCheckin: true });
                 renderChatInsightCards();
-                updateAllBadges();
-                if (currentAgent) updateChatPendingBadge(currentAgent);
             } catch (error) {
                 console.error('Failed to load to-do morning check-in:', error);
             }
@@ -20430,12 +20434,9 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             header.className = 'insights-header';
             header.textContent = 'Ashanti checking in...';
 
-            const n = todoMorningCheckinData.todos.length;
             const text = document.createElement('div');
             text.className = 'insight-card-text';
-            text.textContent = n === 1
-                ? `This to-do didn't get finished by the end of its scheduled day - is it done, or should I find it a new time?`
-                : `These ${n} to-dos didn't get finished by the end of their scheduled day - are they done, or should I find them new times?`;
+            text.textContent = 'To-dos waiting on your answer:';
 
             const list = document.createElement('div');
             list.className = 'todo-checkin-list';
@@ -21927,8 +21928,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         // ---- the pop-up and sound when one comes due ----
-        // Ashanti pops up (the same toast and sound as her other notifications) when a
-        // reminder's time arrives, and it stays until dismissed. Checked every few
+        // Ashanti tells you in her chat when a reminder's time arrives - the pop-up and
+        // sound are that message arriving, like any other message from her. Checked every few
         // seconds while the app is open; one that came due while it was closed shows
         // up on open if that was within the last half hour. Each occurrence only ever
         // pops once (remembered in this browser).
@@ -21946,8 +21947,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         function showReminderAlert(rem) {
-            const text = rem.description ? `${rem.title} - ${rem.description}` : rem.title;
-            showAgentNotification('ashanti', '🔔 Reminder', text, { stayHere: true });
+            postAgentChatMessage('ashanti', `🔔 Reminder: ${rem.title}${rem.description ? ' - ' + rem.description : ''}`, { reminder: true });
         }
 
         function checkDueReminders() {
