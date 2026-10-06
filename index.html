@@ -19493,10 +19493,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
         }
 
-        // Cards that overlap in time normally pile on top of each other. When any of
-        // the overlapping cards is a completed to-do, the whole group is laid out
-        // side by side instead, so the finished one stays readable next to whatever
-        // got scheduled over its time.
+        // Cards that overlap in time are laid out side by side (like columns) instead
+        // of piling on top of each other, so every one stays readable.
         function layoutOverlappingCalendarEvents(col, events) {
             const items = events.map(e => {
                 const start = new Date(e.start);
@@ -19514,7 +19512,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             });
 
             clusters.forEach(cluster => {
-                if (cluster.items.length < 2 || !cluster.items.some(it => isCalendarEventTodoCompleted(it.e))) return;
+                if (cluster.items.length < 2) return;
                 const laneEnds = [];
                 cluster.items.forEach(item => {
                     let lane = laneEnds.findIndex(end => end <= item.startMin);
