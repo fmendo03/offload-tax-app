@@ -4950,15 +4950,19 @@ def get_lana_context():
 
 LANA_LESSON_RULES = (
     "\n\nHow Lana's lessons work: a language plan is a PROJECT and every lesson is a task in it. When you and Francis "
-    "have what you need to build the plan, call propose_language_plan with the first batch of lessons (about 5 to 8, "
-    "each sized to his daily study time) - he accepts it with the card, and nothing starts until he does. The plan "
-    "doesn't have to list every lesson up front: you add more as he goes. Each lesson is prepared when its task is "
-    "started: you call create_lesson and it opens in his Workspace as an interactive page where he reads the lesson and "
-    "answers the exercises himself (multiple choice, typed answers, translations, with a play button for hearing words). "
-    "When he finishes one, his results come to you as a message: tell him how he did - specific, warm, honest - and if "
-    "anything didn't stick, call add_lessons to put extra practice lessons into his plan right after that one (several "
-    "if he really struggled); if he did well, don't add filler. Never move him forward on something he hasn't shown he "
-    "understands - that's what the added lessons are for.\n\n"
+    "have what you need to build the plan, call propose_language_plan with the full OUTLINE of the course: MODULES (4 to "
+    "6 for roughly 90 days, each with a goal), each holding LESSONS (each sized to his daily study time), each lesson "
+    "listing the TOPICS it covers. Put a cumulative REVIEW lesson (review=true) after about every three lessons - it "
+    "covers everything learned to date, so nothing fades. He accepts the plan with the card and nothing starts until he "
+    "does. Only the first module's lessons become tasks right away; each next module's lessons are added to the project "
+    "automatically when he finishes the current one, and the app also inserts a review if one is due. Each lesson is "
+    "prepared when its task is started: you call create_lesson and it opens in his Workspace as an interactive page "
+    "where he reads the lesson and answers the exercises himself (multiple choice, typed answers, translations, with a "
+    "play button for hearing words). When he finishes one, his results come to you as a message: tell him how he did - "
+    "specific, warm, honest - and if anything didn't stick, call add_lessons to put extra practice lessons into his plan "
+    "right after that one (several if he really struggled); if he did well, don't add filler. He can redo any finished "
+    "lesson as often as he likes, but the next lesson only opens once the one before it is completed - that's what the "
+    "added lessons and reviews are for.\n\n"
     "Translator: any text Francis pastes into your chat is something to translate. Translate it into the language he "
     "asks for. If he pastes text without saying which language, ask in one short line (offer the languages he's learning, "
     "plus English). Give the translation first and clearly, then only the notes that matter - tone, formality, regional "
@@ -4970,18 +4974,21 @@ LANA_TASK_RUN_RULES = (
     "(do not use create_file, and do not describe the lesson in chat instead). Sized to his daily study time. Include "
     "simple explanations, real-life examples with pronunciation help, and a short set of exercises (usually 6 to 10) "
     "that check he really understood - each with the correct answer and a one-sentence explanation shown if he gets it "
-    "wrong. Start from what the lesson history in the message says he already knows and where he struggled. Afterwards "
-    "reply in a sentence or two."
+    "wrong. Start from what the lesson history in the message says he already knows and where he struggled. If the "
+    "message says this is a REVIEW lesson, build it to cover everything learned to date: mix the topics from every earlier "
+    "lesson it lists (more weight on what he missed), with no new material. Afterwards reply in a sentence or two."
 )
 
 PROPOSE_LANGUAGE_PLAN_TOOL = {
     "name": "propose_language_plan",
     "description": (
         "Call this once you know enough to build Francis's learning plan for ONE language (language, daily study time and "
-        "goal are known - Settings usually has the first two). It posts the plan as a project with an Accept button; every "
-        "lesson is a task in it, done in order. Give the first batch only (about 5 to 8 lessons) - you add more later "
-        "with add_lessons as you see how he does. Cover the 90-day arc in the project summary. Don't call it again for "
-        "small questions after proposing; an unaccepted proposal is updated in place if you call it again."
+        "goal are known - Settings usually has the first two). It posts the plan's OUTLINE - modules, each with lessons, "
+        "each lesson with its topics - as a project with an Accept button; every lesson is a task, done in order. Cover the "
+        "whole course (about 90 days, 4-6 modules). Put a cumulative review lesson (review=true) after about every three "
+        "lessons; it covers everything learned to date. Only the first module's lessons become tasks now; later modules' "
+        "lessons are added automatically as he finishes each module. Don't call it again for small questions after "
+        "proposing; an unaccepted proposal is updated in place if you call it again."
     ),
     "input_schema": {
         "type": "object",
@@ -4990,21 +4997,35 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
             "language_code": {"type": "string", "description": "BCP-47 code for hearing it spoken, e.g. \"es-MX\", \"fr-FR\", \"ja-JP\"."},
             "name": {"type": "string", "description": "Project name, e.g. \"Spanish in 90 Days\"."},
             "summary": {"type": "string", "description": "2-4 sentences in your own voice: the arc of the 90 days, what he should be able to do by each stage, and how you'll measure progress."},
-            "lessons": {
+            "modules": {
                 "type": "array",
-                "description": "The first lessons, in order.",
+                "description": "The course outline, in order.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "Short title, e.g. \"Lesson 1: Hello and Goodbye\"."},
-                        "task": {"type": "string", "description": "What this lesson teaches and practices, in 1-3 sentences, so it can be prepared later without this conversation."}
+                        "name": {"type": "string", "description": "e.g. \"Module 1: First Conversations\"."},
+                        "goal": {"type": "string", "description": "What he can do when the module is finished."},
+                        "lessons": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string", "description": "Short title, e.g. \"Lesson 1: Hello and Goodbye\" or \"Review: Lessons 1-3\"."},
+                                    "task": {"type": "string", "description": "What this lesson teaches and practices, in 1-3 sentences, so it can be prepared later without this conversation."},
+                                    "topics": {"type": "array", "items": {"type": "string"}, "description": "2-5 short topics it covers, e.g. \"greetings\", \"introducing yourself\"."},
+                                    "review": {"type": "boolean", "description": "True for a cumulative review of everything learned so far."}
+                                },
+                                "required": ["name", "task", "topics"]
+                            },
+                            "minItems": 2
+                        }
                     },
-                    "required": ["name", "task"]
+                    "required": ["name", "goal", "lessons"]
                 },
-                "minItems": 3
+                "minItems": 2
             }
         },
-        "required": ["language", "name", "summary", "lessons"]
+        "required": ["language", "name", "summary", "modules"]
     }
 }
 
@@ -5087,7 +5108,8 @@ ADD_LESSONS_TOOL = {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "Short title, e.g. \"Review: Ser vs Estar\"."},
-                        "task": {"type": "string", "description": "What to re-teach and practice, and which mistakes it targets."}
+                        "task": {"type": "string", "description": "What to re-teach and practice, and which mistakes it targets."},
+                        "topics": {"type": "array", "items": {"type": "string"}, "description": "The topics it covers."}
                     },
                     "required": ["name", "task"]
                 },
@@ -7725,16 +7747,28 @@ def chat():
                         })
             elif block_name == 'propose_language_plan' and agent == 'lana':
                 block_input = block.input or {}
-                lessons = [
-                    {'agent': 'lana', 'task': str(x.get('task') or '').strip(), 'name': str(x.get('name') or '').strip()[:100]}
-                    for x in (block_input.get('lessons') or [])[:12]
-                    if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip()
-                ]
+                modules = []
+                for m in (block_input.get('modules') or [])[:8]:
+                    if not isinstance(m, dict) or not str(m.get('name') or '').strip():
+                        continue
+                    module_lessons = []
+                    for x in (m.get('lessons') or [])[:10]:
+                        if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip():
+                            module_lessons.append({
+                                'name': str(x['name']).strip()[:100], 'task': str(x['task']).strip(),
+                                'topics': [str(t).strip()[:80] for t in (x.get('topics') or []) if str(t).strip()][:6],
+                                'review': bool(x.get('review'))
+                            })
+                    if module_lessons:
+                        modules.append({'name': str(m['name']).strip()[:100], 'goal': str(m.get('goal') or '').strip()[:300], 'lessons': module_lessons})
                 plan_name = str(block_input.get('name') or '').strip()[:120]
-                if lessons and plan_name:
+                if modules and plan_name:
                     propose_project = {
                         'name': plan_name, 'summary': str(block_input.get('summary') or '').strip(),
-                        'tasks': lessons, 'kind': 'language',
+                        # Only the first module becomes tasks now; the rest of the outline is
+                        # turned into tasks as each module is finished (see advanceOutline).
+                        'tasks': [dict(l, agent='lana') for l in modules[0]['lessons']],
+                        'outline': {'modules': modules}, 'kind': 'language',
                         'language': str(block_input.get('language') or '').strip()[:40],
                         'languageCode': str(block_input.get('language_code') or '').strip()[:12]
                     }
@@ -7750,7 +7784,10 @@ def chat():
             elif block_name == 'add_lessons' and agent == 'lana':
                 for x in ((block.input or {}).get('lessons') or [])[:4]:
                     if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip():
-                        add_lessons.append({'task': str(x['task']).strip(), 'name': str(x['name']).strip()[:100]})
+                        add_lessons.append({
+                            'task': str(x['task']).strip(), 'name': str(x['name']).strip()[:100],
+                            'topics': [str(t).strip()[:80] for t in (x.get('topics') or []) if str(t).strip()][:6]
+                        })
             elif block_name == 'propose_task':
                 block_input = block.input or {}
                 task_text = str(block_input.get('task', '')).strip()

@@ -2163,7 +2163,21 @@
         .reminder-popover-actions { display: flex; gap: 6px; margin-top: 8px; }
 
         /* Reminders page */
-        /* Lana's lessons (Workspace) and settings */
+        /* Language plan outline: modules > lessons > topics */
+.lang-outline { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 12px; }
+.lang-module { border: 1px solid #e6e0c2; border-radius: 8px; background: #fdfbf1; padding: 10px 12px; }
+.lang-module-head { font-weight: 700; color: #5b4a1e; font-size: 13px; }
+.lang-module-goal { font-size: 12px; color: #7a6c3a; margin: 2px 0 6px; }
+.lang-lesson { padding: 5px 0 5px 4px; border-top: 1px dashed #ece6c9; }
+.lang-lesson-title { font-size: 12.5px; color: #333; }
+.lang-lesson.done .lang-lesson-title { color: #1f7a49; }
+.lang-lesson.ready .lang-lesson-title { color: #b8860b; font-weight: 600; }
+.lang-lesson.upcoming .lang-lesson-title { color: #9a9a9a; }
+.lang-lesson.review .lang-lesson-title { font-style: italic; }
+.lang-topics { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 0 18px; }
+.lang-topic { font-size: 10.5px; padding: 1px 7px; border-radius: 10px; background: #efe9c8; color: #6b5f36; }
+
+/* Lana's lessons (Workspace) and settings */
 .ws-viewer.ws-lesson .ws-tools, .ws-viewer.ws-lesson #ws-notes-toggle, .ws-viewer.ws-lesson #ws-notes-pane,
 .ws-viewer.ws-lesson #ws-download-btn, .ws-viewer.ws-lesson #ws-view-toggle { display: none !important; }
 .wp-lesson-body { padding: 8px 4px; }
@@ -10255,6 +10269,7 @@ function upsertProjectProposal(agent, proposeProjectData) {
         projectProposal.kind = 'language';
         projectProposal.language = proposeProjectData.language || '';
         projectProposal.languageCode = proposeProjectData.languageCode || '';
+        projectProposal.outline = proposeProjectData.outline || null;
     }
 
     projects[projectId] = {
@@ -10270,6 +10285,7 @@ function upsertProjectProposal(agent, proposeProjectData) {
         projects[projectId].kind = projectProposal.kind;
         projects[projectId].language = projectProposal.language;
         projects[projectId].languageCode = projectProposal.languageCode;
+        projects[projectId].outline = projectProposal.outline;
     }
     saveProjects();
 
@@ -10567,6 +10583,7 @@ function renderProjectsPane() {
         if (expanded) {
             const tasksWrap = document.createElement('div');
             tasksWrap.className = 'ptree-tasks';
+            if (project.outline) tasksWrap.appendChild(buildLanguageOutlineEl(project));
 
             liveTasks.forEach(({ entry, task }) => {
                 const taskExpanded = activeTaskKey === taskKey(entry.agent, task.id);
@@ -14986,7 +15003,10 @@ async function submitLesson(file) {
             score: correct, total: results.length, at: new Date().toISOString(),
             missed: missed.slice(0, 8).map(r => `${r.ex.prompt} (answer: ${r.ex.answer})`)
         };
-        if (task.status === 'in_review') approveTask(agent, task.id); else saveWorkspaceTasks();
+        if (task.status === 'in_review') {
+            approveTask(agent, task.id);
+            onLessonCompleted(agent, task);
+        } else saveWorkspaceTasks();
     }
     const root = wsEl('ws-doc-content').querySelector('.lesson');
     if (root) showLessonResults(file, root);
@@ -15014,38 +15034,157 @@ function applyAddedLessons(agent, lessons) {
     const finished = pending ? findWorkspaceTaskById(agent, pending.taskId) : null;
     const project = finished && finished.projectId ? projects[finished.projectId] : null;
     if (!project) return;
-    const at = project.tasks.findIndex(e => e.taskId === finished.id);
-    if (at < 0) return;
-    lessons.forEach((lesson, i) => {
-        const created = createProjectTaskEntry(agent, project.id, project.name, lesson.task, new Date(), lesson.name, 'personal', true);
-        markLessonTask(created, finished.language, finished.languageCode);
-        project.tasks.splice(at + 1 + i, 0, { agent, task: lesson.task, name: lesson.name, taskId: created.id });
-    });
+    let after = finished.id;
+    lessons.forEach(lesson => { after = insertLessonAfter(agent, project, after, lesson).id; });
     saveProjects();
     refreshTaskViewsForAgent(agent);
 }
 
-function markLessonTask(task, language, languageCode) {
+function markLessonTask(task, language, languageCode, extra) {
     task.isLesson = true;
     task.language = language || '';
     task.languageCode = languageCode || '';
+    task.lessonTopics = (extra && extra.topics) || [];
+    task.isReview = !!(extra && extra.review);
     task.expectedFileTypes = ['lesson'];
+}
+
+// How many finished lessons before a cumulative review is due.
+const LESSONS_BETWEEN_REVIEWS = 3;
+
+// Makes one lesson task and slots it into the project right after `afterTaskId`
+// (also into the outline, next to the lesson it follows).
+function insertLessonAfter(agent, project, afterTaskId, spec) {
+    const after = findWorkspaceTaskById(agent, afterTaskId);
+    const created = createProjectTaskEntry(agent, project.id, project.name, spec.task, new Date(), spec.name, 'personal', true);
+    markLessonTask(created, after && after.language, after && after.languageCode, spec);
+    const at = project.tasks.findIndex(e => e.taskId === afterTaskId);
+    project.tasks.splice(at + 1, 0, { agent, task: spec.task, name: spec.name, topics: spec.topics || [], review: !!spec.review, taskId: created.id });
+    if (project.outline) {
+        for (const mod of project.outline.modules) {
+            const i = mod.lessons.findIndex(l => l.taskId === afterTaskId);
+            if (i >= 0) { mod.lessons.splice(i + 1, 0, { name: spec.name, task: spec.task, topics: spec.topics || [], review: !!spec.review, taskId: created.id, extra: true }); break; }
+        }
+    }
+    return created;
+}
+
+// Turns a not-yet-started lesson of the outline into a task at the end of the project.
+function materializeOutlineLesson(agent, project, lesson) {
+    const created = createProjectTaskEntry(agent, project.id, project.name, lesson.task, new Date(), lesson.name, 'personal', true);
+    markLessonTask(created, project.language, project.languageCode, lesson);
+    project.tasks.push({ agent, task: lesson.task, name: lesson.name, topics: lesson.topics || [], review: !!lesson.review, taskId: created.id });
+    lesson.taskId = created.id;
+    return created;
+}
+
+function projectLessonTasks(project) {
+    return project.tasks.map(e => findWorkspaceTaskById(e.agent, e.taskId)).filter(t => t && !t.archived && !t.cancelled);
+}
+
+// A cumulative review goes in right after a lesson once a few have been finished
+// since the last one - unless one is already coming up.
+function ensureReviewLesson(agent, project, finished) {
+    const tasks = projectLessonTasks(project);
+    const at = tasks.findIndex(t => t.id === finished.id);
+    if (at < 0) return;
+    let since = 0;
+    for (let i = at; i >= 0; i--) {
+        if (tasks[i].isReview && tasks[i].status === 'completed') break;
+        if (tasks[i].isLesson && !tasks[i].isReview && tasks[i].status === 'completed') since++;
+    }
+    if (since < LESSONS_BETWEEN_REVIEWS) return;
+    if (tasks.slice(at + 1, at + 3).some(t => t.isReview && t.status !== 'completed')) return;
+    const lessonsDone = tasks.filter(t => t.isLesson && !t.isReview && t.status === 'completed').length;
+    insertLessonAfter(agent, project, finished.id, {
+        name: `Review: everything so far (${lessonsDone} lessons)`,
+        task: 'Cumulative review of everything learned to date in this plan - a mix of the topics from every earlier lesson, with extra weight on what was missed. No new material.',
+        topics: [], review: true
+    });
+}
+
+// When every lesson made so far is done, the next module of the outline becomes tasks.
+function advanceOutline(agent, project) {
+    if (!project.outline) return;
+    if (projectLessonTasks(project).some(t => t.status !== 'completed')) return;
+    const next = project.outline.modules.find(m => m.lessons.some(l => !l.taskId));
+    if (!next) return;
+    const lessons = next.lessons.filter(l => !l.taskId);
+    lessons.forEach(l => materializeOutlineLesson(agent, project, l));
+    postAgentChatMessage(agent, `That's the end of the last module - nice work! Next up: ${next.name}. ${lessons.length} new lesson${lessons.length === 1 ? '' : 's'} ${lessons.length === 1 ? 'is' : 'are'} in your plan.`);
+}
+
+// A lesson task was just completed: keep reviews coming and open up the next module.
+function onLessonCompleted(agent, task) {
+    const project = task.projectId ? projects[task.projectId] : null;
+    if (!project) return;
+    ensureReviewLesson(agent, project, task);
+    advanceOutline(agent, project);
+    saveProjects();
+    refreshTaskViewsForAgent(agent);
+}
+
+// The outline: modules, their lessons, and each lesson's topics. `project` can be a
+// project or a not-yet-accepted proposal.
+function buildLanguageOutlineEl(project) {
+    const wrap = document.createElement('div');
+    wrap.className = 'lang-outline';
+    const statusOf = (lesson) => {
+        const t = lesson.taskId ? findWorkspaceTaskById('lana', lesson.taskId) : null;
+        if (!t) return { icon: '○', cls: 'upcoming', label: 'Coming up' };
+        if (t.status === 'completed') return { icon: '✓', cls: 'done', label: 'Done' };
+        if (t.status === 'in_review') return { icon: '●', cls: 'ready', label: 'Ready to do' };
+        if (t.status === 'in_progress') return { icon: '◐', cls: 'busy', label: 'Being prepared' };
+        return { icon: '○', cls: 'next', label: 'Not started' };
+    };
+    (project.outline ? project.outline.modules : []).forEach(mod => {
+        const m = document.createElement('div');
+        m.className = 'lang-module';
+        const head = document.createElement('div');
+        head.className = 'lang-module-head';
+        head.textContent = mod.name;
+        m.appendChild(head);
+        if (mod.goal) { const g = document.createElement('div'); g.className = 'lang-module-goal'; g.textContent = mod.goal; m.appendChild(g); }
+        mod.lessons.forEach(lesson => {
+            const st = statusOf(lesson);
+            const row = document.createElement('div');
+            row.className = `lang-lesson ${st.cls}` + (lesson.review ? ' review' : '');
+            const title = document.createElement('div');
+            title.className = 'lang-lesson-title';
+            title.textContent = `${st.icon} ${lesson.review ? '🔁 ' : ''}${lesson.name}`;
+            title.title = st.label;
+            row.appendChild(title);
+            if ((lesson.topics || []).length) {
+                const topics = document.createElement('div');
+                topics.className = 'lang-topics';
+                lesson.topics.forEach(t => { const chip = document.createElement('span'); chip.className = 'lang-topic'; chip.textContent = t; topics.appendChild(chip); });
+                row.appendChild(topics);
+            }
+            m.appendChild(row);
+        });
+        wrap.appendChild(m);
+    });
+    return wrap;
 }
 
 // What Lana is reminded of when she's asked to prepare the next lesson.
 function lessonRunContext(task) {
     const project = task.projectId ? projects[task.projectId] : null;
     const lines = [`\n\nThis is a language lesson task - prepare it now by calling create_lesson. Language: ${task.language || 'see the plan'}${task.languageCode ? ` (${task.languageCode})` : ''}. His daily study time: ${lanaSettings.dailyMinutes} minutes.`];
+    if (task.lessonTopics && task.lessonTopics.length) lines.push(`Topics for this lesson: ${task.lessonTopics.join(', ')}.`);
     if (project) {
         const history = [];
         for (const entry of project.tasks) {
             if (entry.taskId === task.id) break;
             const earlier = findWorkspaceTaskById(entry.agent, entry.taskId);
-            if (!earlier || !earlier.lessonResult) continue;
+            if (!earlier || !earlier.isLesson || earlier.status !== 'completed') continue;
             const r = earlier.lessonResult;
-            history.push(`- ${earlier.name}: ${r.score}/${r.total}${r.missed && r.missed.length ? `; missed: ${r.missed.join('; ')}` : ''}`);
+            history.push(`- ${earlier.name}${earlier.lessonTopics && earlier.lessonTopics.length ? ` [topics: ${earlier.lessonTopics.join(', ')}]` : ''}${r ? `: ${r.score}/${r.total}${r.missed && r.missed.length ? `; missed: ${r.missed.join('; ')}` : ''}` : ''}`);
         }
-        if (history.length) lines.push(`Lesson history so far (what he's done and where he struggled):\n${history.join('\n')}`);
+        if (task.isReview) {
+            lines.push('This is a REVIEW lesson: cover everything he has learned to date - mix the topics from all of these earlier lessons, weighted toward what he missed - and teach nothing new.');
+        }
+        if (history.length) lines.push(`Lessons he has completed so far (what he's learned and where he struggled):\n${history.join('\n')}`);
     }
     return lines.join('\n');
 }
@@ -15486,7 +15625,11 @@ function buildProjectProposalCard(chatAgent, msgIndex, proposal) {
 
     const taskList = document.createElement('div');
     taskList.className = 'project-proposal-tasks';
-    proposal.tasks.forEach(({ agent, task }) => {
+    if (proposal.outline) {
+        // A language plan: the whole outline - modules, lessons and their topics.
+        card.appendChild(buildLanguageOutlineEl(proposal));
+    }
+    (proposal.outline ? [] : proposal.tasks).forEach(({ agent, task }) => {
         const row = document.createElement('div');
         row.className = 'project-proposal-task-row';
         row.innerHTML = `<span class="project-proposal-task-agent"></span><span class="project-proposal-task-text"></span>`;
@@ -15647,7 +15790,12 @@ function acceptProject(chatAgent, msgIndex) {
         const created = isLanguagePlan
             ? createProjectTaskEntry(taskEntry.agent, msg.projectProposal.id, msg.projectProposal.name, taskEntry.task, acceptedAt, taskEntry.name, 'personal', true)
             : createProjectTaskEntry(taskEntry.agent, msg.projectProposal.id, msg.projectProposal.name, taskEntry.task, acceptedAt, taskEntry.name);
-        if (isLanguagePlan) markLessonTask(created, msg.projectProposal.language, msg.projectProposal.languageCode);
+        if (isLanguagePlan) markLessonTask(created, msg.projectProposal.language, msg.projectProposal.languageCode, taskEntry);
+        if (isLanguagePlan && msg.projectProposal.outline) {
+            // The first module's lessons are the tasks just made - link them.
+            const outlineLesson = msg.projectProposal.outline.modules[0].lessons.find(l => !l.taskId && l.name === taskEntry.name);
+            if (outlineLesson) outlineLesson.taskId = created.id;
+        }
         taskEntry.taskId = created.id;
         if (!firstCreated) firstCreated = { agent: taskEntry.agent, task: created };
     });
