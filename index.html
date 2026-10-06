@@ -14879,6 +14879,7 @@ function buildLessonHtml(file) {
                 <button type="button" class="task-action-btn solid-start lesson-check-btn">Check my answers</button>
                 <button type="button" class="task-action-btn lesson-retry-btn">Start over</button>
                 <button type="button" class="task-action-btn solid-complete lesson-finish-btn" style="display:none;">Finish lesson &amp; send to Lana</button>
+                <button type="button" class="task-action-btn lesson-redo-btn" style="display:none;" title="Do this lesson again - as many times as you like">Redo this lesson</button>
             </div>
             <div class="lesson-score"></div>
             ${lesson.wrapUp ? `<p class="lesson-wrapup">${escapeHtml(lesson.wrapUp)}</p>` : ''}
@@ -14915,6 +14916,7 @@ function showLessonResults(file, root) {
     root.querySelector('.lesson-finish-btn').style.display = progress.checked && !progress.submitted ? '' : 'none';
     root.querySelector('.lesson-check-btn').style.display = progress.submitted ? 'none' : '';
     root.querySelector('.lesson-retry-btn').style.display = progress.submitted ? 'none' : '';
+    root.querySelector('.lesson-redo-btn').style.display = progress.submitted ? '' : 'none';
     root.querySelectorAll('.lesson-input, .lesson-option input').forEach(el => { el.disabled = !!progress.submitted; });
 }
 
@@ -14947,6 +14949,17 @@ function wireLessonView(file, content) {
             saveWorkspaceFiles();
             content.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
             wireLessonView(file, content);
+        } else if (e.target.closest('.lesson-redo-btn')) {
+            // A finished lesson can be done again any number of times - its task stays
+            // completed, so the next lesson stays open (or stays locked) as it was.
+            progress.answers = {};
+            progress.checked = false;
+            progress.submitted = false;
+            progress.attempts = (progress.attempts || 1) + 1;
+            saveWorkspaceFiles();
+            content.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
+            wireLessonView(file, content);
+            content.closest('.ws-doc-scroll') && (content.closest('.ws-doc-scroll').scrollTop = 0);
         } else if (e.target.closest('.lesson-finish-btn')) {
             submitLesson(file);
         }
@@ -14978,7 +14991,8 @@ async function submitLesson(file) {
     const root = wsEl('ws-doc-content').querySelector('.lesson');
     if (root) showLessonResults(file, root);
 
-    const lines = [`I finished "${lesson.title}" (${lesson.language || 'language lesson'}). I got ${correct} of ${results.length}.`];
+    const attempt = progress.attempts || 1;
+    const lines = [`I ${attempt > 1 ? `did "${lesson.title}" again (attempt ${attempt})` : `finished "${lesson.title}"`} (${lesson.language || 'language lesson'}). I got ${correct} of ${results.length}.`];
     if (missed.length) {
         lines.push('', 'What I missed:');
         missed.slice(0, 12).forEach(r => lines.push(`- ${r.ex.prompt} - I put "${r.answer || '(nothing)'}", the answer is "${r.ex.answer}"`));
