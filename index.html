@@ -9111,8 +9111,12 @@ body.va-open #notification-toasts {
                     showAgentNotification(agent, label, notifyPreview(last.text));
                 }
             }
-            // New questions/suggestions in the Messages tab only get a badge - they
-            // aren't chat messages, so they don't pop up.
+            // The one pop-up that isn't a chat message: a new question or suggestion from
+            // the agent, which lives in their Messages tab (clicking it goes there).
+            const newPrompts = next.prompts.filter(p => !prev.prompts.includes(p));
+            if (newPrompts.length) {
+                showAgentNotification(agent, 'New prompt', notifyPreview(newPrompts[0]), 'messages');
+            }
         }
 
         // An agent finishing a task is the one event not visible in the
@@ -9122,7 +9126,8 @@ body.va-open #notification-toasts {
         // work (see detectNewNotifications) - nothing separate to show here.
         function notifyTaskComplete(agent, taskName) {}
 
-        function showAgentNotification(agent, label, text) {
+        // `tab`: which of the agent's tabs clicking it opens (their chat by default).
+        function showAgentNotification(agent, label, text, tab) {
             flashingAgents.add(agent);
             updateAgentFlash();
             playBubblePop();
@@ -9151,6 +9156,7 @@ body.va-open #notification-toasts {
                 if (e.target.closest('.notification-toast-close')) { dismiss(); return; }
                 dismiss();
                 selectAgent(agent);
+                if (tab) showAgentTab(tab);
             });
             // Stays until you click it (opens that agent) or its ×.
             container.appendChild(toast);
