@@ -5042,18 +5042,17 @@ LANA_LESSON_RULES = (
 )
 
 LANA_TASK_RUN_RULES = (
-    "\n\nYou are preparing ONE lesson. Call create_lesson_set exactly once with the complete, finished set (do not use "
-    "create_file, and do not describe the lesson in chat instead). It must contain: (1) lesson NOTES - simple explanations, "
-    "real-life examples with pronunciation help; (2) 5 to 7 EXERCISES, each a different way of learning, with 6 to 10 items "
-    "each - mix flash cards, listening (items with `speak`: he hears it and chooses or types what he heard), fill in the "
-    "blank, matching, odd-one-out, word order, translate, and at least one 'say it aloud' (`repeat`) exercise where he "
-    "speaks into his mic; (3) one exercise that is a short STORY in the target language at his level (reusing this lesson's "
-    "new words plus earlier material from the lesson history - spaced review) with its English translation and 3-4 "
-    "comprehension questions. Every phonetics or sound question must use `speak` so he hears it. Give every item its correct "
-    "answer and a one-sentence explanation. Keep everything sized to his daily study time and level, and start from what "
-    "the lesson history says he already knows and where he struggled. If the message says this is a REVIEW lesson, build "
-    "every exercise to cover everything learned to date - mixing the topics of every earlier lesson it lists, weighted "
-    "toward what he missed - with no new material. Afterwards reply in a sentence or two."
+    "\n\nYou are preparing ONE lesson. Call create_lesson_set exactly once (do not use create_file, and do not describe the "
+    "lesson in chat instead). It contains: (1) lesson NOTES - simple explanations of the lesson's everyday situation and "
+    "what it teaches, real-life examples with pronunciation help; (2) the PLAN for 5 to 7 EXERCISES, each a different way of "
+    "learning (styles: flashcards, listening, fill in the blank, matching, odd one out, word order, translate, speaking aloud "
+    "into his mic, story) - include one `speaking` exercise and one `story` exercise (a short story at his level reusing this "
+    "lesson's new words plus earlier material from the lesson history, with comprehension questions). Give each exercise a "
+    "specific focus - the actual words and phrases it practises - because the app writes every exercise's questions from your "
+    "plan, and phonetics/sound practice always plays audio. Size everything to his daily study time and level, and start from "
+    "what the lesson history says he already knows and where he struggled. If the message says this is a REVIEW lesson, plan "
+    "every exercise to cover everything learned to date - mixing the topics of every earlier lesson it lists, weighted toward "
+    "what he missed - with no new material. Afterwards reply in a sentence or two."
 )
 
 PROPOSE_LANGUAGE_PLAN_TOOL = {
@@ -5150,9 +5149,9 @@ CREATE_LESSON_EXERCISE_SCHEMA = LESSON_ITEM_SCHEMA
 CREATE_LESSON_SET_TOOL = {
     "name": "create_lesson_set",
     "description": (
-        "Only while preparing a lesson task. Builds the whole lesson as a set of activities in Francis's Workspace: the "
-        "notes plus 5-7 scored exercises that each teach in a different way. Write teaching text in English with the "
-        "target-language words in the target language."
+        "Only while preparing a lesson task. Builds the lesson in Francis's Workspace: the written notes, plus a plan of 5-7 "
+        "scored exercises that each teach in a different way (the app then writes every exercise's questions from your plan). "
+        "Write teaching text in English with the target-language words in the target language."
     ),
     "input_schema": {
         "type": "object",
@@ -5195,26 +5194,22 @@ CREATE_LESSON_SET_TOOL = {
             },
             "activities": {
                 "type": "array",
-                "description": "5-7 exercises, each a different way of learning, each with 6-10 items.",
+                "description": (
+                    "The PLAN for 5-7 exercises, each a different way of learning. Only plan them here - the app writes each "
+                    "exercise's questions right after, using your title, style and focus, so make the focus specific."
+                ),
                 "items": {
                     "type": "object",
                     "properties": {
                         "title": {"type": "string", "description": "e.g. \"Flash cards: greetings\", \"Listen and choose\", \"Say it aloud\", \"Which one doesn't belong?\"."},
-                        "instructions": {"type": "string", "description": "One line telling him what to do."},
-                        "story": {
-                            "type": "object",
-                            "description": "Only for the story exercise: a short story in the target language at his level, reusing new words plus earlier material.",
-                            "properties": {
-                                "title": {"type": "string"}, "text": {"type": "string"},
-                                "translation": {"type": "string", "description": "The same story in English."}
-                            },
-                            "required": ["text", "translation"]
-                        },
-                        "items": {"type": "array", "items": LESSON_ITEM_SCHEMA, "minItems": 3}
+                        "style": {"type": "string", "enum": ["flashcards", "listening", "fill", "matching", "odd", "order", "translate", "speaking", "story", "mixed"], "description": "How this exercise teaches. Use a different style for each exercise; include one `speaking` (he says phrases into his mic) and one `story`."},
+                        "focus": {"type": "string", "description": "Exactly what it practises: the specific words, phrases or forms (for a story: the new words to reuse plus earlier material, and the situation)."},
+                        "instructions": {"type": "string", "description": "One line telling him what to do."}
                     },
-                    "required": ["title", "items"]
+                    "required": ["title", "style", "focus"]
                 },
-                "minItems": 5
+                "minItems": 5,
+                "maxItems": 7
             }
         },
         "required": ["title", "language", "notes", "activities"]
@@ -5496,24 +5491,30 @@ def _build_lesson_set(raw):
         'estimated_minutes': raw.get('estimated_minutes'), 'exercises': [], 'story': None
     }, notes_only=True)
     activities = []
-    for act in (raw.get('activities') or [])[:9]:
+    seen_titles = set()
+    for act in (raw.get('activities') or [])[:8]:
         if not isinstance(act, dict):
             continue
-        items = _clean_exercises(act.get('items'), 12)
         title = text(act.get('title'), 100)
-        story = None
-        if isinstance(act.get('story'), dict) and text(act['story'].get('text'), 3000):
-            story = {'title': text(act['story'].get('title'), 120), 'text': text(act['story'].get('text'), 3000), 'translation': text(act['story'].get('translation'), 3000)}
-        minimum = 4 if all(i['type'] == 'card' for i in items) else 3
-        if title and len(items) >= minimum:
-            activities.append(_make_activity('exercise', title, base, items, text(act.get('instructions'), 200), story=story))
+        focus = text(act.get('focus'), 400)
+        style = text(act.get('style'), 20).lower()
+        if style not in ('flashcards', 'listening', 'fill', 'matching', 'odd', 'order', 'translate', 'speaking', 'story', 'mixed'):
+            style = 'mixed'
+        if title and focus and title.lower() not in seen_titles:
+            seen_titles.add(title.lower())
+            activities.append({'title': title, 'focus': focus, 'style': style, 'instructions': text(act.get('instructions'), 200)})
     if not lesson_title or not notes_lesson or len(activities) < 4:
         return None
     files = []
     notes_activity = dict(notes_lesson, kind='notes', lesson=lesson_title, instructions='', topics=[])
     files.append(_activity_file(notes_activity, 'notes', 'Lesson notes'))
+    placeholder = base64.b64encode(b'{}').decode('ascii')
     for act in activities:
-        files.append(_activity_file(act, 'exercise', act['title']))
+        files.append({
+            'name': f"{lesson_title} - {act['title']}", 'mimeType': 'application/json', 'data': placeholder, 'fileType': 'lesson',
+            'content': '{}', 'activity': {'kind': 'exercise', 'title': act['title'], 'pending': True, 'focus': act['focus'],
+                                         'style': act['style'], 'instructions': act['instructions']}
+        })
     return files
 
 
@@ -5530,14 +5531,36 @@ ACTIVITY_GUIDE = {
 
 QUIZ_TOOL = {
     "name": "make_quiz",
-    "description": "Return the finished set of items.",
+    "description": "Return the finished set of items (and, for a story exercise, the story).",
     "input_schema": {
         "type": "object",
         "properties": {
+            "story": {
+                "type": "object",
+                "description": "Only for a story exercise: the short story in the target language, with its English translation.",
+                "properties": {"title": {"type": "string"}, "text": {"type": "string"}, "translation": {"type": "string"}},
+                "required": ["text", "translation"]
+            },
             "items": {"type": "array", "items": LESSON_ITEM_SCHEMA}
         },
         "required": ["items"]
     }
+}
+
+
+# What each exercise style asks the writer for.
+STYLE_GUIDE = {
+    'flashcards': "ONLY flash cards (type card): front = the target-language word or phrase, back = meaning plus a tip.",
+    'listening': "Listening items: every item has `speak` so he hears it - choice (pick what he heard / what it means) and fill (type what he heard).",
+    'fill': "ONLY fill-in-the-blank items (type fill) in short sentences.",
+    'matching': "ONLY match items (type match) with 4-6 pairs each; make 2-3 match items.",
+    'odd': "ONLY odd-one-out items (type odd) with 4 options each.",
+    'order': "ONLY word-order items (type order) - sentences he builds from word tiles.",
+    'translate': "ONLY translate items (type translate), both directions.",
+    'speaking': "ONLY repeat items (type repeat): he hears the phrase and says it aloud into his mic. Short, useful phrases of rising difficulty.",
+    'story': ("A SHORT STORY of 6-10 simple sentences in the target language at his level, set in the lesson's everyday situation, "
+              "reusing the lesson's new words plus earlier material, returned in `story` with its English translation, PLUS 4 "
+              "comprehension questions about it as items (choice or fill)."),
 }
 
 
@@ -5563,7 +5586,7 @@ def _generate_activity(data):
         f"Write {ACTIVITY_GUIDE[mode]} in {language} for \"{lesson}\".\n"
         + (f"Cover these topics fairly evenly: {'; '.join(topics)}.\n" if topics else '')
         + (f"Focus: {focus}\n" if focus else '')
-        + (f"Preferred style: {style}.\n" if style and style != 'mixed' else '')
+        + (f"Exercise style: {STYLE_GUIDE[style]}\n" if style in STYLE_GUIDE else (f"Preferred style: {style}.\n" if style and style != 'mixed' else ''))
         + (f"Learner level: {level}.\n" if level else '')
         + (f"He has tended to miss: {'; '.join(weak)} - give those extra weight.\n" if weak else '')
         + (f"These were already used - every item must be NEW (different words, sentences and angles, not rewordings): {' | '.join(avoid)}\n" if avoid else '')
@@ -5579,13 +5602,20 @@ def _generate_activity(data):
     )
     block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use' and b.name == 'make_quiz'), None)
     items = _clean_exercises((block.input or {}).get('items') if block else None, 16)
+    story = None
+    raw_story = (block.input or {}).get('story') if block else None
+    if style == 'story' and isinstance(raw_story, dict) and str(raw_story.get('text') or '').strip():
+        story = {'title': str(raw_story.get('title') or '').strip()[:120], 'text': str(raw_story['text']).strip()[:3000],
+                 'translation': str(raw_story.get('translation') or '').strip()[:3000]}
     minimum = 4 if mode == 'exercise' else 6
+    if style == 'story' and not story:
+        return None, "That came back without a story - try again."
     if len(items) < minimum:
         return None, 'That came back too short - try again.'
     base = {'language': language, 'languageCode': code, 'level': level, 'lesson': lesson, 'objective': ''}
     kind = {'lesson_quiz': 'quiz', 'practice': 'practice', 'exercise': 'exercise', 'module_quiz': 'module_quiz'}[mode]
     title = {'lesson_quiz': f"{lesson} - Quiz", 'practice': f"{lesson} - Practice", 'exercise': str(data.get('title') or 'Extra exercise').strip()[:100], 'module_quiz': f"{lesson} Quiz"}[mode]
-    activity = _make_activity(kind, title, base, items, topics=topics)
+    activity = _make_activity(kind, title, base, items, topics=topics, story=story)
     if mode == 'module_quiz':
         activity['kind'] = 'quiz'          # the module quiz uses the existing retakeable page
         activity['module'] = lesson

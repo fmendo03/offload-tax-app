@@ -15610,6 +15610,7 @@ async function ensureActivityContent(agent, file) {
             avoid: priorPrompts, weak: weak.slice(-10)
         });
         activity.title = act.title || activity.title;
+        if (act.instructions) activity.instructions = act.instructions;
         const json = JSON.stringify(activity);
         file.content = json;
         file.data = lessonToBase64(json);
@@ -15650,6 +15651,8 @@ function regenerateActivity(agent, file, rerender, button) {
 // Called when a lesson's activities are first made: adds the (empty until opened) practice set.
 function setupLessonSet(agent, task) {
     const files = lessonSetFiles(agent, task);
+    // Lana plans the exercises; the questions are written now, all at once.
+    files.filter(f => f.activity.pending && f.activity.kind === 'exercise' && !f.activity.generating).forEach(f => ensureActivityContent(agent, f));
     if (!files.length || files.some(f => f.activity.kind === 'practice')) return;
     const sample = files.map(f => parseLesson(f)).find(Boolean) || {};
     createWorkspaceFile(agent, task.id, { name: `${sample.lesson || task.name} - Practice`, mimeType: 'application/json', data: '', fileType: 'lesson', content: null, activity: { kind: 'practice', title: 'Practice', pending: true } });
@@ -18309,6 +18312,16 @@ function buildOpenTasksForChat(agent) {
         }));
 }
 
+// A task run that errored out (or timed out) goes back to paused, so Resume is there instead of it
+// looking like it's still working.
+function markTaskRunFailed(agent, taskId) {
+    const task = findWorkspaceTaskById(agent, taskId);
+    if (task && task.status === 'in_progress') {
+        task.status = 'paused';
+        refreshTaskViewsForAgent(agent);
+    }
+}
+
 async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussInfo, relatedItemId) {
     if (currentAgent === agent) showTypingIndicator(agent);
 
@@ -18341,7 +18354,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
 
         const data = await response.json();
-        if (!data.success) return;
+        if (!data.success) { if (taskId) markTaskRunFailed(agent, taskId); return; }
 
         // Belt-and-suspenders: the system prompt tells Ashanti to always pair
         // an "add to calendar" timing question with suggest_quick_replies,
@@ -18498,6 +18511,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             console.log(`Task run for ${agent} was stopped.`);
         } else {
             console.error(`Error getting response from ${agent}:`, error);
+            if (taskId) markTaskRunFailed(agent, taskId);
             // Without this, a network error or a timed-out request (a very
             // long generation can outlast the server's own request timeout)
             // just clears the typing indicator with nothing to show for it -
