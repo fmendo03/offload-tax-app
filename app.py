@@ -7284,7 +7284,7 @@ PAUSE_TASK_TOOL = {
     "name": "pause_task",
     "description": (
         "Call this INSTEAD of just replying normally when you're working a background task (one "
-        "Francis started from his Workspace) and genuinely cannot finish it in this turn - most "
+        "Francis started from his Projects & Tasks list) and genuinely cannot finish it in this turn - most "
         "commonly because you used up your available web searches partway through deep research and "
         "need to continue in a follow-up, but also if the task turns out to need something else "
         "(missing information, a decision from Francis) before you can complete it. Don't call this "
@@ -8078,7 +8078,7 @@ def chat():
         # a finished result.
         if is_task_run:
             system_prompt += (
-                "\n\nThis message is Francis starting a background task from his Workspace - he's "
+                "\n\nThis message is Francis starting a task from his Projects & Tasks list - he's "
                 "expecting you to actually complete the work in this conversation, not describe a plan "
                 "for how you'd do it. If what he asked for calls for a downloadable file (a document, "
                 "spreadsheet, presentation, PDF, or HTML page), you must actually call create_file with "
@@ -8096,7 +8096,12 @@ def chat():
                 "the turn without having either fully finished or explicitly paused. Francis's message may "
                 "include a plan for the task - follow its steps and deliver its stated final output. When you "
                 "finish, say briefly what you produced and where to find it; Francis reviews the work before "
-                "the task counts as complete, so don't call it final or ask him to mark it complete."
+                "the task counts as complete, so don't call it final or ask him to mark it complete. "
+                "Every file belongs to a task: the files Francis attached to THIS task are sent to you with this "
+                "message, as \"[Attached file: ...]\" blocks (or as images/PDFs) - that is where to look, not some "
+                "workspace or folder, and you can't browse files on your own. Read them there and use them. Only if a "
+                "file the task depends on is truly absent from this message, say so and ask him to attach it to this "
+                "task (the task's Edit button), instead of guessing or inventing data."
             )
             if agent == 'sasha':
                 system_prompt += (
@@ -8817,7 +8822,7 @@ PROPOSE_TASK_TOOL = {
         "properties": {
             "task": {
                 "type": "string",
-                "description": "One clear, specific description of the task, written so whoever does it can pick it up and act on it in their own Workspace without needing to re-read this whole conversation."
+                "description": "One clear, specific description of the task, written so whoever does it can pick it up and act on it from their own Projects & Tasks list without needing to re-read this whole conversation."
             },
             "name": {
                 "type": "string",
