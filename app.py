@@ -5557,7 +5557,7 @@ STYLE_GUIDE = {
     'flashcards': "ONLY flash cards (type card): front = the target-language word or phrase, back = meaning plus a tip. ALWAYS set `speak` to exactly the single word or phrase he should say aloud for that card (plain words only - no slashes, dashes or letters spelled out), because he hears it and then says it into his mic and is marked on how close he gets.",
     'listening': "Listening items: every item has `speak` so he hears it - choice (pick what he heard / what it means) and fill (type what he heard).",
     'fill': "ONLY fill-in-the-blank items (type fill) in short sentences.",
-    'matching': "ONLY match items (type match) with 4-6 pairs each; make 2-3 match items.",
+    'matching': "ONLY match items (type match) with 4-6 pairs each; make 3 match items.",
     'odd': "ONLY odd-one-out items (type odd) with 4 options each.",
     'order': "ONLY word-order items (type order) - sentences he builds from word tiles.",
     'translate': "ONLY translate items (type translate), both directions.",
@@ -5600,27 +5600,36 @@ def _generate_activity(data):
     )
     # (This model can't be forced to call a tool, so the instruction does it - and one retry covers a text-only reply.)
     block = None
+    # Matching items hold several pairs each, so fewer of them is a full exercise.
+    minimum = 2 if style == 'matching' else (4 if mode == 'exercise' else 6)
+    items, story = [], None
+    problem = 'That came back without anything usable - try again.'
     for _attempt in range(2):
         response = claude_create(
             log_agent='lana', log_purpose='lana_activity', model=CLAUDE_MODEL, max_tokens=7000,
             system="You are Lana, a warm but rigorous language teacher writing practice material. Always return it by calling the make_quiz tool - never reply with plain text.",
-            messages=[{'role': 'user', 'content': prompt + "\n\nCall make_quiz now with the finished items."}],
+            messages=[{'role': 'user', 'content': prompt + (f"\n\nGive at least {minimum + 2} items." if _attempt else '') + "\n\nCall make_quiz now with the finished items."}],
             tools=[QUIZ_TOOL]
         )
         block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use' and b.name == 'make_quiz'), None)
-        if block:
-            break
-    items = _clean_exercises((block.input or {}).get('items') if block else None, 16)
-    story = None
-    raw_story = (block.input or {}).get('story') if block else None
-    if style == 'story' and isinstance(raw_story, dict) and str(raw_story.get('text') or '').strip():
-        story = {'title': str(raw_story.get('title') or '').strip()[:120], 'text': str(raw_story['text']).strip()[:3000],
-                 'translation': str(raw_story.get('translation') or '').strip()[:3000]}
-    minimum = 4 if mode == 'exercise' else 6
-    if style == 'story' and not story:
-        return None, "That came back without a story - try again."
-    if len(items) < minimum:
-        return None, 'That came back too short - try again.'
+        if not block:
+            continue
+        items = _clean_exercises((block.input or {}).get('items'), 16)
+        story = None
+        raw_story = (block.input or {}).get('story')
+        if style == 'story' and isinstance(raw_story, dict) and str(raw_story.get('text') or '').strip():
+            story = {'title': str(raw_story.get('title') or '').strip()[:120], 'text': str(raw_story['text']).strip()[:3000],
+                     'translation': str(raw_story.get('translation') or '').strip()[:3000]}
+        if style == 'story' and not story:
+            problem = 'That came back without a story - try again.'
+            continue
+        if len(items) < minimum:
+            problem = 'That came back too short - try again.'
+            continue
+        problem = None
+        break
+    if problem:
+        return None, problem
     base = {'language': language, 'languageCode': code, 'level': level, 'lesson': lesson, 'objective': ''}
     kind = {'lesson_quiz': 'quiz', 'practice': 'practice', 'exercise': 'exercise', 'module_quiz': 'module_quiz'}[mode]
     title = {'lesson_quiz': f"{lesson} - Quiz", 'practice': f"{lesson} - Practice", 'exercise': str(data.get('title') or 'Extra exercise').strip()[:100], 'module_quiz': f"{lesson} Quiz"}[mode]
