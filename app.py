@@ -4959,6 +4959,12 @@ def lana_settings_get():
 def lana_settings_save():
     try:
         data = request.json or {}
+        try:
+            minutes = int(data.get('daily_minutes'))
+        except (TypeError, ValueError):
+            minutes = 30
+        if minutes not in LANA_DAILY_MINUTES:
+            minutes = 30
         languages = []
         seen = set()
         for raw in (data.get('languages') or [])[:8]:
@@ -4973,14 +4979,9 @@ def lana_settings_save():
                 'name': name,
                 'focus': str(raw.get('focus') or '').strip()[:120],
                 'level': raw.get('level') if raw.get('level') in LANA_CURRENT_LEVELS else 'beginner',
-                'target': raw.get('target') if raw.get('target') in LANA_TARGET_LEVELS else 'C1'
+                'target': raw.get('target') if raw.get('target') in LANA_TARGET_LEVELS else 'C1',
+                'dailyMinutes': raw.get('dailyMinutes') if raw.get('dailyMinutes') in LANA_DAILY_MINUTES else minutes
             })
-        try:
-            minutes = int(data.get('daily_minutes'))
-        except (TypeError, ValueError):
-            minutes = 30
-        if minutes not in LANA_DAILY_MINUTES:
-            minutes = 30
         settings = {'languages': languages, 'dailyMinutes': minutes}
         with lana_settings_lock:
             save_lana_settings(settings)
@@ -4997,14 +4998,14 @@ def get_lana_context():
     if languages:
         listing = "; ".join(
             l['name'] + (f" ({l['focus']})" if l.get('focus') else '')
-            + f" - currently {LANA_LEVEL_NAMES.get(l.get('level'), LANA_LEVEL_NAMES['beginner'])}, wants to reach {LANA_LEVEL_NAMES.get(l.get('target'), LANA_LEVEL_NAMES['C1'])}"
+            + f" - currently {LANA_LEVEL_NAMES.get(l.get('level'), LANA_LEVEL_NAMES['beginner'])}, wants to reach {LANA_LEVEL_NAMES.get(l.get('target'), LANA_LEVEL_NAMES['C1'])}, studies about {l.get('dailyMinutes') or settings['dailyMinutes']} minutes a day"
             for l in languages)
         lang_line = f"Languages Francis chose to learn in Settings: {listing}."
     else:
         lang_line = "Francis hasn't picked a language to learn in Settings yet - if he wants to start one, ask which."
     return (
         "\n\nLANGUAGE SETTINGS (set by Francis in Settings > Agents > Lana): "
-        f"{lang_line} He can study about {settings['dailyMinutes']} minutes a day. "
+        f"{lang_line}{'' if languages else ' He can study about ' + str(settings['dailyMinutes']) + ' minutes a day.'} "
         "Use these instead of asking again - including his current and target level. The plan runs from his current level to "
         "his target level and no further (fewer modules for a shorter journey; skip what he already knows). Only ask what "
         "you still need (goal, preferred style), one question at a time."

@@ -15024,6 +15024,7 @@ async function sendWorkspaceReview() {
 // There's also a practice set with new questions every time. Answers and best scores are saved
 // on the files; the quiz results go to Lana, who can add exercises (add_exercises) to the lesson.
 let lanaSettings = { languages: [], dailyMinutes: 30 };
+let lanaAutoAcceptUntil = 0;   // set by Settings > Start plan: the plan Lana proposes next is accepted automatically
 let lanaPendingLesson = null;   // { taskId } while Lana's reply to submitted results may add exercises/lessons
 
 const LESSON_PASS_PERCENT = 75;
@@ -16060,7 +16061,7 @@ function buildLanguageOutlineEl(project) {
 // What Lana is reminded of when she's asked to prepare the next lesson.
 function lessonRunContext(task) {
     const project = task.projectId ? projects[task.projectId] : null;
-    const lines = [`\n\nThis is a language lesson task - prepare the whole lesson now by calling create_lesson_set. Language: ${task.language || 'see the plan'}${task.languageCode ? ` (${task.languageCode})` : ''}. His daily study time: ${lanaSettings.dailyMinutes} minutes.`];
+    const lines = [`\n\nThis is a language lesson task - prepare the whole lesson now by calling create_lesson_set. Language: ${task.language || 'see the plan'}${task.languageCode ? ` (${task.languageCode})` : ''}. His daily study time: ${languageDailyMinutes((lanaSettings.languages || []).find(l => String(l.name).toLowerCase() === String(task.language || '').toLowerCase()))} minutes.`];
     if (task.lessonTopics && task.lessonTopics.length) lines.push(`Topics for this lesson: ${task.lessonTopics.join(', ')}.`);
     if (project) {
         const history = [];
@@ -16359,6 +16360,11 @@ const LANA_LEVELS = [
     { id: 'C1', label: 'C1 · Advanced (proficient)', hours: 250 }
 ];
 
+// Each language has its own daily study time (falling back to the default).
+function languageDailyMinutes(language) {
+    return (language && language.dailyMinutes) || lanaSettings.dailyMinutes || 30;
+}
+
 function lanaLevelIndex(id, fallback) {
     const i = LANA_LEVELS.findIndex(l => l.id === id);
     return i < 0 ? fallback : i;
@@ -16406,7 +16412,8 @@ function findLanguagePlan(languageName) {
 function startLanguagePlan(language) {
     selectAgent('lana');
     const from = LANA_LEVELS[lanaLevelIndex(language.level, 0)], to = LANA_LEVELS[lanaLevelIndex(language.target, LANA_LEVELS.length - 1)];
-    inputBox.value = `I'd like to start learning ${language.name}${language.focus ? ` (${language.focus})` : ''}. I'm at ${from.id === 'beginner' ? 'complete beginner' : from.label}, I want to reach ${to.label}, and I can study about ${lanaSettings.dailyMinutes} minutes a day. Please put together my learning plan.`;
+    inputBox.value = `I'd like to start learning ${language.name}${language.focus ? ` (${language.focus})` : ''}. I'm at ${from.id === 'beginner' ? 'complete beginner' : from.label}, I want to reach ${to.label}, and I can study about ${languageDailyMinutes(language)} minutes a day. Please put together my learning plan.`;
+    lanaAutoAcceptUntil = Date.now() + 30 * 60 * 1000;   // pressing Start plan means he wants it - no separate Accept step
     autoGrowInputBox();
     sendMessage();
 }
@@ -16448,9 +16455,22 @@ function renderLanaSettingsCard() {
         levels.appendChild(el('span', '', 'and want to reach'));
         levels.appendChild(levelSelect(LANA_LEVELS[lanaLevelIndex(language.target, LANA_LEVELS.length - 1)].id, LANA_LEVELS.slice(1), v => { language.target = v; }));
         info.appendChild(levels);
-        const estimate = lanaStudyEstimate(language, lanaSettings.dailyMinutes);
+        const minutes = languageDailyMinutes(language);
+        const timeRow = el('div', 'lana-level-row');
+        timeRow.appendChild(el('span', '', 'Time I can study each day'));
+        const timeSelect = el('select');
+        [15, 30, 45, 60, 90, 120].forEach(m => {
+            const o = document.createElement('option');
+            o.value = m; o.textContent = m < 60 ? `${m} minutes` : (m === 60 ? '1 hour' : `${m / 60} hours`);
+            if (m === minutes) o.selected = true;
+            timeSelect.appendChild(o);
+        });
+        timeSelect.addEventListener('change', () => { language.dailyMinutes = +timeSelect.value; saveLanaSettings(); });
+        timeRow.appendChild(timeSelect);
+        info.appendChild(timeRow);
+        const estimate = lanaStudyEstimate(language, minutes);
         info.appendChild(el('div', 'lana-estimate', estimate
-            ? `⏱ Expect ${formatStudyDuration(estimate.days)} - about ${estimate.hours} hours of study, at ${lanaSettings.dailyMinutes} minutes a day`
+            ? `⏱ Expect ${formatStudyDuration(estimate.days)} - about ${estimate.hours} hours of study, at ${minutes} minutes a day`
             : 'Pick a goal above your current level to see how long it takes.'));
         const actions = el('div', 'social-row-actions');
         if (plan && plan.status !== 'proposed') actions.appendChild(socialButton('Open plan', () => goToProject(plan.id)));
@@ -16473,24 +16493,12 @@ function renderLanaSettingsCard() {
         const name = nameInput.value.trim();
         if (!name) { nameInput.focus(); return; }
         if (lanaSettings.languages.some(l => l.name.toLowerCase() === name.toLowerCase())) { nameInput.value = ''; return; }
-        lanaSettings.languages.push({ name, focus: focusInput.value.trim(), level: 'beginner', target: 'C1' });
+        lanaSettings.languages.push({ name, focus: focusInput.value.trim(), level: 'beginner', target: 'C1', dailyMinutes: lanaSettings.dailyMinutes });
         saveLanaSettings();
     });
     add.appendChild(nameInput); add.appendChild(focusInput); add.appendChild(list); add.appendChild(addBtn);
     card.appendChild(add);
 
-    const time = el('div', 'lana-time-row');
-    time.appendChild(el('label', '', 'Time I can study each day'));
-    const select = el('select');
-    [15, 30, 45, 60, 90, 120].forEach(m => {
-        const o = document.createElement('option');
-        o.value = m; o.textContent = m < 60 ? `${m} minutes` : (m === 60 ? '1 hour' : `${m / 60} hours`);
-        if (m === lanaSettings.dailyMinutes) o.selected = true;
-        select.appendChild(o);
-    });
-    select.addEventListener('change', () => { lanaSettings.dailyMinutes = +select.value; saveLanaSettings(); });
-    time.appendChild(select);
-    card.appendChild(time);
 }
 
 // ---- wiring (once, at startup) ----
@@ -17023,7 +17031,10 @@ function acceptProject(chatAgent, msgIndex) {
         projects[msg.projectProposal.id].acceptedAt = acceptedAt;
     }
     saveProjects();
-    displayProjectsList();
+    // Every office involved shows the new project right away, not after a refresh.
+    const involved = new Set(msg.projectProposal.tasks.map(t => t.agent));
+    involved.add(chatAgent);
+    involved.forEach(a => refreshTaskViewsForAgent(a));
 
     saveToLocalStorage(chatAgent);
     if (currentAgent === chatAgent) displayMessages(chatAgent);
@@ -18406,6 +18417,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 relatedItemId: relatedItemId || undefined,
                 timestamp: new Date()
             });
+            const proposalMsgIndex = chatHistory[agent].length - 1;
             taskProposals.slice(1).forEach(extra => {
                 chatHistory[agent].push({
                     type: 'agent',
@@ -18423,6 +18435,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 updateChatUnreadBadge(agent);
             }
             updateAgentBadge(agent);
+            // Settings > Start plan: the course is created straight away, no separate Accept click.
+            if (projectProposal && projectProposal.kind === 'language' && Date.now() < lanaAutoAcceptUntil) {
+                lanaAutoAcceptUntil = 0;
+                acceptProject(agent, proposalMsgIndex);
+            }
         }
         if (projectProposal) displayProjectsList();
         if (agent === 'lana' && data.add_lessons && data.add_lessons.length) applyAddedLessons(agent, data.add_lessons);
