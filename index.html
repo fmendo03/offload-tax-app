@@ -2214,6 +2214,22 @@
 .lesson-activity-row .lesson-score-chip { margin-left: auto; }
 .lesson-activity-row .lesson-score-chip.pass { background: #e6f4ea; color: #1a6b1a; }
 .lesson-activity-row.locked { opacity: 0.65; cursor: pointer; }
+/* Interactive Projects: a folder tree, not a task list. */
+.ip-project { margin-bottom: 10px; }
+.ip-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: white; border: 1px solid #e6e6e6; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+.ip-row.openable { cursor: pointer; }
+.ip-row.ip-course { border-color: #667eea; background: #f6f7ff; }
+.ip-row.ip-module { background: #fafaff; }
+.ip-chevron { width: 10px; flex-shrink: 0; font-size: 10px; color: #999; text-align: center; }
+.ip-title { flex: 1; min-width: 0; }
+.ip-name { font-weight: 600; color: #222; }
+.ip-name.done { color: #888; }
+.ip-sub { font-size: 11px; color: #888; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ip-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.ip-chip.pass { background: #e6f4ea; color: #1a6b1a; }
+.ip-children { margin: 0 0 6px 16px; padding-left: 10px; border-left: 2px solid #e6e6e6; }
+.ip-goal, .ip-roadmap-note { font-size: 12px; color: #666; margin: 2px 0 8px; }
+.ip-roadmap { margin: 0 0 8px 18px; padding: 0; font-size: 12px; color: #555; }
 .lesson-match { display: flex; gap: 14px; }
 .lm-col { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .lm-left, .lm-right, .lo-tile, .lc-flip, .lc-rate, .lr-mic, .lr-self, .lr-listen, .lo-clear { border: 1px solid #d6d6e0; background: #fafafd; border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; text-align: left; }
@@ -10413,6 +10429,7 @@ let previewPaneEditCleanup = null; // disposer for the Preview pane's click-in/c
 // both panes so they always agree on what "currently exists" means.
 function getLiveProjectsWithTasks() {
     return Object.values(projects)
+        .filter(project => !isInteractiveProject(project))   // those have their own folders - see getLiveInteractiveProjects
         .map(project => ({
             project,
             liveTasks: project.tasks
@@ -10556,8 +10573,9 @@ function renderProjectsPane() {
 
     const ordered = getFilteredProjectsWithTasks();
     const standaloneTasks = getFilteredStandaloneTasks();
+    const interactiveProjects = getLiveInteractiveProjects(projectsAgentFilter);
 
-    if (ordered.length === 0 && standaloneTasks.length === 0) {
+    if (ordered.length === 0 && standaloneTasks.length === 0 && interactiveProjects.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'page-empty';
         empty.textContent = projectsAgentFilter === 'all'
@@ -10637,10 +10655,18 @@ function renderProjectsPane() {
         cancelProjectBtn.textContent = 'Cancel Project';
         cancelProjectBtn.addEventListener('click', () => requestCancelProject(project.id));
 
+        const archiveProjectBtn = document.createElement('button');
+        archiveProjectBtn.type = 'button';
+        archiveProjectBtn.className = 'task-action-btn solid-archive';
+        archiveProjectBtn.textContent = 'Archive';
+        archiveProjectBtn.title = 'Archive the project and everything in it';
+        archiveProjectBtn.addEventListener('click', (e) => { e.stopPropagation(); requestArchiveProject(project.id); });
+
         row.appendChild(checkbox);
         row.appendChild(chevron);
         row.appendChild(body);
         row.appendChild(editProjectBtn);
+        row.appendChild(archiveProjectBtn);
         row.appendChild(cancelProjectBtn);
         block.appendChild(row);
 
@@ -10667,6 +10693,15 @@ function renderProjectsPane() {
 
         list.appendChild(block);
     });
+
+    // Interactive Projects (the language course): their own folders, no tasks.
+    if (interactiveProjects.length > 0) {
+        const ipHeader = document.createElement('div');
+        ipHeader.className = 'ptree-section-header';
+        ipHeader.textContent = 'Interactive Projects';
+        list.appendChild(ipHeader);
+        interactiveProjects.forEach(p => list.appendChild(buildInteractiveProjectEl(p)));
+    }
 
     // tasks - not part of any project (task.projectId is null), so
     // there's no project row to nest them under. Listed flat, same tree/
@@ -11090,6 +11125,10 @@ function requestPermanentlyDeleteProject(projectId, afterConfirm) {
     if (!project) return;
     const plural = project.tasks.length === 1 ? '' : 's';
     const run = () => { permanentlyDeleteProject(projectId); if (afterConfirm) afterConfirm(); };
+    if (isInteractiveProject(project)) {
+        showBulkConfirm(`⚠️ Permanently delete "${project.name}" with all ${project.tasks.length} of its lessons, exercises and quizzes? Offload will lose all memory of it - this cannot be undone.`, [], run);
+        return;
+    }
     showCascadeConfirm(
         `⚠️ "${project.name}" has ${project.tasks.length} task${plural} linked to it. Permanently deleting this project will also permanently delete the task${plural} linked to it (and any files linked to them) - Offload will lose all memory of anything related to this item, this cannot be undone.`,
         buildProjectCascadeNode(project, true),
@@ -11526,6 +11565,14 @@ function buildFilePreviewForArchive(file) {
 }
 
 function buildProjectPreviewForArchive(project) {
+    if (isInteractiveProject(project) && project.outline) {
+        const summary = project.summary ? `<p>${escapeHtml(project.summary)}</p>` : '';
+        const mods = project.outline.modules.map(m =>
+            `<li><strong>${escapeHtml(m.name)}${m.level ? ' · ' + escapeHtml(m.level) : ''}</strong>` +
+            ((m.lessons || []).length ? `<ul>${m.lessons.map(l => `<li>${escapeHtml(l.name)}</li>`).join('')}</ul>` : '') + '</li>'
+        ).join('');
+        return `<div class="archive-detail-list"><p><em>Interactive Project - archived as one piece.</em></p>${summary}<ul>${mods}</ul></div>`;
+    }
     if (!project.tasks || !project.tasks.length) {
         return '<div class="archive-detail-unavailable">No tasks in this project.</div>';
     }
@@ -11691,13 +11738,15 @@ function renderArchivePage() {
     const archivedTasks = [];
     agents.forEach(agent => {
         (workspaceTasks[agent] || []).forEach(task => {
-            if (task.archived) archivedTasks.push({ agent, task });
+            // A lesson only ever archives with its whole Interactive Project.
+            if (task.archived && !task.isLesson) archivedTasks.push({ agent, task });
         });
     });
     const archivedFiles = [];
     agents.forEach(agent => {
         (workspaceFiles[agent] || []).forEach(file => {
-            if (file.archived) archivedFiles.push({ agent, file });
+            const owner = file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
+            if (file.archived && !(owner && owner.isLesson)) archivedFiles.push({ agent, file });
         });
     });
     const archivedProjects = Object.values(projects).filter(p => p.status === 'cancelled' || p.archived);
@@ -11841,7 +11890,9 @@ function renderWorkspaceTasks(agent) {
         saveWorkspaceItems();
     }
 
-    const tasks = (workspaceTasks[agent] || []).filter(t => !t.archived);
+    // Lessons aren't tasks any more - they live in their Interactive Project's own folder.
+    const tasks = (workspaceTasks[agent] || []).filter(t => !t.archived && !t.isLesson);
+    const interactiveProjects = getLiveInteractiveProjects(agent);
     const standaloneFiles = (workspaceFiles[agent] || []).filter(f => !f.taskId && !f.archived);
     const items = workspaceItems[agent] || [];
 
@@ -11868,7 +11919,7 @@ function renderWorkspaceTasks(agent) {
     wsEmpty.appendChild(document.createElement('br'));
     wsEmpty.appendChild(goBtn);
     container.appendChild(wsEmpty);
-    if (tasks.length === 0 && standaloneFiles.length === 0) {
+    if (tasks.length === 0 && standaloneFiles.length === 0 && interactiveProjects.length === 0) {
         addEmptyNote(projContainer, 'No tasks yet - accepted projects and tasks will show up here.');
     }
 
@@ -11899,6 +11950,12 @@ function renderWorkspaceTasks(agent) {
     // Group the rest by project so it reads as "here's everything from
     // Project X" - all of them nested inside one collapsible "Project Tasks"
     // group, each project keeping its own (non-collapsible) sub-header.
+    if (interactiveProjects.length > 0) {
+        const body = appendWorkspaceGroup(projContainer, agent, 'interactive', '🧭 Interactive Projects', interactiveProjects.length);
+        const list = indented(body);
+        interactiveProjects.forEach(p => list.appendChild(buildInteractiveProjectEl(p)));
+    }
+
     const byProject = {};
     tasks.forEach((task) => {
         if (!task.projectId) return;
@@ -11938,6 +11995,16 @@ function renderWorkspaceTasks(agent) {
                 });
             }
             projectHeader.appendChild(label);
+            if (projects[projectId]) {
+                const archiveBtn = document.createElement('button');
+                archiveBtn.type = 'button';
+                archiveBtn.className = 'task-action-btn solid-archive';
+                archiveBtn.style.marginLeft = 'auto';
+                archiveBtn.textContent = 'Archive';
+                archiveBtn.title = 'Archive the project and everything in it';
+                archiveBtn.addEventListener('click', (e) => { e.stopPropagation(); requestArchiveProject(projectId); });
+                projectHeader.appendChild(archiveBtn);
+            }
             projectHeader.addEventListener('click', () => toggleWorkspaceGroup(agent, projectGroupKey));
             const projectBlock = indented(body);
             projectBlock.appendChild(projectHeader);
@@ -13265,7 +13332,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
         // this same chat history - repeating the full task text would read
         // as "start over" rather than "keep going from where you paused".
         text: continueCount === 0
-            ? `Please go ahead and do this now: ${task.task}${inputFiles.length ? `\n\nFiles provided for this task (attached): ${inputFiles.map(f => f.name).join(', ')}` : ''}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}${task.isLesson ? lessonRunContext(task) : ''}`
+            ? `${task.isLesson ? 'Please prepare this lesson now' : 'Please go ahead and do this now'}: ${task.task}${inputFiles.length ? `\n\nFiles provided for this task (attached): ${inputFiles.map(f => f.name).join(', ')}` : ''}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}${task.isLesson ? lessonRunContext(task) : ''}`
             : (reminder || `Please continue where you left off.`),
         attachments: inputFiles.length ? inputFiles : undefined,
         timestamp: new Date()
@@ -13562,7 +13629,7 @@ function pauseProjectTask(agent, taskId, createdFiles) {
 // Archived items don't count - they're put away.
 function countWorkspacePendingTasks(agent) {
     return (workspaceTasks[agent] || []).filter(t => {
-        if (t.archived) return false;
+        if (t.archived || t.isLesson) return false;
         return t.status !== 'completed' || !t.viewed;
     }).length;
 }
@@ -16009,6 +16076,239 @@ function lessonRunContext(task) {
     return lines.join('\n');
 }
 
+// ---- Interactive Projects ----
+// An Interactive Project is something the agent builds WITH Francis rather than a job he hands them
+// (the language course is the first one). It has no tasks - it's a folder: project > modules >
+// lessons > exercises and quiz - and it's archived as one piece, never taken apart. (Under the hood
+// each lesson is still tracked by a hidden record that holds its state and its unlock order.)
+function isInteractiveProject(project) { return !!project && project.kind === 'language'; }
+
+function interactiveOwner(project) {
+    const first = (project.tasks || [])[0];
+    return (first && first.agent) || project.proposedBy || 'lana';
+}
+
+function getLiveInteractiveProjects(agentFilter) {
+    return Object.values(projects)
+        .filter(p => isInteractiveProject(p) && p.status === 'accepted' && !p.archived)
+        .filter(p => !agentFilter || agentFilter === 'all' || interactiveOwner(p) === agentFilter)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+// Folders remember what's open; each has a default for when it's never been touched.
+function interactiveClosed(agent, key, dflt) {
+    const v = workspaceGroupsCollapsed[`${agent}:${key}`];
+    return v === undefined ? dflt : !!v;
+}
+
+function toggleInteractiveNode(agent, key, dflt) {
+    workspaceGroupsCollapsed[`${agent}:${key}`] = !interactiveClosed(agent, key, dflt);
+    saveWorkspaceGroupsCollapsed();
+    refreshInteractiveViews(agent);
+}
+
+function refreshInteractiveViews(agent) {
+    if (currentAgent === agent) renderWorkspaceTasks(agent);
+    renderProjectsPane();
+}
+
+function ipEl(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+}
+
+// A folder row: chevron + label, click to open/close.
+function ipFolderRow(agent, key, dflt, canOpen, cls) {
+    const open = canOpen && !interactiveClosed(agent, key, dflt);
+    const row = ipEl('div', `ip-row ${cls}${canOpen ? ' openable' : ''}`);
+    const chevron = ipEl('span', 'ip-chevron', canOpen ? (open ? '▾' : '▸') : '');
+    row.appendChild(chevron);
+    if (canOpen) row.addEventListener('click', (e) => {
+        if (e.target.closest('button') || hasTextSelection()) return;
+        toggleInteractiveNode(agent, key, dflt);
+    });
+    return { row, open };
+}
+
+// A single file under a lesson that isn't one of the lettered activities (older lessons and module quizzes).
+function buildInteractiveFileRow(agent, file) {
+    const el = ipEl('div', 'workspace-task-row workspace-file-row lesson-activity-row');
+    const label = ipEl('span', 'workspace-file-text', `📄 ${file.name}`);
+    label.style.cursor = 'pointer';
+    label.addEventListener('click', () => {
+        if (hasTextSelection()) return;
+        showWorkspaceFilePreview(agent, file.id);
+        markFileViewed(agent, file.id);
+    });
+    el.appendChild(label);
+    return el;
+}
+
+function buildInteractiveLessonEl(agent, lesson) {
+    const task = lesson.taskId ? findWorkspaceTaskById(agent, lesson.taskId) : null;
+    const wrap = ipEl('div', 'ip-node');
+    const key = `ipl:${lesson.taskId || lesson.name}`;
+    const layout = task && task.isLesson ? lessonSetLayout(agent, task) : null;
+    const looseFiles = task ? getTaskFiles(agent, task.id).filter(f => !f.activity) : [];
+    const canOpen = !!layout || looseFiles.length > 0;
+    const dflt = !task || task.status === 'completed';
+    const { row, open } = ipFolderRow(agent, key, dflt, canOpen, 'ip-lesson' + (lesson.review ? ' review' : '') + (lesson.quiz ? ' quiz' : ''));
+
+    const title = ipEl('div', 'ip-title');
+    const name = ipEl('div', 'ip-name', `${lesson.quiz ? '★ ' : (lesson.review ? '🔁 ' : '')}${task ? task.name : lesson.name}`);
+    if (task && task.status === 'completed') name.classList.add('done');
+    title.appendChild(name);
+    if (!lesson.quiz && (lesson.topics || []).length) title.appendChild(ipEl('div', 'ip-sub', lesson.topics.join(', ')));
+    row.appendChild(title);
+
+    const right = ipEl('div', 'ip-right');
+    const chip = ipEl('span', 'workspace-input-tag ip-chip');
+    let button = null;
+    if (!task) { chip.textContent = 'Coming up'; }
+    else if (task.status === 'completed') { chip.textContent = '✓ Completed'; chip.classList.add('pass'); }
+    else if (task.status === 'in_progress') { chip.innerHTML = 'Preparing<span class="working-dots"><span>.</span><span>.</span><span>.</span></span>'; }
+    else if (task.status === 'in_review') {
+        chip.textContent = layout ? `${layout.exercises.filter(f => (f.activity.best || 0) >= LESSON_PASS_PERCENT).length} of ${layout.exercises.length} exercises at ${LESSON_PASS_PERCENT}%` : 'Ready';
+    } else {
+        const info = getProjectStepInfo(task);
+        if (info && info.blocker) {
+            chip.textContent = `🔒 Opens after "${info.blocker.name || info.blocker.task}"`;
+        } else {
+            button = ipEl('button', 'task-action-btn solid-start', task.status === 'paused' ? 'Resume' : (lesson.quiz ? 'Start quiz' : 'Start lesson'));
+            button.type = 'button';
+            button.addEventListener('click', (e) => { e.stopPropagation(); startProjectTask(agent, task.id); });
+        }
+    }
+    right.appendChild(chip);
+    if (button) right.appendChild(button);
+    if (task && task.status === 'in_progress') {
+        const pause = ipEl('button', 'task-action-btn solid-stop', 'Pause');
+        pause.type = 'button';
+        pause.addEventListener('click', (e) => { e.stopPropagation(); stopProjectTask(agent, task.id); });
+        right.appendChild(pause);
+    }
+    row.appendChild(right);
+    wrap.appendChild(row);
+
+    if (open) {
+        const kids = ipEl('div', 'ip-children');
+        if (layout) layout.rows.forEach(r => kids.appendChild(buildLessonActivityRow(agent, task, r)));
+        looseFiles.forEach(f => kids.appendChild(buildInteractiveFileRow(agent, f)));
+        wrap.appendChild(kids);
+    }
+    return wrap;
+}
+
+function buildInteractiveModuleEl(agent, project, mod, index) {
+    const wrap = ipEl('div', 'ip-node');
+    const lessons = mod.lessons || [];
+    const tasks = lessons.map(l => l.taskId ? findWorkspaceTaskById(agent, l.taskId) : null);
+    const doneCount = tasks.filter(t => t && t.status === 'completed').length;
+    const allDone = lessons.length > 0 && doneCount === lessons.length;
+    const key = `ipm:${project.id}:${index}`;
+    const canOpen = lessons.length > 0 || (mod.roadmap || []).length > 0 || !!mod.goal;
+    const { row, open } = ipFolderRow(agent, key, allDone, canOpen, 'ip-module');
+    const title = ipEl('div', 'ip-title');
+    title.appendChild(ipEl('div', 'ip-name', mod.name + (mod.level ? ` · ${mod.level}` : '') + (mod.days ? ` (${mod.days})` : '')));
+    row.appendChild(title);
+    const right = ipEl('div', 'ip-right');
+    right.appendChild(ipEl('span', 'workspace-input-tag ip-chip' + (allDone ? ' pass' : ''), lessons.length ? `${doneCount}/${lessons.length}` : 'Not built yet'));
+    row.appendChild(right);
+    wrap.appendChild(row);
+
+    if (open) {
+        const body = ipEl('div', 'ip-children');
+        if (mod.goal) body.appendChild(ipEl('div', 'ip-goal', mod.goal));
+        if (lessons.length) {
+            lessons.forEach(l => body.appendChild(buildInteractiveLessonEl(agent, l)));
+        } else if ((mod.roadmap || []).length) {
+            body.appendChild(ipEl('div', 'ip-roadmap-note', 'Roadmap - turned into lessons once the module before it is done, based on how you do.'));
+            const ul = ipEl('ul', 'ip-roadmap');
+            mod.roadmap.forEach(r => ul.appendChild(ipEl('li', '', r)));
+            body.appendChild(ul);
+        }
+        wrap.appendChild(body);
+    }
+    return wrap;
+}
+
+function buildInteractiveProjectEl(project) {
+    const agent = interactiveOwner(project);
+    const wrap = ipEl('div', 'ip-project');
+    const key = `ip:${project.id}`;
+    const { row, open } = ipFolderRow(agent, key, false, true, 'ip-course');
+    const title = ipEl('div', 'ip-title');
+    title.appendChild(ipEl('div', 'ip-name', `📚 ${project.name}`));
+    const lessonTasks = (project.tasks || []).map(e => findWorkspaceTaskById(e.agent, e.taskId)).filter(t => t && t.isLesson && !t.isQuiz);
+    const done = lessonTasks.filter(t => t.status === 'completed').length;
+    title.appendChild(ipEl('div', 'ip-sub', `${done} of ${lessonTasks.length} lessons done`));
+    row.appendChild(title);
+    const right = ipEl('div', 'ip-right');
+    const archive = ipEl('button', 'task-action-btn solid-archive', 'Archive');
+    archive.type = 'button';
+    archive.title = 'Archive the whole project - lessons and exercises go with it';
+    archive.addEventListener('click', (e) => { e.stopPropagation(); requestArchiveProject(project.id); });
+    right.appendChild(archive);
+    row.appendChild(right);
+    wrap.appendChild(row);
+
+    if (open) {
+        const body = ipEl('div', 'ip-children');
+        if (project.summary) body.appendChild(ipEl('div', 'ip-goal', project.summary));
+        (project.outline ? project.outline.modules : []).forEach((mod, i) => body.appendChild(buildInteractiveModuleEl(agent, project, mod, i)));
+        wrap.appendChild(body);
+    }
+    return wrap;
+}
+
+// Archive/restore the whole project: every lesson, exercise and quiz in it goes together.
+function requestArchiveProject(projectId) {
+    const project = projects[projectId];
+    if (!project) return;
+    if (isInteractiveProject(project)) {
+        const files = project.tasks.reduce((n, e) => n + getTaskFiles(e.agent, e.taskId).length, 0);
+        showBulkConfirm(
+            `Archive "${project.name}"? The whole project goes to the Archive together - ${project.tasks.length} lessons and quizzes with ${files} exercises and notes. It can't be split up, and you can restore all of it from the Archive page.`,
+            [], () => archiveProject(projectId)
+        );
+        return;
+    }
+    const plural = project.tasks.length === 1 ? '' : 's';
+    showCascadeConfirm(
+        `"${project.name}" has ${project.tasks.length} task${plural} linked to it. Archiving this project will also archive the task${plural} in it (and any files linked to them). You can restore it from the Archive page.`,
+        buildProjectCascadeNode(project, false),
+        () => archiveProject(projectId)
+    );
+}
+
+function archiveProject(projectId) {
+    const project = projects[projectId];
+    if (!project) return;
+    const archivedAt = new Date().toISOString();
+    const affected = new Set();
+    project.tasks.forEach(entry => {
+        const task = findWorkspaceTaskById(entry.agent, entry.taskId);
+        if (!task || task.archived) return;
+        stopProjectTask(entry.agent, task.id);
+        task.archived = true;
+        task.cancelled = false;
+        task.archivedAt = archivedAt;
+        clearPreviewForTaskFiles(entry.agent, task.id);
+        archiveTaskFiles(entry.agent, task.id);
+        affected.add(entry.agent);
+    });
+    project.archived = true;
+    project.archivedAt = archivedAt;
+    if (activePreviewItem && activePreviewItem.type === 'project' && activePreviewItem.projectId === projectId) activePreviewItem = null;
+    saveProjects();
+    saveWorkspaceTasks();
+    affected.forEach(a => refreshTaskViewsForAgent(a));
+    displayProjectsList();
+    renderArchivePage();
+}
+
 // ---- Settings > Agents > Lana ----
 async function loadLanaSettings() {
     try {
@@ -16053,7 +16353,7 @@ function renderLanaSettingsCard() {
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
     card.appendChild(el('h3', '', 'Languages to learn'));
-    card.appendChild(el('p', 'settings-section-desc', "Pick the language(s) you want to start learning. Lana builds each one into a project - every lesson is a task that opens in your Workspace, and she adds more lessons as she sees how you're doing."));
+    card.appendChild(el('p', 'settings-section-desc', "Pick the language(s) you want to start learning. Lana builds each one into an Interactive Project - a folder of modules, lessons, exercises and quizzes you work through together, and she adds more as she sees how you're doing."));
 
     if (!lanaSettings.languages.length) card.appendChild(el('p', 'settings-section-desc', 'No languages yet - add one below.'));
     lanaSettings.languages.forEach((language, index) => {
@@ -16462,12 +16762,12 @@ function buildProjectProposalCard(chatAgent, msgIndex, proposal) {
     if (proposal.status === 'accepted') {
         const acceptedLabel = document.createElement('div');
         acceptedLabel.className = 'project-proposal-accepted-label';
-        acceptedLabel.textContent = '✓ Project accepted';
+        acceptedLabel.textContent = proposal.kind === 'language' ? '✓ Interactive Project started' : '✓ Project accepted';
         card.appendChild(acceptedLabel);
     } else {
         const acceptBtn = document.createElement('button');
         acceptBtn.className = 'project-accept-btn';
-        acceptBtn.textContent = 'Accept Project';
+        acceptBtn.textContent = proposal.kind === 'language' ? 'Start Interactive Project' : 'Accept Project';
         acceptBtn.addEventListener('click', () => acceptProject(chatAgent, msgIndex));
         card.appendChild(acceptBtn);
     }

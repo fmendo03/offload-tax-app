@@ -5001,7 +5001,7 @@ def get_lana_context():
 
 
 LANA_LESSON_RULES = (
-    "\n\nHow Lana's course works: a language plan is a PROJECT and every lesson is a task in it. The goal is real: take him "
+    "\n\nHow Lana's course works: a language course is an INTERACTIVE PROJECT - a folder you and Francis work through together (modules, lessons, exercises, quizzes) - not a job with tasks. The goal is real: take him "
     "from NOVICE to PROFICIENT, so the plan is long. Lay out the whole journey in propose_language_plan as a syllabus: "
     "MODULES grouped by level (A1 beginner, A2, B1, B2, C1 - about 8 to 12 modules in all, each with a CEFR level and a "
     "rough timeframe). The FIRST module is spelled out as numbered LESSONS (about 12 to 15, sized to his daily study time), "
@@ -5010,7 +5010,7 @@ LANA_LESSON_RULES = (
     "lessons once he finishes the module before it, based on how he did. Don't number lessons in their names (the app "
     "numbers them). Put a cumulative REVIEW lesson (review=true) after about every three lessons. Each module also ends "
     "with a quiz the app adds. He accepts the plan with the card and nothing starts until he does.\n\n"
-    "A lesson is a task that is prepared when he presses Start: you call create_lesson_set and it becomes a set of "
+    "A lesson is prepared when he presses Start on it: you call create_lesson_set and it becomes a set of "
     "activities he works through in the Workspace - lesson notes, then 5 to 7 EXERCISES that each teach a different way "
     "(flash cards, listening, fill in the blank, matching, odd one out, word order, saying phrases aloud into his mic, a "
     "short story with questions, dictation). Every exercise is scored; once all of them reach 75% a quiz for the lesson "
@@ -5027,7 +5027,7 @@ LANA_LESSON_RULES = (
 )
 
 LANA_TASK_RUN_RULES = (
-    "\n\nThis task is preparing ONE lesson. Call create_lesson_set exactly once with the complete, finished set (do not use "
+    "\n\nYou are preparing ONE lesson. Call create_lesson_set exactly once with the complete, finished set (do not use "
     "create_file, and do not describe the lesson in chat instead). It must contain: (1) lesson NOTES - simple explanations, "
     "real-life examples with pronunciation help; (2) 5 to 7 EXERCISES, each a different way of learning, with 6 to 10 items "
     "each - mix flash cards, listening (items with `speak`: he hears it and chooses or types what he heard), fill in the "
@@ -5045,7 +5045,7 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
     "name": "propose_language_plan",
     "description": (
         "Call this once you know enough to build Francis's learning plan for ONE language (language, daily study time and "
-        "goal are known - Settings usually has the first two). It posts the plan's OUTLINE as a project with an Accept "
+        "goal are known - Settings usually has the first two). It posts the plan's OUTLINE as an Interactive Project with a Start "
         "button. The plan takes him from NOVICE to PROFICIENT, so it is long: about 8-12 modules grouped by CEFR level (A1 to "
         "C1), each with a level and rough timeframe. Only the FIRST module has lessons (about 12-15, each with concrete "
         "topics); every later module is a roadmap of what it will cover, which you turn into lessons later. Put a "
