@@ -2209,6 +2209,7 @@
 .lesson-speak { flex: none; width: 34px; height: 34px; border-radius: 50%; border: none; background: #ede6bd; cursor: pointer; font-size: 15px; }
 .lesson-speak:hover { background: #e0d58f; }
 .lesson-speak.playing { background: #d9c24f; box-shadow: 0 0 0 2px #b59d2b inset; }
+.lesson-speak.paused { background: #f3ecc4; box-shadow: 0 0 0 2px #b59d2b inset; }
 .lr-mic.listening { background: #ffd9d4; }
 /* Sound out and the mic never run together. */
 body.lesson-mic-on .lesson-speak { opacity: 0.4; pointer-events: none; }
@@ -15160,12 +15161,24 @@ function lessonPercent(lesson, progress) {
 
 // Audio out and the mic never run together (the mic would hear the speaker and mark it right), and
 // pressing a button that's already going turns it off.
-const lessonVoice = { playingBtn: null, rec: null, micBtn: null, session: 0 };
+const lessonVoice = { playingBtn: null, paused: false, rec: null, micBtn: null, session: 0 };
+
+// A play button shows what pressing it does next: pause while playing, resume while paused.
+function setLessonPlayState(btn, state) {
+    if (!btn) return;
+    if (btn.dataset.label === undefined) btn.dataset.label = btn.textContent;
+    const wide = /\S\s+\S/.test(btn.dataset.label);   // "🔊 Listen" rather than a bare icon
+    btn.classList.toggle('playing', state === 'playing');
+    btn.classList.toggle('paused', state === 'paused');
+    btn.textContent = state === 'playing' ? (wide ? '⏸ Pause' : '⏸') : (state === 'paused' ? (wide ? '▶ Resume' : '▶') : btn.dataset.label);
+    btn.title = state === 'playing' ? 'Pause' : (state === 'paused' ? 'Resume where it left off' : 'Hear it');
+}
 
 function stopLessonSpeech() {
-    if (window.speechSynthesis) speechSynthesis.cancel();
-    if (lessonVoice.playingBtn) lessonVoice.playingBtn.classList.remove('playing');
+    if (window.speechSynthesis) { speechSynthesis.cancel(); speechSynthesis.resume(); }   // resume so a paused queue can't block the next one
+    setLessonPlayState(lessonVoice.playingBtn, 'idle');
     lessonVoice.playingBtn = null;
+    lessonVoice.paused = false;
     document.body.classList.remove('lesson-audio-on');
 }
 
@@ -15184,13 +15197,27 @@ function stopAllLessonVoice() { stopLessonSpeech(); stopLessonMic(); }
 function speakLessonText(text, lang, button) {
     if (!window.speechSynthesis) { alert("This browser can't read text aloud."); return; }
     if (lessonVoice.rec) return;                                        // the mic is listening
-    if (button && lessonVoice.playingBtn === button) { stopLessonSpeech(); return; }   // pressed again: stop
+    if (button && lessonVoice.playingBtn === button) {
+        // Pressed again: pause, and pressed once more it carries on from where it stopped.
+        if (!lessonVoice.paused) {
+            speechSynthesis.pause();
+            lessonVoice.paused = true;
+            setLessonPlayState(button, 'paused');
+            document.body.classList.remove('lesson-audio-on');   // paused sound can't be picked up, so the mic is free
+        } else {
+            speechSynthesis.resume();
+            lessonVoice.paused = false;
+            setLessonPlayState(button, 'playing');
+            document.body.classList.add('lesson-audio-on');
+        }
+        return;
+    }
     stopLessonSpeech();
     const utterance = new SpeechSynthesisUtterance(text);
     if (lang) utterance.lang = lang;
     utterance.rate = 0.85;
     lessonVoice.playingBtn = button || null;
-    if (button) button.classList.add('playing');
+    setLessonPlayState(button, 'playing');
     document.body.classList.add('lesson-audio-on');
     const done = () => { if (lessonVoice.playingBtn === (button || null)) stopLessonSpeech(); };
     utterance.onend = done;
@@ -15562,7 +15589,8 @@ function wireLessonView(file, content) {
             if (mic) {
                 // Pressing it while it's listening turns it off; it can't start while audio is playing.
                 if (lessonVoice.rec) { stopLessonMic(); return; }
-                if (lessonVoice.playingBtn) return;
+                if (lessonVoice.playingBtn && !lessonVoice.paused) return;   // sound is playing
+                if (lessonVoice.playingBtn) stopLessonSpeech();               // a paused one is put away so the mic can start
                 const heard = qEl.querySelector('.lr-heard');
                 const session = ++lessonVoice.session;
                 lessonVoice.micBtn = mic;
