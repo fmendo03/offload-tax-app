@@ -7668,11 +7668,19 @@ def chat():
         # present) lists every task in that same project, so you can judge
         # whether a change here affects any of the others.
         if task_context:
-            system_prompt += (
-                f"\n\nFrancis wants to discuss this specific task from a project: "
-                f"\"{task_context}\". This may not be your own task - you're "
-                f"fielding it because you coordinate the project it belongs to."
-            )
+            if project_context:
+                system_prompt += (
+                    f"\n\nFrancis wants to discuss this specific task from a project: "
+                    f"\"{task_context}\". This may not be your own task - you're "
+                    f"fielding it because you coordinate the project it belongs to."
+                )
+            else:
+                system_prompt += (
+                    f"\n\nFrancis is talking about this existing task of yours: \"{task_context}\". "
+                    f"It already exists in the app - his message is about THIS task, so never propose or create a new task for it. "
+                    f"A request to change it or add to it (\"also add...\", \"make it...\") is a settled change: apply it with "
+                    f"update_task right away."
+                )
             if project_context:
                 system_prompt += (
                     f"\n\nHere is the full project, for context on whether a change to "

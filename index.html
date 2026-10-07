@@ -11931,6 +11931,8 @@ function buildTaskRowWithFiles(agent, task, body) {
     row.className = 'workspace-task-row workspace-project-task-row';
     row.dataset.taskId = task.id;
     row.dataset.replySource = taskReplyLabel(task);
+    row.dataset.replyTaskId = task.id;
+    row.dataset.replyTaskAgent = agent;
 
     const files = getTaskFiles(agent, task.id);
     const groupKey = `task:${task.id}`;
@@ -12616,6 +12618,8 @@ function buildTaskPlanPanel(agent, task, force) {
     const panel = document.createElement('div');
     panel.className = 'task-plan-panel';
     panel.dataset.replySource = taskReplyLabel(task);
+    panel.dataset.replyTaskId = task.id;
+    panel.dataset.replyTaskAgent = agent;
     panel.addEventListener('click', e => e.stopPropagation());
 
     if (task.plan && taskPlanEditing[task.id]) {
@@ -16323,9 +16327,9 @@ function discussTaskWithAgent() {
 
     closeTaskModal();
     selectAgent(chatAgent);
-    if (projectId) {
-        activeDiscussTask[chatAgent] = { taskAgent: owningAgent, taskId, projectId };
-    }
+    // The chat is now about this existing task: nothing here becomes a new task, and the
+    // agent can update this one (update_task) once the change is settled.
+    activeDiscussTask[chatAgent] = { taskAgent: owningAgent, taskId, projectId };
     attachedReplyQuote = { speaker: 'Task', text: taskText, agent: chatAgent };
     replyPreviewSpeaker.textContent = attachedReplyQuote.speaker;
     replyPreviewText.textContent = attachedReplyQuote.text;
@@ -17056,6 +17060,13 @@ async function sendMessage() {
     // agent's reply to it) with the Workspace Item it quoted, if any, so
     // removeWorkspaceItem can find and remove that whole exchange later.
     const relatedItemId = attachedReplyQuote ? attachedReplyQuote.itemId : null;
+    // A quote taken from one of this agent's own tasks: the message is about that task.
+    if (attachedReplyQuote && attachedReplyQuote.task && attachedReplyQuote.task.agent === currentAgent) {
+        const quotedTask = findWorkspaceTaskById(currentAgent, attachedReplyQuote.task.id);
+        if (quotedTask && !quotedTask.archived && quotedTask.status !== 'completed' && !activeDiscussTask[currentAgent]) {
+            activeDiscussTask[currentAgent] = { taskAgent: currentAgent, taskId: quotedTask.id, projectId: quotedTask.projectId || null };
+        }
+    }
 
     // Keep the full attachments (with dataUrl) for display in chat history, but
     // strip the data: prefix down to raw base64 for what actually goes to the API.
@@ -17659,7 +17670,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     if (section) parts.push(section);
                 }
             }
-            return { speaker: parts.join(' > '), fromChat: false };
+            return {
+                speaker: parts.join(' > '), fromChat: false,
+                task: owner && owner.dataset.replyTaskId ? { agent: owner.dataset.replyTaskAgent, id: owner.dataset.replyTaskId } : null
+            };
         }
 
         document.addEventListener('mouseup', (e) => {
@@ -17687,7 +17701,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 return;
             }
 
-            pendingSelectionQuote = { text, speaker: source.speaker };
+            pendingSelectionQuote = { text, speaker: source.speaker, task: source.task || null };
             selectionReplyBtn.textContent = source.fromChat ? '↩ Reply' : '↩ Send to chat';
 
             const rect = range.getBoundingClientRect();
