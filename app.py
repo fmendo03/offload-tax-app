@@ -4949,25 +4949,25 @@ def get_lana_context():
 
 
 LANA_LESSON_RULES = (
-    "\n\nHow Lana's lessons work: a language plan is a PROJECT and every lesson is a task in it. When you and Francis "
-    "have what you need to build the plan, call propose_language_plan with the course OUTLINE, written the way a good "
-    "course syllabus reads: MODULES (about 3 for 90 days, each with a day range like \"Days 1-30\" and a goal). The FIRST "
-    "module is spelled out as numbered LESSONS (about 6 to 8, sized to his daily study time), each with its specific TOPICS "
-    "(the actual words, forms and skills it teaches - concrete, like \"all six forms of avere\", not vague). The LATER "
-    "modules are only a ROADMAP: a short list of what each will cover. You turn a roadmap module into real lessons once "
-    "he finishes the module before it, based on how he did. Put a cumulative REVIEW lesson (review=true) after about every "
-    "three lessons - it covers everything learned to date. Every lesson also ends with a short review of earlier material. "
-    "Every module ends with a QUIZ that the app adds itself (he can retake it as often as he likes, with new questions each "
-    "time). In the plan summary, say the pace plainly: if a set of material doesn't stick you'll add a review lesson before "
-    "moving on - better than rushing. He accepts the plan with the card and nothing starts until he does. Each lesson is "
-    "prepared when its task is started: you call create_lesson and it opens in his Workspace as an interactive page where "
-    "he reads the lesson and answers the exercises himself (multiple choice, typed answers, translations, with a play "
-    "button for hearing words). When he finishes a lesson or quiz, his results come to you as a message: tell him how he "
-    "did - specific, warm, honest - and if anything didn't stick, call add_lessons to put extra practice lessons into his "
-    "plan right after it (several if he really struggled); if he did well, don't add filler. When he finishes a module's "
-    "quiz, his message will ask you to build the next roadmap module's lessons: call add_lessons with `module` set to "
-    "that module's name and the lessons (with topics) tuned to how he's been doing. He can redo any finished lesson as "
-    "often as he likes, but the next lesson only opens once the one before it is completed.\n\n"
+    "\n\nHow Lana's course works: a language plan is a PROJECT and every lesson is a task in it. The goal is real: take him "
+    "from NOVICE to PROFICIENT, so the plan is long. Lay out the whole journey in propose_language_plan as a syllabus: "
+    "MODULES grouped by level (A1 beginner, A2, B1, B2, C1 - about 8 to 12 modules in all, each with a CEFR level and a "
+    "rough timeframe). The FIRST module is spelled out as numbered LESSONS (about 12 to 15, sized to his daily study time), "
+    "each with its specific TOPICS (the actual words, forms and skills it teaches - concrete, like \"all six forms of "
+    "avere\"). Every later module is a ROADMAP: what it will cover and roughly how many lessons - you turn it into real "
+    "lessons once he finishes the module before it, based on how he did. Don't number lessons in their names (the app "
+    "numbers them). Put a cumulative REVIEW lesson (review=true) after about every three lessons. Each module also ends "
+    "with a quiz the app adds. He accepts the plan with the card and nothing starts until he does.\n\n"
+    "A lesson is a task that is prepared when he presses Start: you call create_lesson_set and it becomes a set of "
+    "activities he works through in the Workspace - lesson notes, then 5 to 7 EXERCISES that each teach a different way "
+    "(flash cards, listening, fill in the blank, matching, odd one out, word order, saying phrases aloud into his mic, a "
+    "short story with questions, dictation). Every exercise is scored; once all of them reach 75% a quiz for the lesson "
+    "opens, and a 75% on the quiz completes the lesson and opens the next one. He can redo exercises as often as he likes "
+    "to raise his score, and there's an endless practice set with new questions each time. When he finishes a quiz, his "
+    "results come to you as a message: tell him how he did - specific, warm, honest. If something didn't stick, call "
+    "add_exercises to add extra exercises to THAT lesson targeting it (not new lessons); if he did well, add nothing. When "
+    "he finishes a module's quiz, you'll be asked to build the next roadmap module's lessons: call add_lessons with "
+    "`module` set to that module's name and the lessons (with topics) tuned to how he has been doing.\n\n"
     "Translator: any text Francis pastes into your chat is something to translate. Translate it into the language he "
     "asks for. If he pastes text without saying which language, ask in one short line (offer the languages he's learning, "
     "plus English). Give the translation first and clearly, then only the notes that matter - tone, formality, regional "
@@ -4975,19 +4975,18 @@ LANA_LESSON_RULES = (
 )
 
 LANA_TASK_RUN_RULES = (
-    "\n\nThis task is preparing ONE interactive lesson. Call create_lesson exactly once with the complete, finished lesson "
-    "(do not use create_file, and do not describe the lesson in chat instead). Sized to his daily study time. Include "
-    "simple explanations, real-life examples with pronunciation help, a short STORY with comprehension questions (below), "
-    "and a short set of exercises (usually 6 to 10) "
-    "that check he really understood - each with the correct answer and a one-sentence explanation shown if he gets it "
-    "wrong. Start from what the lesson history in the message says he already knows and where he struggled. If the "
-    "message says this is a REVIEW lesson, build it to cover everything learned to date: mix the topics from every earlier "
-    "lesson it lists (more weight on what he missed), with no new material. Every other lesson ends with a short review "
-    "of earlier material: its last couple of exercises revisit what the lesson history lists. Every lesson ALSO includes a "
-    "short story (the `story` field) in the target language at his level - a few simple sentences for a beginner, longer "
-    "and richer as he advances - that reuses this lesson's new words plus earlier material from the lesson history, so it "
-    "doubles as spaced review. Keep it to words he knows or this lesson teaches, give the English translation separately, "
-    "and add 3 or 4 comprehension questions after it. Afterwards reply in a sentence or two."
+    "\n\nThis task is preparing ONE lesson. Call create_lesson_set exactly once with the complete, finished set (do not use "
+    "create_file, and do not describe the lesson in chat instead). It must contain: (1) lesson NOTES - simple explanations, "
+    "real-life examples with pronunciation help; (2) 5 to 7 EXERCISES, each a different way of learning, with 6 to 10 items "
+    "each - mix flash cards, listening (items with `speak`: he hears it and chooses or types what he heard), fill in the "
+    "blank, matching, odd-one-out, word order, translate, and at least one 'say it aloud' (`repeat`) exercise where he "
+    "speaks into his mic; (3) one exercise that is a short STORY in the target language at his level (reusing this lesson's "
+    "new words plus earlier material from the lesson history - spaced review) with its English translation and 3-4 "
+    "comprehension questions. Every phonetics or sound question must use `speak` so he hears it. Give every item its correct "
+    "answer and a one-sentence explanation. Keep everything sized to his daily study time and level, and start from what "
+    "the lesson history says he already knows and where he struggled. If the message says this is a REVIEW lesson, build "
+    "every exercise to cover everything learned to date - mixing the topics of every earlier lesson it lists, weighted "
+    "toward what he missed - with no new material. Afterwards reply in a sentence or two."
 )
 
 PROPOSE_LANGUAGE_PLAN_TOOL = {
@@ -4995,35 +4994,36 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
     "description": (
         "Call this once you know enough to build Francis's learning plan for ONE language (language, daily study time and "
         "goal are known - Settings usually has the first two). It posts the plan's OUTLINE as a project with an Accept "
-        "button. Write it like a course syllabus: about 3 modules for ~90 days, each with a day range and goal. Only the "
-        "FIRST module has lessons (about 6-8, each with concrete topics); the later modules are a short roadmap of what "
-        "they'll cover, which you turn into lessons later. Put a cumulative review lesson (review=true) after about every "
-        "three lessons. Don't add the module quizzes - the app does. Don't call it again for small questions after "
-        "proposing; an unaccepted proposal is updated in place if you call it again."
+        "button. The plan takes him from NOVICE to PROFICIENT, so it is long: about 8-12 modules grouped by CEFR level (A1 to "
+        "C1), each with a level and rough timeframe. Only the FIRST module has lessons (about 12-15, each with concrete "
+        "topics); every later module is a roadmap of what it will cover, which you turn into lessons later. Put a "
+        "cumulative review lesson (review=true) after about every three lessons. Don't add the quizzes - the app does. "
+        "Don't call it again for small questions after proposing; an unaccepted proposal is updated in place if you call it again."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
             "language": {"type": "string", "description": "The language being learned, e.g. \"Italian\"."},
             "language_code": {"type": "string", "description": "BCP-47 code for hearing it spoken, e.g. \"it-IT\", \"es-MX\", \"ja-JP\"."},
-            "name": {"type": "string", "description": "Project name, e.g. \"Italian in 90 Days\"."},
-            "summary": {"type": "string", "description": "2-4 sentences in your own voice: the arc of the 90 days, what he should be able to do by each stage, and a note on pace (if something doesn't stick you'll add a review before moving on)."},
+            "name": {"type": "string", "description": "Project name, e.g. \"Italian: Novice to Proficient\"."},
+            "summary": {"type": "string", "description": "3-5 sentences in your own voice: the journey from novice to proficient, what he'll be able to do at each level, roughly how long it takes at his daily study time, and a note on pace (if something doesn't stick you'll add practice before moving on)."},
             "modules": {
                 "type": "array",
-                "description": "The course outline, in order.",
+                "description": "The course outline, in order, from beginner to advanced.",
                 "items": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "e.g. \"Module 1: First Words and Family\"."},
-                        "days": {"type": "string", "description": "e.g. \"Days 1-30\"."},
+                        "level": {"type": "string", "description": "CEFR level, e.g. \"A1\", \"B1\"."},
+                        "days": {"type": "string", "description": "Rough timeframe, e.g. \"Weeks 1-6\"."},
                         "goal": {"type": "string", "description": "What he can do when the module is finished."},
                         "lessons": {
                             "type": "array",
-                            "description": "FIRST module only: the numbered lessons, in order.",
+                            "description": "FIRST module only: the lessons, in order (12-15), without numbers in the names.",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "name": {"type": "string", "description": "Short title, e.g. \"Sounds and Hello\" or \"Numbers + Review\"."},
+                                    "name": {"type": "string", "description": "Short title, e.g. \"Sounds and Hello\" or \"Review: Lessons 1-3\"."},
                                     "task": {"type": "string", "description": "What this lesson teaches and practices, in 1-3 sentences, so it can be prepared later without this conversation."},
                                     "topics": {"type": "array", "items": {"type": "string"}, "description": "The specific things it covers, e.g. \"all six forms of essere\", \"ciao, buongiorno, buonasera\"."},
                                     "review": {"type": "boolean", "description": "True for a cumulative review of everything learned so far."}
@@ -5034,30 +5034,153 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
                         "roadmap": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "LATER modules only: a short list of what the module will cover (turned into lessons later)."
+                            "description": "LATER modules only: what the module will cover (turned into lessons later) - include roughly how many lessons it will take."
                         }
                     },
                     "required": ["name", "goal"]
                 },
-                "minItems": 2
+                "minItems": 4
             }
         },
         "required": ["language", "name", "summary", "modules"]
     }
 }
 
-CREATE_LESSON_EXERCISE_SCHEMA = {
+LESSON_ITEM_SCHEMA = {
     "type": "object",
     "properties": {
-        "type": {"type": "string", "enum": ["choice", "fill", "translate"], "description": "choice = pick one option; fill = type the missing/asked word; translate = type a translation."},
-        "prompt": {"type": "string"},
-        "options": {"type": "array", "items": {"type": "string"}, "description": "For choice: 3-4 options, one of them exactly the answer."},
-        "answer": {"type": "string", "description": "The correct answer."},
-        "accepted": {"type": "array", "items": {"type": "string"}, "description": "Other answers that are also right (fill/translate)."},
+        "type": {
+            "type": "string",
+            "enum": ["choice", "odd", "fill", "translate", "match", "order", "repeat", "card"],
+            "description": (
+                "choice = pick one option (set `speak` to make it a listening question: he hears it and picks what he heard); "
+                "odd = which one does not belong (give 4 options); fill = type the missing word (set `speak` for dictation: he "
+                "hears it and types it); translate = type a translation; match = match each item to its partner (give `pairs`); "
+                "order = put the words in the right order (give `answer` = the correct sentence and `words`); repeat = he hears "
+                "a phrase and says it aloud into his mic to check his pronunciation (give `answer` = the phrase); card = a "
+                "flash card (give `front` and `back`)."
+            )
+        },
+        "prompt": {"type": "string", "description": "The question or instruction."},
+        "options": {"type": "array", "items": {"type": "string"}, "description": "For choice/odd: 3-4 options, one of them exactly the answer."},
+        "answer": {"type": "string", "description": "The correct answer (for order, the correct sentence; for repeat, the phrase to say)."},
+        "accepted": {"type": "array", "items": {"type": "string"}, "description": "Other answers that are also right (fill/translate/order)."},
         "explanation": {"type": "string", "description": "One sentence on why, shown after he checks."},
-        "speak": {"type": "string", "description": "Optional target-language text he can play aloud for this question (a listening exercise)."}
+        "speak": {"type": "string", "description": "Target-language text he can play aloud for this item. Use it for every sound/phonetics question."},
+        "pairs": {
+            "type": "array",
+            "description": "For match: 3-6 pairs.",
+            "items": {"type": "object", "properties": {"left": {"type": "string"}, "right": {"type": "string"}}, "required": ["left", "right"]}
+        },
+        "words": {"type": "array", "items": {"type": "string"}, "description": "For order: the word tiles (the sentence's words, plus an optional distractor)."},
+        "front": {"type": "string", "description": "For card: the front (usually the target-language word)."},
+        "back": {"type": "string", "description": "For card: the back (meaning, with a tip)."}
     },
-    "required": ["type", "prompt", "answer"]
+    "required": ["type"]
+}
+CREATE_LESSON_EXERCISE_SCHEMA = LESSON_ITEM_SCHEMA
+
+CREATE_LESSON_SET_TOOL = {
+    "name": "create_lesson_set",
+    "description": (
+        "Only while preparing a lesson task. Builds the whole lesson as a set of activities in Francis's Workspace: the "
+        "notes plus 5-7 scored exercises that each teach in a different way. Write teaching text in English with the "
+        "target-language words in the target language."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "The lesson's title, without a number."},
+            "language": {"type": "string"},
+            "language_code": {"type": "string", "description": "BCP-47 code, e.g. \"it-IT\"."},
+            "level": {"type": "string", "description": "e.g. \"A1\", \"Absolute beginner\"."},
+            "objective": {"type": "string", "description": "One sentence: what he'll be able to do after this lesson."},
+            "estimated_minutes": {"type": "integer"},
+            "notes": {
+                "type": "object",
+                "description": "The lesson notes he reads first.",
+                "properties": {
+                    "sections": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "heading": {"type": "string"},
+                                "text": {"type": "string", "description": "Plain text; separate paragraphs with a blank line."},
+                                "examples": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "target": {"type": "string"}, "translation": {"type": "string"},
+                                            "pronunciation": {"type": "string", "description": "A respelling or sound tip in English letters."}
+                                        },
+                                        "required": ["target", "translation"]
+                                    }
+                                }
+                            },
+                            "required": ["heading", "text"]
+                        }
+                    },
+                    "wrap_up": {"type": "string"}
+                },
+                "required": ["sections"]
+            },
+            "activities": {
+                "type": "array",
+                "description": "5-7 exercises, each a different way of learning, each with 6-10 items.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "e.g. \"Flash cards: greetings\", \"Listen and choose\", \"Say it aloud\", \"Which one doesn't belong?\"."},
+                        "instructions": {"type": "string", "description": "One line telling him what to do."},
+                        "story": {
+                            "type": "object",
+                            "description": "Only for the story exercise: a short story in the target language at his level, reusing new words plus earlier material.",
+                            "properties": {
+                                "title": {"type": "string"}, "text": {"type": "string"},
+                                "translation": {"type": "string", "description": "The same story in English."}
+                            },
+                            "required": ["text", "translation"]
+                        },
+                        "items": {"type": "array", "items": LESSON_ITEM_SCHEMA, "minItems": 3}
+                    },
+                    "required": ["title", "items"]
+                },
+                "minItems": 5
+            }
+        },
+        "required": ["title", "language", "notes", "activities"]
+    }
+}
+
+ADD_EXERCISES_TOOL = {
+    "name": "add_exercises",
+    "description": (
+        "Only in reply to Francis's quiz results for a lesson: when something didn't stick, add extra exercises to THAT "
+        "lesson that target it (a different angle on the shaky material). They appear under the lesson; skip this when he "
+        "did well - don't add filler."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "exercises": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "e.g. \"Extra: ser vs estar\"."},
+                        "focus": {"type": "string", "description": "Exactly what to practise and which mistakes it targets."},
+                        "style": {"type": "string", "enum": ["flashcards", "listening", "fill", "matching", "odd", "order", "speaking", "mixed"], "description": "Which way of practising suits it."}
+                    },
+                    "required": ["title", "focus"]
+                },
+                "minItems": 1,
+                "maxItems": 3
+            }
+        },
+        "required": ["exercises"]
+    }
 }
 
 CREATE_LESSON_TOOL = {
@@ -5163,39 +5286,67 @@ ADD_LESSONS_TOOL = {
 }
 
 
-def _clean_exercises(raw_exercises, limit):
+def _clean_item(ex):
     def text(value, size):
         return str(value or '').strip()[:size]
 
-    exercises = []
+    if not isinstance(ex, dict):
+        return None
+    kind = text(ex.get('type'), 20).lower()
+    prompt = text(ex.get('prompt'), 500)
+    answer = text(ex.get('answer'), 300)
+    item = {'type': kind, 'prompt': prompt, 'explanation': text(ex.get('explanation'), 500), 'speak': text(ex.get('speak'), 300)}
+    if kind in ('choice', 'odd'):
+        options = [text(o, 200) for o in (ex.get('options') or []) if text(o, 200)][:5]
+        if not prompt or not answer:
+            return None
+        if answer not in options:
+            options.append(answer)
+        if len(options) < 2:
+            return None
+        item.update(answer=answer, options=options)
+    elif kind in ('fill', 'translate'):
+        if not prompt or not answer:
+            return None
+        item.update(answer=answer, accepted=[text(a, 300) for a in (ex.get('accepted') or []) if text(a, 300)][:8])
+    elif kind == 'match':
+        pairs = [{'left': text(p.get('left'), 120), 'right': text(p.get('right'), 120)}
+                 for p in (ex.get('pairs') or []) if isinstance(p, dict) and text(p.get('left'), 120) and text(p.get('right'), 120)][:6]
+        if len(pairs) < 3:
+            return None
+        item.update(prompt=prompt or 'Match each one with its partner.', pairs=pairs, answer='')
+    elif kind == 'order':
+        if not answer:
+            return None
+        words = [text(w, 60) for w in (ex.get('words') or []) if text(w, 60)][:16] or answer.split()
+        item.update(prompt=prompt or 'Put the words in order.', answer=answer, words=words,
+                    accepted=[text(a, 300) for a in (ex.get('accepted') or []) if text(a, 300)][:6])
+    elif kind == 'repeat':
+        if not answer:
+            return None
+        item.update(prompt=prompt or 'Listen, then say it out loud.', answer=answer, speak=item['speak'] or answer)
+    elif kind == 'card':
+        front, back = text(ex.get('front'), 200), text(ex.get('back'), 300)
+        if not front or not back:
+            return None
+        item.update(front=front, back=back, speak=item['speak'] or front, answer='')
+    else:
+        return None
+    return item
+
+
+def _clean_exercises(raw_exercises, limit):
+    items = []
     for ex in (raw_exercises or [])[:limit]:
-        if not isinstance(ex, dict):
-            continue
-        kind = text(ex.get('type'), 20).lower()
-        prompt = text(ex.get('prompt'), 500)
-        answer = text(ex.get('answer'), 300)
-        if kind not in ('choice', 'fill', 'translate') or not prompt or not answer:
-            continue
-        item = {
-            'type': kind, 'prompt': prompt, 'answer': answer, 'explanation': text(ex.get('explanation'), 500),
-            'speak': text(ex.get('speak'), 300)
-        }
-        if kind == 'choice':
-            options = [text(o, 200) for o in (ex.get('options') or []) if text(o, 200)][:5]
-            if answer not in options:
-                options.append(answer)
-            if len(options) < 2:
-                continue
-            item['options'] = options
-        else:
-            item['accepted'] = [text(a, 300) for a in (ex.get('accepted') or []) if text(a, 300)][:8]
-        exercises.append(item)
-    return exercises
+        item = _clean_item(ex)
+        if item:
+            items.append(item)
+    return items
 
 
 # Cleans what the model passed to create_lesson into the lesson the Workspace
 # page renders (or None if it can't be made into a usable lesson).
-def _clean_lesson(raw):
+def _clean_lesson(raw, notes_only=False):
     def text(value, limit):
         return str(value or '').strip()[:limit]
 
@@ -5226,6 +5377,13 @@ def _clean_lesson(raw):
             for q in story_questions:
                 q['story'] = True
             exercises = story_questions + exercises
+    if notes_only:
+        return None if not title or not sections else {
+            'title': title, 'language': text(raw.get('language'), 40), 'languageCode': text(raw.get('language_code'), 12),
+            'level': text(raw.get('level'), 60), 'objective': text(raw.get('objective'), 300),
+            'estimatedMinutes': raw.get('estimated_minutes') if isinstance(raw.get('estimated_minutes'), int) else None,
+            'sections': sections, 'story': None, 'exercises': [], 'wrapUp': text(raw.get('wrap_up'), 600)
+        }
     if not title or not sections or len(exercises) < 3 or not story:
         return None
     return {
@@ -5236,67 +5394,160 @@ def _clean_lesson(raw):
     }
 
 
+# One activity (a scored exercise, a quiz, a practice set) as the JSON the Workspace page renders.
+def _make_activity(kind, title, base, items, instructions='', story=None, sections=None, wrap_up='', topics=None):
+    return {
+        'kind': kind, 'title': title, 'instructions': instructions, 'language': base.get('language', ''),
+        'languageCode': base.get('languageCode', ''), 'level': base.get('level', ''), 'lesson': base.get('lesson', ''),
+        'objective': base.get('objective', ''), 'topics': topics or [], 'story': story,
+        'sections': sections or [], 'exercises': items, 'wrapUp': wrap_up
+    }
+
+
+def _activity_file(activity, kind, title, letter_hint=''):
+    content = json.dumps(activity, ensure_ascii=False)
+    return {
+        'name': title, 'mimeType': 'application/json', 'data': base64.b64encode(content.encode('utf-8')).decode('ascii'),
+        'fileType': 'lesson', 'content': content, 'activity': {'kind': kind, 'title': title}
+    }
+
+
+# What create_lesson_set produces: a notes page plus the scored exercises, each its own file under the lesson task.
+def _build_lesson_set(raw):
+    def text(value, size):
+        return str(value or '').strip()[:size]
+
+    lesson_title = text(raw.get('title'), 120)
+    base = {
+        'language': text(raw.get('language'), 40), 'languageCode': text(raw.get('language_code'), 12),
+        'level': text(raw.get('level'), 60), 'lesson': lesson_title, 'objective': text(raw.get('objective'), 300)
+    }
+    notes_raw = raw.get('notes') if isinstance(raw.get('notes'), dict) else {}
+    notes_lesson = _clean_lesson({
+        'title': lesson_title, 'language': base['language'], 'language_code': base['languageCode'], 'level': base['level'],
+        'objective': base['objective'], 'sections': notes_raw.get('sections'), 'wrap_up': notes_raw.get('wrap_up'),
+        'estimated_minutes': raw.get('estimated_minutes'), 'exercises': [], 'story': None
+    }, notes_only=True)
+    activities = []
+    for act in (raw.get('activities') or [])[:9]:
+        if not isinstance(act, dict):
+            continue
+        items = _clean_exercises(act.get('items'), 12)
+        title = text(act.get('title'), 100)
+        story = None
+        if isinstance(act.get('story'), dict) and text(act['story'].get('text'), 3000):
+            story = {'title': text(act['story'].get('title'), 120), 'text': text(act['story'].get('text'), 3000), 'translation': text(act['story'].get('translation'), 3000)}
+        minimum = 4 if all(i['type'] == 'card' for i in items) else 3
+        if title and len(items) >= minimum:
+            activities.append(_make_activity('exercise', title, base, items, text(act.get('instructions'), 200), story=story))
+    if not lesson_title or not notes_lesson or len(activities) < 4:
+        return None
+    files = []
+    notes_activity = dict(notes_lesson, kind='notes', lesson=lesson_title, instructions='', topics=[])
+    files.append(_activity_file(notes_activity, 'notes', 'Lesson notes'))
+    for act in activities:
+        files.append(_activity_file(act, 'exercise', act['title']))
+    return files
+
+
+ACTIVITY_GUIDE = {
+    'lesson_quiz': ("a 12-question quiz for ONE lesson - harder than its exercises, mixed ways of answering (multiple choice, fill in "
+                    "the blank, translate, word order, odd one out, at least three listening questions where he hears audio, and "
+                    "at least one 'say it aloud')"),
+    'practice': ("a fresh 10-item practice set - friendly and varied (flash cards, listening, fill in the blank, matching, odd one "
+                 "out, word order, saying phrases aloud)"),
+    'exercise': "ONE extra exercise of 6-8 items",
+    'module_quiz': ("a 12-16 question quiz covering a whole module - mixed ways of answering, including listening questions where "
+                    "he hears audio and at least one 'say it aloud'")
+}
+
 QUIZ_TOOL = {
     "name": "make_quiz",
-    "description": "Return the finished quiz.",
+    "description": "Return the finished set of items.",
     "input_schema": {
         "type": "object",
         "properties": {
-            "exercises": CREATE_LESSON_TOOL["input_schema"]["properties"]["exercises"]
+            "items": {"type": "array", "items": LESSON_ITEM_SCHEMA}
         },
-        "required": ["exercises"]
+        "required": ["items"]
     }
 }
 
 
-# A module quiz: fresh questions on the module's topics every time it's asked for,
-# so retaking it is real review rather than memorising the same questions.
+# Fresh activities on demand: a lesson's quiz, an endless practice set, an extra exercise, or a module quiz. New
+# questions every time - earlier questions are passed in so none repeat.
+def _generate_activity(data):
+    mode = str(data.get('mode') or 'module_quiz').strip()
+    if mode not in ACTIVITY_GUIDE:
+        mode = 'module_quiz'
+    language = str(data.get('language') or '').strip()[:40]
+    topics = [str(t).strip()[:120] for t in (data.get('topics') or []) if str(t).strip()][:60]
+    focus = str(data.get('focus') or '').strip()[:400]
+    if not language or not (topics or focus):
+        return None, 'A language and what to cover are required.'
+    lesson = str(data.get('lesson') or data.get('module') or 'this lesson').strip()[:100]
+    avoid = [str(p).strip()[:200] for p in (data.get('avoid') or []) if str(p).strip()][-60:]
+    weak = [str(w).strip()[:200] for w in (data.get('weak') or []) if str(w).strip()][:12]
+    level = str(data.get('level') or '').strip()[:60]
+    code = str(data.get('language_code') or '').strip()[:12]
+    style = str(data.get('style') or '').strip()[:20]
+
+    prompt = (
+        f"Write {ACTIVITY_GUIDE[mode]} in {language} for \"{lesson}\".\n"
+        + (f"Cover these topics fairly evenly: {'; '.join(topics)}.\n" if topics else '')
+        + (f"Focus: {focus}\n" if focus else '')
+        + (f"Preferred style: {style}.\n" if style and style != 'mixed' else '')
+        + (f"Learner level: {level}.\n" if level else '')
+        + (f"He has tended to miss: {'; '.join(weak)} - give those extra weight.\n" if weak else '')
+        + (f"These were already used - every item must be NEW (different words, sentences and angles, not rewordings): {' | '.join(avoid)}\n" if avoid else '')
+        + "Use a variety of item types. Every sound/phonetics item must have `speak` so he hears it. Each item has its correct "
+          "answer (and `accepted` alternatives where fair) and a one-sentence explanation. Teaching text in English; "
+          "target-language words in the target language."
+    )
+    response = claude_create(
+        log_agent='lana', log_purpose='lana_activity', model=CLAUDE_MODEL, max_tokens=7000,
+        system="You are Lana, a warm but rigorous language teacher writing practice material. Return it with the make_quiz tool.",
+        messages=[{'role': 'user', 'content': prompt}],
+        tools=[QUIZ_TOOL], tool_choice={'type': 'tool', 'name': 'make_quiz'}
+    )
+    block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use' and b.name == 'make_quiz'), None)
+    items = _clean_exercises((block.input or {}).get('items') if block else None, 16)
+    minimum = 4 if mode == 'exercise' else 6
+    if len(items) < minimum:
+        return None, 'That came back too short - try again.'
+    base = {'language': language, 'languageCode': code, 'level': level, 'lesson': lesson, 'objective': ''}
+    kind = {'lesson_quiz': 'quiz', 'practice': 'practice', 'exercise': 'exercise', 'module_quiz': 'module_quiz'}[mode]
+    title = {'lesson_quiz': f"{lesson} - Quiz", 'practice': f"{lesson} - Practice", 'exercise': str(data.get('title') or 'Extra exercise').strip()[:100], 'module_quiz': f"{lesson} Quiz"}[mode]
+    activity = _make_activity(kind, title, base, items, topics=topics)
+    if mode == 'module_quiz':
+        activity['kind'] = 'quiz'          # the module quiz uses the existing retakeable page
+        activity['module'] = lesson
+        activity['objective'] = f"Check you've got everything in {lesson}. New questions every time you retake it."
+    return activity, None
+
+
+@app.route('/lana/activity', methods=['POST'])
+def lana_activity():
+    try:
+        activity, error = _generate_activity(request.json or {})
+        if error:
+            return jsonify({'success': False, 'error': error}), 400 if 'required' in error else 502
+        return jsonify({'success': True, 'activity': activity})
+    except Exception as e:
+        print(f"Lana activity error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# The module quiz (older endpoint, same engine).
 @app.route('/lana/quiz', methods=['POST'])
 def lana_quiz():
     try:
-        data = request.json or {}
-        language = str(data.get('language') or '').strip()[:40]
-        module = str(data.get('module') or 'this module').strip()[:100]
-        topics = [str(t).strip()[:120] for t in (data.get('topics') or []) if str(t).strip()][:60]
-        if not language or not topics:
-            return jsonify({'success': False, 'error': 'A language and the module topics are required.'}), 400
-        avoid = [str(p).strip()[:200] for p in (data.get('avoid') or []) if str(p).strip()][-60:]
-        weak = [str(w).strip()[:200] for w in (data.get('weak') or []) if str(w).strip()][:12]
-        try:
-            count = max(8, min(16, int(data.get('count') or 12)))
-        except (TypeError, ValueError):
-            count = 12
-        level = str(data.get('level') or '').strip()[:60]
-        code = str(data.get('language_code') or '').strip()[:12]
-
-        prompt = (
-            f"Write a {count}-question quiz on {language} for the module \"{module}\". It must cover these topics "
-            f"fairly evenly, drawing on what the module taught: {'; '.join(topics)}.\n"
-            + (f"Learner level: {level}.\n" if level else '')
-            + (f"He has tended to miss: {'; '.join(weak)} - give those a little extra weight.\n" if weak else '')
-            + (f"These questions were already used in earlier attempts - every question must be NEW (different words, "
-               f"sentences and angles, not rewordings): {' | '.join(avoid)}\n" if avoid else '')
-            + "Mix the types: about half multiple choice, the rest typed (fill) and translations, and make at least two "
-              "of them listening questions by setting `speak` to the target-language text to play. Each question has the "
-              "correct answer (and `accepted` alternatives where fair) and a one-sentence explanation shown if he gets it "
-              "wrong. Teaching text in English; target-language words in the target language."
-        )
-        response = claude_create(
-            log_agent='lana', log_purpose='lana_quiz', model=CLAUDE_MODEL, max_tokens=6000,
-            system="You are Lana, a warm but rigorous language teacher writing a quiz. Return it with the make_quiz tool.",
-            messages=[{'role': 'user', 'content': prompt}],
-            tools=[QUIZ_TOOL], tool_choice={'type': 'tool', 'name': 'make_quiz'}
-        )
-        block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use' and b.name == 'make_quiz'), None)
-        exercises = _clean_exercises((block.input or {}).get('exercises') if block else None, 16)
-        if len(exercises) < 6:
-            return jsonify({'success': False, 'error': 'The quiz came back too short - try again.'}), 502
-        quiz = {
-            'title': f"{module} Quiz", 'kind': 'quiz', 'module': module, 'language': language, 'languageCode': code, 'level': level,
-            'objective': f"Check you've got everything in {module}. New questions every time you retake it.",
-            'topics': topics, 'sections': [], 'exercises': exercises, 'wrapUp': ''
-        }
-        return jsonify({'success': True, 'quiz': quiz})
+        data = dict(request.json or {}, mode='module_quiz')
+        activity, error = _generate_activity(data)
+        if error:
+            return jsonify({'success': False, 'error': error}), 400 if 'required' in error else 502
+        activity['kind'] = 'quiz'
+        return jsonify({'success': True, 'quiz': dict(activity, kind='quiz')})
     except Exception as e:
         print(f"Lana quiz error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -7759,8 +8010,9 @@ def chat():
         if agent == 'lana':
             tools.append(PROPOSE_LANGUAGE_PLAN_TOOL)
             tools.append(ADD_LESSONS_TOOL)
+            tools.append(ADD_EXERCISES_TOOL)
             if is_lesson_run:
-                tools.append(CREATE_LESSON_TOOL)
+                tools.append(CREATE_LESSON_SET_TOOL)
         if agent == 'sasha' and is_task_run:
             tools.append(DRAFT_SOCIAL_POST_TOOL)
         if task_context:
@@ -7860,6 +8112,7 @@ def chat():
         propose_project = None
         propose_tasks = []
         add_lessons = []
+        add_exercises = []
         task_refinements = []
         created_files = []
         social_draft = None
@@ -7963,7 +8216,7 @@ def chat():
                                 'review': bool(x.get('review'))
                             })
                     modules.append({
-                        'name': str(m['name']).strip()[:100], 'days': str(m.get('days') or '').strip()[:40],
+                        'name': str(m['name']).strip()[:100], 'level': str(m.get('level') or '').strip()[:20], 'days': str(m.get('days') or '').strip()[:40],
                         'goal': str(m.get('goal') or '').strip()[:300], 'lessons': module_lessons,
                         'roadmap': [str(r).strip()[:200] for r in (m.get('roadmap') or []) if str(r).strip()][:8]
                     })
@@ -7994,6 +8247,17 @@ def chat():
                 if refine_id in editable_task_ids and refine_text:
                     task_refinements = [r for r in task_refinements if r['task_id'] != refine_id]
                     task_refinements.append({'task_id': refine_id, 'task': refine_text, 'name': str(block_input.get('name') or '').strip()[:100]})
+            elif block_name == 'create_lesson_set' and is_lesson_run:
+                lesson_files = _build_lesson_set(block.input or {})
+                if lesson_files:
+                    created_files.extend(lesson_files)
+            elif block_name == 'add_exercises' and agent == 'lana':
+                for x in ((block.input or {}).get('exercises') or [])[:3]:
+                    if isinstance(x, dict) and str(x.get('title') or '').strip() and str(x.get('focus') or '').strip():
+                        add_exercises.append({
+                            'title': str(x['title']).strip()[:100], 'focus': str(x['focus']).strip()[:400],
+                            'style': str(x.get('style') or 'mixed').strip()[:20]
+                        })
             elif block_name == 'add_lessons' and agent == 'lana':
                 for x in ((block.input or {}).get('lessons') or [])[:4]:
                     if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip():
@@ -8142,6 +8406,7 @@ def chat():
             'propose_project': propose_project,
             'propose_tasks': propose_tasks,
             'add_lessons': add_lessons,
+            'add_exercises': add_exercises,
             'task_refinements': task_refinements,
             'created_files': created_files,
             'social_draft': social_draft,
