@@ -18065,6 +18065,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // confirmation is still readable first; an update/delete just
         // refreshes the page quietly if it's already open, without yanking
         // Francis out of the conversation for something less eventful.
+        if (data.calendar_update) loadTodosData();
         if (data.calendar_update && data.calendar_update.action === 'create') {
             setTimeout(showCalendarPage, 900);
         } else if (data.calendar_update && document.getElementById('calendar-view').style.display !== 'none') {
@@ -21434,8 +21435,18 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (!event.splitTotal) return null;
             const first = event.splitOf ? calendarEvents.find(e => e.id === event.splitOf) : event;
             if (!first) return null;
-            const second = calendarEvents.find(e => e.splitOf === first.id);
-            return second ? [first, second] : null;
+            const rest = calendarEvents.filter(e => e.splitOf === first.id);
+            if (!rest.length) return null;
+            return [first, ...rest].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+        }
+
+        // A linked to-do owns the text - an edit made from any one block goes
+        // onto the to-do, which mirrors it onto every split.
+        async function syncLinkedTodoText(eventId, title, description) {
+            const todo = findTodoForCalendarEvent(eventId);
+            if (!todo) return;
+            await updateTodoItem(todo.id, { title, details: description, attachments: calendarModalAttachments });
+            loadCalendarData();
         }
 
         function formatSplitPartLength(startEl, endEl) {
@@ -21700,6 +21711,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const data = await updateCalendarEvent(parts[i].id, payloads[i]);
                 if (!data.success) { alert(data.error || `Could not save part ${i + 1}.`); return; }
             }
+            await syncLinkedTodoText(parts[0].id, title, description);
             closeEventModal();
         }
 
@@ -21764,12 +21776,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                             if (timeChanged) Object.assign(changes, { timeOfDayMinutes: newMinutes, durationMinutes: newDuration });
                             await applyEventChangeToSeriesFuture(linkedTodo.seriesId, changes, linkedTodo.id);
                         }
+                        await syncLinkedTodoText(calendarEditingEventId, title, description);
                         closeEventModal();
                         return;
                     }
                 }
                 const data = await updateCalendarEvent(calendarEditingEventId, payload);
                 if (!data.success) { alert(data.error || 'Could not save event.'); return; }
+                await syncLinkedTodoText(calendarEditingEventId, title, description);
             }
             closeEventModal();
         }

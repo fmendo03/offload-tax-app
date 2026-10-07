@@ -2896,12 +2896,15 @@ def get_calendar_context():
 
     if upcoming:
         lines = []
+        todos_for_ctx = load_todos()
         for e in upcoming:
             start = e.get('start', '')
             when = start[:10] + ' (all day)' if e.get('allDay') else start[:16].replace('T', ' ')
             status_note = f" [{e['status']}]" if e.get('status') not in ('confirmed', None) else ''
             loc_note = f" @ {e['location']}" if e.get('location') else ''
-            lines.append(f"- [id: {e['id']}] {when}: {e['title']}{loc_note}{status_note}")
+            linked = _todo_for_event(todos_for_ctx, e)
+            todo_note = f" [to-do id: {linked['id']}{', completed' if linked.get('completed') else ''}]" if linked else ''
+            lines.append(f"- [id: {e['id']}] {when}: {e['title']}{loc_note}{status_note}{todo_note}")
         events_block = f"\n\nCALENDAR ({now_label}):\n" + "\n".join(lines)
     else:
         events_block = f"\n\nCALENDAR ({now_label}): Nothing on Francis's Offload calendar right now."
@@ -3733,6 +3736,49 @@ def _normalize_todo_event_ids(todo):
     return ids
 
 
+# A to-do can sit on the calendar as several blocks ("splits"): the first one
+# is the head, every other one points at it via splitOf, and splitPart/
+# splitTotal ("2/3") are renumbered by start time whenever the group changes.
+# Completion, title, details and attachments live on the to-do, so all blocks
+# always mirror it.
+def _event_split_group(events, event):
+    head_id = event.get('splitOf') or event['id']
+    group = [e for e in events if e['id'] == head_id or e.get('splitOf') == head_id]
+    group.sort(key=lambda e: e.get('start') or '')
+    return head_id, group
+
+
+def _renumber_split_group(events, event):
+    _, group = _event_split_group(events, event)
+    if len(group) < 2:
+        for e in group:
+            e.pop('splitPart', None)
+            e.pop('splitTotal', None)
+        return
+    for i, e in enumerate(group, 1):
+        e['splitPart'] = i
+        e['splitTotal'] = len(group)
+
+
+def _todo_for_event(todos, event):
+    for t in todos:
+        ids = _normalize_todo_event_ids(t)
+        if event['id'] in ids or (event.get('splitOf') and event['splitOf'] in ids):
+            return t
+    return None
+
+
+def _sync_todo_to_events(todo, events):
+    ids = set(_normalize_todo_event_ids(todo))
+    now_iso = now_local().isoformat()
+    for e in events:
+        if e['id'] in ids or e.get('splitOf') in ids:
+            e['title'] = todo['title']
+            e['description'] = todo.get('details') or ''
+            e['attachments'] = todo.get('attachments') or []
+            e['updatedAt'] = now_iso
+
+
 # A to-do whose latest scheduled day has fully passed (it's now a later
 # calendar date) without being marked completed picks up a standing "Not
 # Finished" flag - by design, this doesn't fire until the scheduled day is
@@ -4042,7 +4088,7 @@ def todos_create():
 def todos_update(todo_id):
     try:
         data = request.json or {}
-        with todos_lock:
+        with todos_lock, calendar_lock:
             todos = load_todos()
             todo = next((t for t in todos if t['id'] == todo_id), None)
             if not todo:
@@ -4094,6 +4140,12 @@ def todos_update(todo_id):
                     todo['calendarEventId'] = None
                     todo['calendarEventIds'] = []
                     todo['notFinished'] = False
+            # Every block of a split to-do mirrors its text - an edit here
+            # reaches all of them.
+            if any(k in data for k in ('title', 'details', 'attachments')):
+                events = load_calendar_events()
+                _sync_todo_to_events(todo, events)
+                save_calendar_events(events)
             save_todos(todos)
         return jsonify({'success': True, 'todos': todos})
     except Exception as e:
@@ -7891,7 +7943,12 @@ def chat():
                 "exactly \"To-Do (add to calendar)\", or origin=\"discussion\" if it was some other name "
                 "followed by \"(add to calendar)\" (a Discussion Topic's category) - this is what puts the "
                 "right icon on it on the Calendar page, so get it right. Leave origin out entirely for any "
-                "other event you create with no such quote."
+                "other event you create with no such quote. "
+                "Everything on the calendar is a to-do. When Francis needs more time on something already on "
+                "the calendar (e.g. it's still open and you offer to block more time for it), call "
+                "manage_calendar create with that item's todo_id (shown as \"[to-do id: ...]\" next to its "
+                "event above) - never a new differently-titled event. The new block is another split of the "
+                "same to-do and mirrors it exactly."
             )
 
         if open_tasks:
@@ -8307,33 +8364,72 @@ def chat():
                 block_input = block.input or {}
                 action = block_input.get('action')
                 try:
-                    with calendar_lock:
+                    with todos_lock, calendar_lock:
                         if action == 'create':
                             title = str(block_input.get('title', '')).strip()
                             start = str(block_input.get('start', '')).strip()
-                            if title and start:
+                            todos_all = load_todos()
+                            todo_id_in = str(block_input.get('todo_id', '') or '').strip()
+                            todo = next((t for t in todos_all if t['id'] == todo_id_in), None) if todo_id_in else None
+                            if start and (todo or title):
                                 now_iso = now_local().isoformat()
                                 origin = block_input.get('origin')
+                                end = str(block_input.get('end', '') or '').strip() or start
+                                events = load_calendar_events()
+                                if todo is None:
+                                    # Nothing goes on the calendar that isn't a
+                                    # to-do - a brand-new item gets its own.
+                                    try:
+                                        minutes = int((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() // 60)
+                                    except (ValueError, TypeError):
+                                        minutes = 0
+                                    todo = {
+                                        'id': uuid.uuid4().hex, 'userId': current_user_id(), 'title': title,
+                                        'details': str(block_input.get('description', '') or '').strip() or title,
+                                        'estimatedMinutes': minutes if minutes > 0 else 30,
+                                        'completed': False, 'createdAt': now_iso, 'completedAt': None,
+                                        'calendarEventId': None, 'calendarEventIds': [], 'attachments': [],
+                                        'priority': 'medium', 'personal': False, 'notFinished': False
+                                    }
+                                    todos_all.append(todo)
                                 new_event = {
                                     'id': uuid.uuid4().hex,
                                     'userId': current_user_id(),
-                                    'title': title,
-                                    'description': str(block_input.get('description', '') or '').strip(),
+                                    'title': todo['title'],
+                                    'description': todo.get('details') or '',
                                     'location': str(block_input.get('location', '') or '').strip(),
                                     'start': start,
-                                    'end': str(block_input.get('end', '') or '').strip() or start,
+                                    'end': end,
                                     'allDay': bool(block_input.get('all_day', False)),
                                     'source': 'internal',
-                                    'origin': origin if origin in ('todo', 'discussion') else 'manual',
+                                    'origin': origin if origin in ('todo', 'discussion') else 'todo',
                                     'externalUid': None,
                                     'status': 'confirmed',
                                     'createdAt': now_iso,
-                                    'updatedAt': now_iso
+                                    'updatedAt': now_iso,
+                                    'attachments': todo.get('attachments') or []
                                 }
-                                events = load_calendar_events()
+                                # Already on the calendar? Then this block is
+                                # another split of the same to-do, tied to the
+                                # block it's currently on.
+                                ids = _normalize_todo_event_ids(todo)
+                                current = next((e for e in events if e['id'] == todo.get('calendarEventId')), None)
+                                if todo.get('notFinished'):
+                                    current = None  # its old card was missed - this is a fresh scheduling, not a split
+                                if current:
+                                    new_event['splitOf'] = current.get('splitOf') or current['id']
                                 events.append(new_event)
+                                if current:
+                                    _renumber_split_group(events, new_event)
+                                    new_event = next(e for e in events if e['id'] == new_event['id'])
+                                else:
+                                    todo['calendarEventId'] = new_event['id']
+                                if new_event['id'] not in ids:
+                                    ids.append(new_event['id'])
+                                todo['notFinished'] = False
                                 save_calendar_events(events)
-                                calendar_update = {'action': 'create', 'event': new_event}
+                                save_todos(todos_all)
+                                calendar_update = {'action': 'create', 'event': new_event, 'todo_id': todo['id']}
                         elif action == 'update':
                             events = load_calendar_events()
                             ev = next((e for e in events if e['id'] == block_input.get('event_id')), None)
@@ -8363,6 +8459,18 @@ def chat():
                                     except (ValueError, TypeError):
                                         pass
                                 ev['updatedAt'] = now_local().isoformat()
+                                # Text changes belong to the to-do and reach
+                                # every split of it; times only move this block.
+                                linked = _todo_for_event(load_todos(), ev)
+                                if linked and (block_input.get('title') or block_input.get('description')):
+                                    todos_all = load_todos()
+                                    linked = _todo_for_event(todos_all, ev)
+                                    if block_input.get('title'):
+                                        linked['title'] = ev['title']
+                                    if block_input.get('description'):
+                                        linked['details'] = ev['description']
+                                    _sync_todo_to_events(linked, events)
+                                    save_todos(todos_all)
                                 save_calendar_events(events)
                                 calendar_update = {'action': 'update', 'event': ev}
                         elif action == 'move_to_next_available':
@@ -8392,7 +8500,33 @@ def chat():
                             events = load_calendar_events()
                             ev = next((e for e in events if e['id'] == block_input.get('event_id')), None)
                             if ev:
+                                todos_all = load_todos()
+                                linked = _todo_for_event(todos_all, ev)
+                                children = [e for e in events if e.get('splitOf') == ev['id']]
                                 events = [e for e in events if e['id'] != ev['id']]
+                                if children:
+                                    # The head of a split went - the earliest
+                                    # remaining block takes over as head.
+                                    children.sort(key=lambda e: e.get('start') or '')
+                                    new_head = children[0]
+                                    new_head.pop('splitOf', None)
+                                    for c in children[1:]:
+                                        c['splitOf'] = new_head['id']
+                                    if linked:
+                                        ids = _normalize_todo_event_ids(linked)
+                                        if new_head['id'] not in ids:
+                                            ids.append(new_head['id'])
+                                    _renumber_split_group(events, new_head)
+                                elif ev.get('splitOf'):
+                                    sibling = next((e for e in events if e['id'] == ev['splitOf'] or e.get('splitOf') == ev['splitOf']), None)
+                                    if sibling:
+                                        _renumber_split_group(events, sibling)
+                                if linked:
+                                    ids = [i for i in _normalize_todo_event_ids(linked) if i != ev['id']]
+                                    linked['calendarEventIds'] = ids
+                                    if linked.get('calendarEventId') == ev['id']:
+                                        linked['calendarEventId'] = ids[-1] if ids else None
+                                    save_todos(todos_all)
                                 save_calendar_events(events)
                                 calendar_update = {'action': 'delete', 'event_id': ev['id']}
                 except Exception as e:
@@ -8517,7 +8651,7 @@ MANAGE_CALENDAR_TOOL = {
     "description": (
         "Create, update, move, or delete an event on Francis's Offload calendar. Only call this once Francis has "
         "actually confirmed the event or change - not while still discussing options or times. Use "
-        "action=\"create\" for a new event (needs title and start), \"update\" to change an existing one to a "
+        "action=\"create\" to put a block on the calendar (needs start, plus todo_id for an existing to-do - e.g. extra time for one already on the calendar - or a title for a brand-new item), \"update\" to change an existing one to a "
         "SPECIFIC time Francis actually named (needs event_id plus whichever fields changed), "
         "\"move_to_next_available\" when Francis instead just wants it moved to the next open opening "
         "(optionally \"sometime next week\" or similar - he isn't naming an exact time), or \"delete\" to "
@@ -8535,14 +8669,26 @@ MANAGE_CALENDAR_TOOL = {
                 "type": "string",
                 "description": "Required for update/move_to_next_available/delete - the event's id from the CALENDAR context above."
             },
-            "title": {"type": "string"},
+            "todo_id": {
+                "type": "string",
+                "description": (
+                    "action=\"create\" only. Everything on the calendar is a to-do. When the block you're adding "
+                    "is for a to-do that already exists - including more time for one already on the calendar "
+                    "(its \"[to-do id: ...]\" is shown next to its event in the CALENDAR context) - pass that id. "
+                    "The new block becomes another split of that same to-do: it mirrors the to-do's title and "
+                    "details, opening any block shows all the splits, edits reach all of them, and checking one "
+                    "off completes the to-do. Never make a separate new item for time on an existing to-do. "
+                    "Only omit this (and give a title) for something that truly is a new item; it gets its own to-do."
+                )
+            },
+            "title": {"type": "string", "description": "action=\"create\" without todo_id, or action=\"update\"."},
             "start": {
                 "type": "string",
-                "description": "action=\"update\" only. ISO datetime like \"2026-09-22T14:00:00\", or just a date \"2026-09-22\" for an all-day event."
+                "description": "action=\"create\" and action=\"update\". ISO datetime like \"2026-09-22T14:00:00\", or just a date \"2026-09-22\" for an all-day event."
             },
             "end": {
                 "type": "string",
-                "description": "action=\"update\" only. Same format as start. Defaults to start if omitted."
+                "description": "action=\"create\" and action=\"update\". Same format as start. Defaults to start if omitted."
             },
             "after": {
                 "type": "string",
