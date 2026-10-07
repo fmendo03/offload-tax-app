@@ -5598,13 +5598,18 @@ def _generate_activity(data):
           "answer (and `accepted` alternatives where fair) and a one-sentence explanation. Teaching text in English; "
           "target-language words in the target language."
     )
-    response = claude_create(
-        log_agent='lana', log_purpose='lana_activity', model=CLAUDE_MODEL, max_tokens=7000,
-        system="You are Lana, a warm but rigorous language teacher writing practice material. Return it with the make_quiz tool.",
-        messages=[{'role': 'user', 'content': prompt}],
-        tools=[QUIZ_TOOL], tool_choice={'type': 'tool', 'name': 'make_quiz'}
-    )
-    block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use' and b.name == 'make_quiz'), None)
+    # (This model can't be forced to call a tool, so the instruction does it - and one retry covers a text-only reply.)
+    block = None
+    for _attempt in range(2):
+        response = claude_create(
+            log_agent='lana', log_purpose='lana_activity', model=CLAUDE_MODEL, max_tokens=7000,
+            system="You are Lana, a warm but rigorous language teacher writing practice material. Always return it by calling the make_quiz tool - never reply with plain text.",
+            messages=[{'role': 'user', 'content': prompt + "\n\nCall make_quiz now with the finished items."}],
+            tools=[QUIZ_TOOL]
+        )
+        block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use' and b.name == 'make_quiz'), None)
+        if block:
+            break
     items = _clean_exercises((block.input or {}).get('items') if block else None, 16)
     story = None
     raw_story = (block.input or {}).get('story') if block else None
@@ -7913,7 +7918,7 @@ def match_file_to_task():
         response = claude_create(
             log_agent=None, log_purpose='match_file_task', model=CLAUDE_MODEL, max_tokens=100,
             messages=[{'role': 'user', 'content': prompt}],
-            tools=[MATCH_FILE_TASK_TOOL], tool_choice={'type': 'tool', 'name': 'match'}
+            tools=[MATCH_FILE_TASK_TOOL]
         )
         block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use'), None)
         task_id = str((block.input or {}).get('task_id') or '').strip() if block else ''
