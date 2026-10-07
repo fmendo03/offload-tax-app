@@ -8172,7 +8172,9 @@ def chat():
                 log_agent=agent,
                 log_purpose='chat',
                 model=CLAUDE_MODEL,
-                max_tokens=16000,
+                # A task run that builds a big file (hundreds of rows) needs more room; 21000 is the
+                # most the SDK allows without streaming.
+                max_tokens=21000 if is_task_run else 16000,
                 system=chat_system,
                 messages=claude_messages,
                 tools=tools

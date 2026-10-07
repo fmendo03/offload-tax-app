@@ -13336,7 +13336,11 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
     if (!chatHistory[agent]) chatHistory[agent] = [];
     // The files Francis gave this task ride along on the start message (and so
     // stay with the conversation for later turns).
-    const inputFiles = continueCount === 0 ? await gatherTaskInputAttachments(agent, task) : [];
+    // The files go to the agent on EVERY turn of the run (a continuation included) - otherwise, once
+    // the chat has moved on, the start message with the files falls out of what she can see and she
+    // reports the file as missing.
+    const allInputFiles = await gatherTaskInputAttachments(agent, task);
+    const inputFiles = continueCount === 0 ? allInputFiles : [];
     chatHistory[agent].push({
         type: 'user',
         // A resumed turn already has its own prior progress/explanation in
@@ -13346,6 +13350,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
             ? `${task.isLesson ? 'Please prepare this lesson now' : 'Please go ahead and do this now'}: ${task.task}${inputFiles.length ? `\n\nFiles provided for this task (attached): ${inputFiles.map(f => f.name).join(', ')}` : ''}${buildTaskPlanText(task)}${buildPreviousStepsContext(agent, task)}${task.isLesson ? lessonRunContext(task) : ''}`
             : (reminder || `Please continue where you left off.`),
         attachments: inputFiles.length ? inputFiles : undefined,
+        taskInput: inputFiles.length ? true : undefined,   // shown in chat, but sent with each turn instead of as history
         timestamp: new Date()
     });
     saveToLocalStorage(agent);
@@ -13355,7 +13360,7 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
     taskAbortControllers[taskId] = controller;
     let result = null;
     try {
-        result = await runOneOnOneAgentTurn(agent, toApiAttachments(inputFiles), taskId, controller.signal);
+        result = await runOneOnOneAgentTurn(agent, toApiAttachments(allInputFiles), taskId, controller.signal);
     } finally {
         delete taskAbortControllers[taskId];
     }
@@ -18363,7 +18368,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // A historical message's attachments travel along with it - otherwise a
         // later turn shows the model its own past analysis of a file with no
         // file anywhere in its current context, and it disowns its own answer.
-        const historyForCall = chatHistory[agent].map(m => ({ type: m.type, text: m.text, agent: m.agent, attachments: toApiAttachments(m.attachments) }));
+        const historyForCall = chatHistory[agent].map(m => ({ type: m.type, text: m.text, agent: m.agent, attachments: m.taskInput ? [] : toApiAttachments(m.attachments) }));
         const historyToSend = historyForCall.slice(0, -1);
         const messageToSend = historyForCall[historyForCall.length - 1].text;
 
