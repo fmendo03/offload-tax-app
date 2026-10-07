@@ -5137,6 +5137,7 @@ LESSON_ITEM_SCHEMA = {
         "accepted": {"type": "array", "items": {"type": "string"}, "description": "Other answers that are also right (fill/translate/order)."},
         "explanation": {"type": "string", "description": "One sentence on why, shown after he checks."},
         "speak": {"type": "string", "description": "Target-language text he can play aloud for this item. Use it for every sound/phonetics question."},
+        "speak_options": {"type": "boolean", "description": "For choice/odd: true when the options are target-language words or phrases (odd one out, which word has this sound, pick what you heard) - each option then gets its own play button. False when the options are English meanings."},
         "pairs": {
             "type": "array",
             "description": "For match: 3-6 pairs.",
@@ -5371,6 +5372,8 @@ def _clean_item(ex):
         if len(options) < 2:
             return None
         item.update(answer=answer, options=options)
+        if isinstance(ex.get('speak_options'), bool):
+            item['speakOptions'] = ex['speak_options']
     elif kind in ('fill', 'translate'):
         if not prompt or not answer:
             return None

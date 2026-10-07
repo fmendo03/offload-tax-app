@@ -2276,6 +2276,7 @@
 .lesson-options { display: flex; flex-direction: column; gap: 6px; }
 .lesson-option { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #e3e3ea; border-radius: 6px; cursor: pointer; }
 .lesson-option:hover { background: #f7f7fb; }
+.lesson-option .lesson-speak { margin-left: auto; width: 30px; height: 30px; font-size: 14px; }
 .lesson-input { width: 100%; box-sizing: border-box; padding: 9px 12px; font-size: 15px; border: 1px solid #cfcfd8; border-radius: 6px; }
 .lesson-q-feedback { margin-top: 8px; font-size: 13px; color: #444; }
 .lesson-q.correct .lesson-q-feedback, .lesson-q.close .lesson-q-feedback { color: #1f7a49; }
@@ -15194,11 +15195,25 @@ function lessonSpeakButton(text, code) {
     return text ? `<button type="button" class="lesson-speak" data-text="${escapeHtml(text)}" data-lang="${escapeHtml(code || '')}" title="Hear it">🔊</button>` : '';
 }
 
+// Are this question's options things in the target language he can hear (odd one out, "which word has
+// this sound", "pick what you heard")? Items say so themselves; older ones are guessed from their wording.
+function lessonOptionsSpoken(ex) {
+    if (ex.speakOptions === true) return true;
+    if (ex.speakOptions === false) return false;
+    if (ex.type === 'odd') return true;
+    const options = (ex.options || []).map(o => lessonNormalize(o));
+    if (ex.speak && options.includes(lessonNormalize(ex.speak))) return true;
+    return /\b(sound|vowel|consonant|pronounc|rhyme|syllable|which word|word does|hear|heard)\b/i.test(ex.prompt || '');
+}
+
 // The part of a question he interacts with, drawn from his saved answer (so it can be redrawn alone).
 function renderLessonItemBody(ex, i, answer, code, flipped) {
     switch (ex.type) {
-        case 'choice': case 'odd':
-            return `<div class="lesson-options">${ex.options.map(o => `<label class="lesson-option"><input type="radio" name="lq-${i}" value="${escapeHtml(o)}" ${answer === o ? 'checked' : ''}> <span>${escapeHtml(o)}</span></label>`).join('')}</div>`;
+        case 'choice': case 'odd': {
+            // Options that are words or phrases in the language being learned each get their own audio button.
+            const hear = lessonOptionsSpoken(ex);
+            return `<div class="lesson-options">${ex.options.map(o => `<label class="lesson-option"><input type="radio" name="lq-${i}" value="${escapeHtml(o)}" ${answer === o ? 'checked' : ''}> <span>${escapeHtml(o)}</span>${hear ? lessonSpeakButton(o, code) : ''}</label>`).join('')}</div>`;
+        }
         case 'match': {
             const chosen = lessonParse(answer, {});
             const rights = lessonShuffle(ex.pairs.map(p => p.right), i);
@@ -15459,7 +15474,7 @@ function wireLessonView(file, content) {
     let matchPick = null;   // { i, k } the left tile waiting for its partner
     root.addEventListener('click', (e) => {
         const speakBtn = e.target.closest('.lesson-speak');
-        if (speakBtn) { speakLessonText(speakBtn.dataset.text, speakBtn.dataset.lang); return; }
+        if (speakBtn) { e.preventDefault(); speakLessonText(speakBtn.dataset.text, speakBtn.dataset.lang); return; }
         if (progress.submitted) { /* a submitted quiz is read-only */ }
         const qEl = e.target.closest('.lesson-q');
         const i = qEl ? +qEl.dataset.i : null;
