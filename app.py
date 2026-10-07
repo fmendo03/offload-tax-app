@@ -7521,6 +7521,56 @@ def classify_task_needed():
         return jsonify({'success': False, 'needs_task': False, 'error': str(e)})
 
 
+# Francis sends a file in chat while the agent has a task waiting on it (the agent asked for it,
+# or it plainly belongs to that task): this decides which open task - if any - the files are for,
+# so they go under that task instead of sitting loose. Forced tool choice, one short call.
+MATCH_FILE_TASK_TOOL = {
+    "name": "match",
+    "description": "Say which task, if any, the files are for.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "string", "description": "The id of the task the files belong to, or \"none\"."}
+        },
+        "required": ["task_id"]
+    }
+}
+
+
+@app.route('/match-file-to-task', methods=['POST'])
+def match_file_to_task():
+    try:
+        data = request.json or {}
+        tasks = [t for t in (data.get('tasks') or []) if isinstance(t, dict) and t.get('id')][:12]
+        names = [str(n)[:120] for n in (data.get('attachment_names') or []) if str(n).strip()][:10]
+        if not tasks or not names:
+            return jsonify({'success': True, 'task_id': None})
+        recent = "\n".join(
+            f"{'Francis' if m.get('role') == 'user' else 'Agent'}: {str(m.get('text') or '')[:700]}"
+            for m in (data.get('recent') or [])[-7:] if isinstance(m, dict)
+        )
+        listing = "\n".join(f"- id {t['id']}: {str(t.get('name') or '')[:100]} - {str(t.get('task') or '')[:400]}" for t in tasks)
+        prompt = (
+            "Francis just sent files in chat. Decide whether they are for one of the agent's open tasks that haven't been "
+            "started yet - for example the agent asked him for the file, was asking questions about it, or it's plainly the "
+            "material the task needs. Files that are only for reading or reference with no task needing them are for none.\n\n"
+            f"Recent conversation:\n{recent or '(none)'}\n\n"
+            f"His message: {str(data.get('message') or '')[:600]}\nFiles: {', '.join(names)}\n\n"
+            f"Open tasks:\n{listing}\n\nCall match with the id of the task the files are for, or \"none\"."
+        )
+        response = claude_create(
+            log_agent=None, log_purpose='match_file_task', model=CLAUDE_MODEL, max_tokens=100,
+            messages=[{'role': 'user', 'content': prompt}],
+            tools=[MATCH_FILE_TASK_TOOL], tool_choice={'type': 'tool', 'name': 'match'}
+        )
+        block = next((b for b in response.content if getattr(b, 'type', None) == 'tool_use'), None)
+        task_id = str((block.input or {}).get('task_id') or '').strip() if block else ''
+        return jsonify({'success': True, 'task_id': task_id if task_id in {str(t['id']) for t in tasks} else None})
+    except Exception as e:
+        print(f"Match file to task error: {e}")
+        return jsonify({'success': False, 'task_id': None, 'error': str(e)})
+
+
 @app.route('/chat', methods=['POST'])
 def chat():
     try:

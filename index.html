@@ -7053,6 +7053,11 @@ body.va-open #notification-toasts {
     margin-left: 18px;
 }
 
+.move-file-menu { position: fixed; z-index: 1200; min-width: 200px; max-width: 320px; background: white; border-radius: 8px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25); padding: 4px; display: flex; flex-direction: column; }
+.move-file-menu button { text-align: left; border: none; background: none; padding: 8px 10px; font-size: 13px; cursor: pointer; border-radius: 6px; }
+.move-file-menu button:hover { background: #f1f2fb; }
+.move-file-empty { padding: 8px 10px; font-size: 12px; color: #888; }
+
 .workspace-indent > .workspace-project-name:first-child {
     margin-top: 10px;
 }
@@ -13107,6 +13112,15 @@ function buildWorkspaceFileRow(agent, file) {
         tag.textContent = 'provided by you';
         row.appendChild(tag);
     }
+    if (!file.taskId) {
+        const move = document.createElement('button');
+        move.type = 'button';
+        move.className = 'task-action-btn';
+        move.textContent = 'Add to a task';
+        move.title = 'Put this file under one of this agent\'s tasks';
+        move.addEventListener('click', (e) => { e.stopPropagation(); showMoveFileToTaskMenu(agent, file, move); });
+        row.appendChild(move);
+    }
     const noteCount = getFileAnnotations(agent, file.id).length;
     if (noteCount) {
         const tag = document.createElement('span');
@@ -13117,6 +13131,39 @@ function buildWorkspaceFileRow(agent, file) {
     }
     row.appendChild(buildFileActionsRow(agent, file));
     return row;
+}
+
+// A loose file: pick which of the agent's tasks it belongs under.
+function showMoveFileToTaskMenu(agent, file, anchor) {
+    document.querySelectorAll('.move-file-menu').forEach(m => m.remove());
+    const tasks = (workspaceTasks[agent] || []).filter(t => !t.archived && !t.cancelled && !t.isFileOnly && !t.isLesson && t.status !== 'completed');
+    const menu = document.createElement('div');
+    menu.className = 'move-file-menu';
+    if (!tasks.length) {
+        const none = document.createElement('div');
+        none.className = 'move-file-empty';
+        none.textContent = 'No open tasks for this agent.';
+        menu.appendChild(none);
+    }
+    tasks.forEach(task => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.textContent = task.name || task.task;
+        item.addEventListener('click', () => {
+            file.taskId = task.id;
+            file.role = 'input';
+            saveWorkspaceFiles();
+            menu.remove();
+            refreshTaskViewsForAgent(agent);
+        });
+        menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+    const r = anchor.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.min(r.bottom + 4, innerHeight - menu.offsetHeight - 8)}px`;
+    const close = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', close); } };
+    setTimeout(() => document.addEventListener('mousedown', close), 0);
 }
 
 function markTaskViewed(agent, id) {
@@ -17105,6 +17152,24 @@ function createTaskFromChatMessage(agent, message, taskName, attachments) {
     updateAgentBadge(agent);
 }
 
+// Which of this agent's not-yet-started tasks (if any) are files just sent in chat for?
+async function matchFilesToOpenTask(agent, message, attachmentNames) {
+    const open = (workspaceTasks[agent] || []).filter(t => !t.archived && !t.cancelled && !t.isFileOnly && !t.isLesson && (t.status === 'not_started' || t.status === 'paused'));
+    if (!open.length) return null;
+    const recent = (chatHistory[agent] || []).slice(-8, -1).map(m => ({ role: m.type === 'user' ? 'user' : 'agent', text: m.text }));
+    try {
+        const response = await fetch('/match-file-to-task', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, attachment_names: attachmentNames, recent, tasks: open.map(t => ({ id: t.id, name: t.name, task: t.task })) })
+        });
+        const data = await response.json();
+        return data.success ? (open.find(t => t.id === data.task_id) || null) : null;
+    } catch (e) {
+        console.error('Matching files to a task failed:', e);
+        return null;
+    }
+}
+
 async function sendMessageInner(message, attachments, attachmentsForApi, relatedItemId) {
     attachments = attachments || [];
     attachmentsForApi = attachmentsForApi || [];
@@ -17128,6 +17193,22 @@ async function sendMessageInner(message, attachments, attachmentsForApi, related
     // A message WITH files is checked as well: if Francis wants something done
     // with them it becomes a task and the files go under it; if they're only
     // there to be read or answered from, no task is needed.
+    if (!activeDiscussTask[agentAtSendTime] && !relatedItemId && attachments.length) {
+        // A task that's waiting on a file (the agent asked for it, or it's plainly what the
+        // task needs) takes it: it goes under that task and the agent carries on with it.
+        if (currentAgent === agentAtSendTime) showTypingIndicator(agentAtSendTime);
+        const waitingTask = await matchFilesToOpenTask(agentAtSendTime, message, attachments.map(a => a.name));
+        if (waitingTask) {
+            attachInputFilesToTask(agentAtSendTime, waitingTask, attachments);
+            const sharedWith = [...chatHistory[agentAtSendTime]].reverse().find(m => m.type === 'user');
+            if (sharedWith) { sharedWith.attachmentsUsed = true; sharedWith.addedToTask = waitingTask.name || waitingTask.task; }
+            refreshTaskViewsForAgent(agentAtSendTime);
+            if (currentAgent === agentAtSendTime) displayMessages(agentAtSendTime);
+            saveToLocalStorage(agentAtSendTime);
+            await runOneOnOneAgentTurn(agentAtSendTime, attachmentsForApi, undefined, undefined, undefined, relatedItemId);
+            return;
+        }
+    }
     if (!activeDiscussTask[agentAtSendTime] && !relatedItemId) {
         if (currentAgent === agentAtSendTime) showTypingIndicator(agentAtSendTime);
         const classification = await classifyIfNeedsTask(message, attachments.map(a => a.name));
