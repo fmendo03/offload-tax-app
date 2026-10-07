@@ -5137,7 +5137,16 @@ LESSON_ITEM_SCHEMA = {
         "accepted": {"type": "array", "items": {"type": "string"}, "description": "Other answers that are also right (fill/translate/order)."},
         "explanation": {"type": "string", "description": "One sentence on why, shown after he checks."},
         "speak": {"type": "string", "description": "Target-language text he can play aloud for this item. Use it for every sound/phonetics question."},
-        "speak_options": {"type": "boolean", "description": "For choice/odd: true when the options are target-language words or phrases (odd one out, which word has this sound, pick what you heard) - each option then gets its own play button. False when the options are English meanings."},
+        "target": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["prompt", "options", "answer", "left", "right", "words"]},
+            "description": ("Which WHOLE parts of this item are written in the language being learned, so each gets a play button: "
+                            "prompt (the question itself is a target-language sentence), options (choice/odd options are target-language "
+                            "words), answer (the answer he types is target language), left / right (match: that column is target "
+                            "language), words (order tiles). Leave out anything written in English - English gets no button. "
+                            "Also, wherever target-language words or phrases appear INSIDE English text (a prompt, explanation or "
+                            "card back), wrap them in double square brackets like [[ciao]] so they can be played."),
+        },
         "pairs": {
             "type": "array",
             "description": "For match: 3-6 pairs.",
@@ -5177,7 +5186,7 @@ CREATE_LESSON_SET_TOOL = {
                             "type": "object",
                             "properties": {
                                 "heading": {"type": "string"},
-                                "text": {"type": "string", "description": "Plain text; separate paragraphs with a blank line."},
+                                "text": {"type": "string", "description": "Plain text; separate paragraphs with a blank line. Wrap every word or phrase in the language being learned in [[double square brackets]], e.g. 'say [[ciao]] to a friend', so it gets a play button; English is left unmarked."},
                                 "examples": {
                                     "type": "array",
                                     "items": {
@@ -5363,6 +5372,8 @@ def _clean_item(ex):
     prompt = text(ex.get('prompt'), 500)
     answer = text(ex.get('answer'), 300)
     item = {'type': kind, 'prompt': prompt, 'explanation': text(ex.get('explanation'), 500), 'speak': text(ex.get('speak'), 300)}
+    if isinstance(ex.get('target'), list):
+        item['target'] = [x for x in ex['target'] if x in ('prompt', 'options', 'answer', 'left', 'right', 'words')]
     if kind in ('choice', 'odd'):
         options = [text(o, 200) for o in (ex.get('options') or []) if text(o, 200)][:5]
         if not prompt or not answer:
@@ -5597,7 +5608,10 @@ def _generate_activity(data):
         + (f"Learner level: {level}.\n" if level else '')
         + (f"He has tended to miss: {'; '.join(weak)} - give those extra weight.\n" if weak else '')
         + (f"These were already used - every item must be NEW (different words, sentences and angles, not rewordings): {' | '.join(avoid)}\n" if avoid else '')
-        + "Use a variety of item types. Every sound/phonetics item must have `speak` so he hears it. Each item has its correct "
+        + "Use a variety of item types. Every sound/phonetics item must have `speak` so he hears it. Mark the target language: set `target` "
+          "on each item to the whole parts written in " + language + " (prompt/options/answer/left/right/words), and wrap any " + language +
+          " words that sit inside English text (prompts, explanations, card backs) in [[double square brackets]] - English gets no "
+          "marks. Each item has its correct "
           "answer (and `accepted` alternatives where fair) and a one-sentence explanation. Teaching text in English; "
           "target-language words in the target language."
     )

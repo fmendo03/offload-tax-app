@@ -2208,6 +2208,10 @@
 .lesson-ex-pron { font-size: 12px; color: #8a7a45; font-style: italic; }
 .lesson-speak { flex: none; width: 34px; height: 34px; border-radius: 50%; border: none; background: #ede6bd; cursor: pointer; font-size: 15px; }
 .lesson-speak:hover { background: #e0d58f; }
+.lesson-speak-sm { width: 22px; height: 22px; font-size: 11px; margin: 0 3px; vertical-align: middle; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.lesson-fl { font-weight: 600; color: #4b3f12; }
+.lm-cell { display: flex; align-items: center; gap: 4px; }
+.lm-cell > button { flex: 1; }
 .lesson-speak.playing { background: #d9c24f; box-shadow: 0 0 0 2px #b59d2b inset; }
 .lesson-speak.paused { background: #f3ecc4; box-shadow: 0 0 0 2px #b59d2b inset; }
 .lr-mic.listening { background: #ffd9d4; }
@@ -15254,13 +15258,32 @@ function lessonShuffle(list, seed) {
     return out;
 }
 
-function lessonSpeakButton(text, code) {
-    return text ? `<button type="button" class="lesson-speak" data-text="${escapeHtml(text)}" data-lang="${escapeHtml(code || '')}" title="Hear it">🔊</button>` : '';
+function lessonSpeakButton(text, code, small) {
+    return text ? `<button type="button" class="lesson-speak${small ? ' lesson-speak-sm' : ''}" data-text="${escapeHtml(lessonPlain(text))}" data-lang="${escapeHtml(code || '')}" title="Hear it">🔊</button>` : '';
+}
+
+// Text with the language being learned marked as [[word]] (so it can be played): the marked part
+// gets its own small speaker; the rest is shown as plain text.
+function lessonPlain(text) {
+    return String(text || '').replace(/\[\[|\]\]/g, '');
+}
+
+function lessonRichText(text, code) {
+    return String(text || '').split(/\[\[(.+?)\]\]/g).map((part, i) =>
+        i % 2 ? `<span class="lesson-fl">${escapeHtml(part)}</span>${lessonSpeakButton(part, code, true)}` : escapeHtml(part)
+    ).join('');
+}
+
+// Which parts of a question are in the language being learned (and so get a speaker). Items say so in
+// `target`; older items without it fall back to a guess for the options only.
+function lessonTargets(ex) {
+    return Array.isArray(ex.target) ? ex.target : null;
 }
 
 // Are this question's options things in the target language he can hear (odd one out, "which word has
 // this sound", "pick what you heard")? Items say so themselves; older ones are guessed from their wording.
 function lessonOptionsSpoken(ex) {
+    if (lessonTargets(ex)) return lessonTargets(ex).includes('options');
     if (ex.speakOptions === true) return true;
     if (ex.speakOptions === false) return false;
     if (ex.type === 'odd') return true;
@@ -15281,16 +15304,18 @@ function renderLessonItemBody(ex, i, answer, code, flipped) {
             const chosen = lessonParse(answer, {});
             const rights = lessonShuffle(ex.pairs.map(p => p.right), i);
             const used = new Set(Object.values(chosen));
+            const t = lessonTargets(ex) || [];
+            const hearL = t.includes('left'), hearR = t.includes('right');
             return `<div class="lesson-match" data-i="${i}">
-                <div class="lm-col">${ex.pairs.map((p, k) => `<button type="button" class="lm-left${chosen[k] !== undefined ? ' paired' : ''}" data-k="${k}">${escapeHtml(p.left)}${chosen[k] !== undefined ? ` → <b>${escapeHtml(chosen[k])}</b>` : ''}</button>`).join('')}</div>
-                <div class="lm-col">${rights.map(r => `<button type="button" class="lm-right${used.has(r.v) ? ' used' : ''}" data-v="${escapeHtml(r.v)}">${escapeHtml(r.v)}</button>`).join('')}</div>
+                <div class="lm-col">${ex.pairs.map((p, k) => `<div class="lm-cell"><button type="button" class="lm-left${chosen[k] !== undefined ? ' paired' : ''}" data-k="${k}">${escapeHtml(p.left)}${chosen[k] !== undefined ? ` → <b>${escapeHtml(chosen[k])}</b>` : ''}</button>${hearL ? lessonSpeakButton(p.left, code, true) : ''}</div>`).join('')}</div>
+                <div class="lm-col">${rights.map(r => `<div class="lm-cell"><button type="button" class="lm-right${used.has(r.v) ? ' used' : ''}" data-v="${escapeHtml(r.v)}">${escapeHtml(r.v)}</button>${hearR ? lessonSpeakButton(r.v, code, true) : ''}</div>`).join('')}</div>
             </div>`;
         }
         case 'order': {
             const picked = lessonParse(answer, []);
             const tiles = lessonShuffle(ex.words, i);
             return `<div class="lesson-order" data-i="${i}">
-                <div class="lo-line">${picked.length ? picked.map(k => `<button type="button" class="lo-tile built" data-k="${k}">${escapeHtml(ex.words[k])}</button>`).join('') : '<span class="lo-hint">Tap the words in order</span>'}</div>
+                <div class="lo-line">${picked.length ? picked.map(k => `<button type="button" class="lo-tile built" data-k="${k}">${escapeHtml(ex.words[k])}</button>`).join('') : '<span class="lo-hint">Tap the words in order</span>'}${picked.length && (lessonTargets(ex) || ['words']).includes('words') ? lessonSpeakButton(picked.map(k => ex.words[k]).join(' '), code, true) : ''}</div>
                 <div class="lo-pool">${tiles.filter(t => !picked.includes(t.i)).map(t => `<button type="button" class="lo-tile" data-k="${t.i}">${escapeHtml(t.v)}</button>`).join('')}</div>
                 ${picked.length ? '<button type="button" class="lo-clear">Clear</button>' : ''}
             </div>`;
@@ -15311,7 +15336,7 @@ function renderLessonItemBody(ex, i, answer, code, flipped) {
             const said = answer && String(answer).startsWith('said:') ? String(answer).slice(5) : '';
             const verdict = said ? lessonSaidVerdict(ex, said) : (answer === 'known' ? 'You marked this one as known.' : (answer === 'learning' ? 'Marked as still learning.' : ''));
             return `<div class="lesson-card${flipped ? ' flipped' : ''}" data-i="${i}">
-                <div class="lc-face"><div class="lc-front">${escapeHtml(ex.front)}</div>${flipped ? `<div class="lc-back">${escapeHtml(ex.back)}</div>` : ''}</div>
+                <div class="lc-face"><div class="lc-front">${escapeHtml(ex.front)}</div>${flipped ? `<div class="lc-back">${lessonRichText(ex.back, code)}</div>` : ''}</div>
                 <div class="lc-actions">
                     <button type="button" class="lesson-speak lr-listen" data-text="${escapeHtml(ex.speak || ex.front)}" data-lang="${escapeHtml(code || '')}">🔊 Listen</button>
                     ${supported
@@ -15356,7 +15381,7 @@ function buildLessonHtml(file) {
     const sections = (lesson.sections || []).map(sec => `
         <section class="lesson-section">
             <h2>${escapeHtml(sec.heading)}</h2>
-            ${String(sec.text || '').split(/\n\s*\n/).filter(Boolean).map(p => `<p>${escapeHtml(p)}</p>`).join('')}
+            ${String(sec.text || '').split(/\n\s*\n/).filter(Boolean).map(p => `<p>${lessonRichText(p, code)}</p>`).join('')}
             ${(sec.examples || []).length ? `<div class="lesson-examples">${sec.examples.map(ex => `
                 <div class="lesson-ex">${speak(ex.target)}
                     <div class="lesson-ex-body">
@@ -15372,7 +15397,7 @@ function buildLessonHtml(file) {
         const showNum = ex.type !== 'card';
         const prompt = ex.type === 'card' ? 'Flash card' : ex.prompt;
         return `<div class="lesson-q" data-i="${i}" data-type="${ex.type}">
-            <div class="lesson-q-top">${showNum ? `<span class="lesson-q-num">${i + 1}</span>` : '<span class="lesson-q-num">🃏</span>'}<div class="lesson-q-prompt">${escapeHtml(prompt)}</div>${ex.type === 'repeat' || ex.type === 'card' ? '' : speak(ex.speak)}</div>
+            <div class="lesson-q-top">${showNum ? `<span class="lesson-q-num">${i + 1}</span>` : '<span class="lesson-q-num">🃏</span>'}<div class="lesson-q-prompt">${lessonRichText(prompt, code)}</div>${ex.type === 'repeat' || ex.type === 'card' ? '' : (ex.speak ? speak(ex.speak) : ((lessonTargets(ex) || []).includes('prompt') ? speak(String(prompt).replace(/_{2,}|\.{3,}/g, ' ')) : ''))}</div>
             <div class="lesson-q-body">${renderLessonItemBody(ex, i, progress.answers[i], code, flipped.has(i))}</div><div class="lesson-q-feedback"></div></div>`;
     };
     const items = lesson.exercises || [];
@@ -15458,7 +15483,11 @@ function showLessonResults(file, root) {
         feedback.textContent = '';
         if (!grade) return;
         q.classList.add(grade.status);
-        feedback.textContent = lessonFeedbackText(ex, grade, progress.answers[i]) + (grade.status !== 'correct' && ex.explanation ? ` — ${ex.explanation}` : '');
+        const wrongOrBlank = grade.status !== 'correct';
+        const answerText = (['fill', 'translate', 'order', 'choice', 'odd'].includes(ex.type) ? (ex.answer || '') : '');
+        const hearAnswer = answerText && wrongOrBlank && (ex.type === 'order' || (['choice', 'odd'].includes(ex.type) ? lessonOptionsSpoken(ex) : (lessonTargets(ex) || []).includes('answer')));
+        feedback.innerHTML = lessonRichText(lessonFeedbackText(ex, grade, progress.answers[i]) + (wrongOrBlank && ex.explanation ? ` — ${ex.explanation}` : ''), lesson.languageCode)
+            + (hearAnswer ? ' ' + lessonSpeakButton(answerText, lesson.languageCode, true) : '');
     });
     const scoreEl = root.querySelector('.lesson-score');
     const pct = lessonPercent(lesson, progress);
@@ -15627,7 +15656,7 @@ function wireLessonView(file, content) {
                 act.best = Math.max(act.best || 0, pct);
                 act.last = pct;
                 act.attempts = (act.attempts || 0) + 1;
-                act.missed = lesson.exercises.map((x, k) => gradeLessonItem(x, progress.answers[k]).score < 1 ? `${x.prompt || x.front || ''} (answer: ${x.answer || x.back || (x.pairs ? x.pairs.map(p => p.left + '=' + p.right).join(', ') : '')})` : null).filter(Boolean).slice(0, 6);
+                act.missed = lesson.exercises.map((x, k) => gradeLessonItem(x, progress.answers[k]).score < 1 ? `${lessonPlain(x.prompt || x.front || '')} (answer: ${x.answer || x.back || (x.pairs ? x.pairs.map(p => p.left + '=' + p.right).join(', ') : '')})` : null).filter(Boolean).slice(0, 6);
             }
             if (act && act.kind === 'quiz') { progress.submitted = true; act.done = true; }
             saveWorkspaceFiles();
@@ -15736,7 +15765,7 @@ async function ensureActivityContent(agent, file) {
         const priorPrompts = (act.history || []).slice();
         const weak = [];
         (layout ? layout.exercises : []).forEach(f => (f.activity.missed || []).forEach(m => weak.push(m)));
-        if (act.kind === 'quiz') (layout ? layout.exercises : []).forEach(f => { const l = parseLesson(f); if (l) l.exercises.forEach(x => { if (x.prompt) priorPrompts.push(x.prompt); }); });
+        if (act.kind === 'quiz') (layout ? layout.exercises : []).forEach(f => { const l = parseLesson(f); if (l) l.exercises.forEach(x => { if (x.prompt) priorPrompts.push(lessonPlain(x.prompt)); }); });
         const mode = act.kind === 'quiz' ? 'lesson_quiz' : (act.kind === 'practice' ? 'practice' : 'exercise');
         const activity = await requestActivity({
             mode, language: sample.language || (task && task.language) || '', language_code: sample.languageCode || (task && task.languageCode) || '',
@@ -15749,7 +15778,7 @@ async function ensureActivityContent(agent, file) {
         file.content = json;
         file.data = lessonToBase64(json);
         act.pending = false;
-        act.history = priorPrompts.concat(activity.exercises.map(x => x.prompt || x.front || ''));
+        act.history = priorPrompts.concat(activity.exercises.map(x => lessonPlain(x.prompt || x.front || '')));
         file.lessonProgress = { answers: {}, checked: false, submitted: false };
     } catch (error) {
         console.error('Could not write the activity:', error);
@@ -15772,7 +15801,7 @@ async function requestActivity(body) {
 function regenerateActivity(agent, file, rerender, button) {
     const act = file.activity;
     const lesson = parseLesson(file);
-    act.history = (act.history || []).concat((lesson ? lesson.exercises : []).map(x => x.prompt || x.front || ''));
+    act.history = (act.history || []).concat((lesson ? lesson.exercises : []).map(x => lessonPlain(x.prompt || x.front || '')));
     act.pending = true;
     act.error = null;
     file.lessonProgress = { answers: {}, checked: false, submitted: false };
@@ -15822,7 +15851,7 @@ async function onQuizChecked(agent, file) {
     const layout = lessonSetLayout(agent, task);
     task.lessonResult = {
         score: pct, total: 100, at: new Date().toISOString(),
-        missed: missed.slice(0, 8).map(r => `${r.ex.prompt || r.ex.front} (answer: ${r.ex.answer || r.ex.back || ''})`),
+        missed: missed.slice(0, 8).map(r => lessonPlain(`${r.ex.prompt || r.ex.front} (answer: ${r.ex.answer || r.ex.back || ''})`)),
         activities: (layout ? layout.exercises : []).map(f => ({ title: lessonRowLabel(f), best: f.activity.best || 0 }))
     };
     saveWorkspaceFiles();
@@ -15834,7 +15863,7 @@ async function onQuizChecked(agent, file) {
     if (layout && layout.exercises.length) lines.push('', 'My exercise scores: ' + layout.exercises.map(f => `${lessonRowLabel(f)} ${f.activity.best || 0}%`).join(', ') + '.');
     if (missed.length) {
         lines.push('', 'What I missed on the quiz:');
-        missed.slice(0, 10).forEach(r => lines.push(`- ${r.ex.prompt || r.ex.front} - I put "${r.answer || '(nothing)'}", the answer is "${r.ex.answer || r.ex.back || ''}"`));
+        missed.slice(0, 10).forEach(r => lines.push(`- ${lessonPlain(r.ex.prompt || r.ex.front)} - I put "${r.answer || '(nothing)'}", the answer is "${r.ex.answer || r.ex.back || ''}"`));
     }
     lines.push('', act.passed
         ? 'Please tell me how I did. If anything is still shaky, add extra exercises to this lesson for it.'
@@ -15879,7 +15908,7 @@ async function submitLesson(file) {
     if (task) {
         task.lessonResult = {
             score: correct, total: results.length, at: new Date().toISOString(),
-            missed: missed.slice(0, 8).map(r => `${r.ex.prompt || r.ex.front} (answer: ${r.ex.answer || r.ex.back || ''})`)
+            missed: missed.slice(0, 8).map(r => lessonPlain(`${r.ex.prompt || r.ex.front} (answer: ${r.ex.answer || r.ex.back || ''})`))
         };
         if (task.status === 'in_review') {
             approveTask(agent, task.id);
@@ -15894,7 +15923,7 @@ async function submitLesson(file) {
     const lines = [`I ${isQuiz ? `took the "${lesson.title}"` : (attempt > 1 ? `did "${lesson.title}" again` : `finished "${lesson.title}"`)}${attempt > 1 ? ` (attempt ${attempt})` : ''} (${lesson.language || 'language lesson'}). I got ${correct} of ${results.length}.`];
     if (missed.length) {
         lines.push('', 'What I missed:');
-        missed.slice(0, 12).forEach(r => lines.push(`- ${r.ex.prompt || r.ex.front} - I put "${r.answer || '(nothing)'}", the answer is "${r.ex.answer || r.ex.back || ''}"`));
+        missed.slice(0, 12).forEach(r => lines.push(`- ${lessonPlain(r.ex.prompt || r.ex.front)} - I put "${r.answer || '(nothing)'}", the answer is "${r.ex.answer || r.ex.back || ''}"`));
     }
     lines.push('', "Please tell me how I did. If anything didn't stick, add lessons to my plan to practice it before we move on.");
     // Finishing a module's quiz: Lana builds the next roadmap module, tuned to how it went.
@@ -16100,8 +16129,8 @@ async function retakeQuiz(file, content, button) {
     if (!lesson) return;
     const agent = lessonOwnerAgent(file);
     const progress = file.lessonProgress || {};
-    const history = (file.quizHistory || []).concat(lesson.exercises.map(e => e.prompt));
-    const weak = lesson.exercises.filter((e, i) => ['wrong', 'blank'].includes(gradeLessonExercise(e, (progress.answers || {})[i]))).map(e => `${e.prompt} (answer: ${e.answer})`);
+    const history = (file.quizHistory || []).concat(lesson.exercises.map(e => lessonPlain(e.prompt)));
+    const weak = lesson.exercises.filter((e, i) => ['wrong', 'blank'].includes(gradeLessonExercise(e, (progress.answers || {})[i]))).map(e => lessonPlain(`${e.prompt} (answer: ${e.answer})`));
     button.disabled = true;
     const label = button.textContent;
     button.textContent = 'Writing new questions…';
