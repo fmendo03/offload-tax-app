@@ -5006,7 +5006,9 @@ LANA_LESSON_RULES = (
     "MODULES grouped by level (A1 beginner, A2, B1, B2, C1 - about 8 to 12 modules in all, each with a CEFR level and a "
     "rough timeframe). The FIRST module is spelled out as numbered LESSONS (about 12 to 15, sized to his daily study time), "
     "each with its specific TOPICS (the actual words, forms and skills it teaches - concrete, like \"all six forms of "
-    "avere\"). Every later module is a ROADMAP: what it will cover and roughly how many lessons - you turn it into real "
+    "avere\"). Build the course around EVERYDAY SITUATIONS he will really talk about - ordering at a restaurant, a trip to "
+    "the park, playing a sport, shopping, the doctor, asking directions, family dinners - so each lesson is a scenario "
+    "with the vocabulary, phrases and grammar needed to talk about it, and each module's goal and roadmap names its scenarios. Every later module is a ROADMAP: what it will cover and roughly how many lessons - you turn it into real "
     "lessons once he finishes the module before it, based on how he did. Don't number lessons in their names (the app "
     "numbers them). Put a cumulative REVIEW lesson (review=true) after about every three lessons. Each module also ends "
     "with a quiz the app adds. He accepts the plan with the card and nothing starts until he does.\n\n"
@@ -5068,7 +5070,7 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
                         "name": {"type": "string", "description": "e.g. \"Module 1: First Words and Family\"."},
                         "level": {"type": "string", "description": "CEFR level, e.g. \"A1\", \"B1\"."},
                         "days": {"type": "string", "description": "Rough timeframe, e.g. \"Weeks 1-6\"."},
-                        "goal": {"type": "string", "description": "What he can do when the module is finished."},
+                        "goal": {"type": "string", "description": "What he can do when the module is finished, naming the everyday situations it covers (e.g. eating out, the park, sports)."},
                         "lessons": {
                             "type": "array",
                             "description": "FIRST module only: the lessons, in order (12-15), without numbers in the names.",
@@ -5076,7 +5078,7 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
                                 "type": "object",
                                 "properties": {
                                     "name": {"type": "string", "description": "Short title, e.g. \"Sounds and Hello\" or \"Review: Lessons 1-3\"."},
-                                    "task": {"type": "string", "description": "What this lesson teaches and practices, in 1-3 sentences, so it can be prepared later without this conversation."},
+                                    "task": {"type": "string", "description": "The everyday situation this lesson is about (e.g. ordering at a restaurant) and what it teaches, in 1-3 sentences, so it can be prepared later without this conversation."},
                                     "topics": {"type": "array", "items": {"type": "string"}, "description": "The specific things it covers, e.g. \"all six forms of essere\", \"ciao, buongiorno, buonasera\"."},
                                     "review": {"type": "boolean", "description": "True for a cumulative review of everything learned so far."}
                                 },
@@ -5086,7 +5088,7 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
                         "roadmap": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "LATER modules only: what the module will cover (turned into lessons later) - include roughly how many lessons it will take."
+                            "description": "LATER modules only: the everyday situations and skills the module will cover (turned into lessons later), one line each - include roughly how many lessons it will take."
                         }
                     },
                     "required": ["name", "goal"]

@@ -16152,8 +16152,9 @@ function buildInteractiveLessonEl(agent, lesson) {
     const key = `ipl:${lesson.taskId || lesson.name}`;
     const layout = task && task.isLesson ? lessonSetLayout(agent, task) : null;
     const looseFiles = task ? getTaskFiles(agent, task.id).filter(f => !f.activity) : [];
-    const canOpen = !!layout || looseFiles.length > 0;
-    const dflt = !task || task.status === 'completed';
+    const about = !lesson.quiz && lesson.task ? lesson.task : '';
+    const canOpen = !!layout || looseFiles.length > 0 || !!about;
+    const dflt = !task || task.status === 'completed' || task.status === 'not_started';
     const { row, open } = ipFolderRow(agent, key, dflt, canOpen, 'ip-lesson' + (lesson.review ? ' review' : '') + (lesson.quiz ? ' quiz' : ''));
 
     const title = ipEl('div', 'ip-title');
@@ -16194,6 +16195,7 @@ function buildInteractiveLessonEl(agent, lesson) {
 
     if (open) {
         const kids = ipEl('div', 'ip-children');
+        if (about) kids.appendChild(ipEl('div', 'ip-goal', about));
         if (layout) layout.rows.forEach(r => kids.appendChild(buildLessonActivityRow(agent, task, r)));
         looseFiles.forEach(f => kids.appendChild(buildInteractiveFileRow(agent, f)));
         wrap.appendChild(kids);
@@ -16257,10 +16259,33 @@ function buildInteractiveProjectEl(project) {
     if (open) {
         const body = ipEl('div', 'ip-children');
         if (project.summary) body.appendChild(ipEl('div', 'ip-goal', project.summary));
-        (project.outline ? project.outline.modules : []).forEach((mod, i) => body.appendChild(buildInteractiveModuleEl(agent, project, mod, i)));
+        // A plan made before courses had modules is shown as one module holding all its lessons.
+        const modules = project.outline ? project.outline.modules : [{
+            name: 'Lessons', goal: '',
+            lessons: (project.tasks || []).map(e => ({ name: e.name, task: e.task, topics: e.topics || [], review: !!e.review, quiz: !!e.quiz, taskId: e.taskId }))
+        }];
+        modules.forEach((mod, i) => body.appendChild(buildInteractiveModuleEl(agent, project, mod, i)));
+        if (!project.outline) {
+            const note = ipEl('div', 'ip-roadmap-note', 'This plan was made before courses were organized into modules, so it only covers these lessons. ');
+            const btn = ipEl('button', 'task-action-btn solid-start', 'Ask Lana for the full course');
+            btn.type = 'button';
+            btn.addEventListener('click', () => requestFullCourse(project));
+            note.appendChild(btn);
+            body.appendChild(note);
+        }
         wrap.appendChild(body);
     }
     return wrap;
+}
+
+// Older plans have no modules - Lana drafts the full novice-to-proficient course for them.
+function requestFullCourse(project) {
+    const agent = interactiveOwner(project);
+    selectAgent(agent);
+    showAgentTab('chat');
+    inputBox.value = `Please rebuild my ${project.language || 'language'} plan as the full course, from novice to proficient: modules by level, each lesson built around an everyday situation (like eating at a restaurant, going to the park, playing a sport) with the words and phrases it teaches. Keep it as one new plan I can accept.`;
+    autoGrowInputBox();
+    sendMessage();
 }
 
 // Archive/restore the whole project: every lesson, exercise and quiz in it goes together.
