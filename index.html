@@ -17309,6 +17309,20 @@ async function sendAshantiMiniChatMessage() {
 // once Francis settles on a change. relatedItemId (see sendMessage) tags
 // this turn's reply with whichever Workspace Item the just-sent message
 // quoted, if any, so removing that item later also removes this reply.
+// The agent's existing tasks, so they know what's already in the app - a conversation about one
+// of them is about that task, not a reason to make another.
+function buildOpenTasksForChat(agent) {
+    return (workspaceTasks[agent] || [])
+        .filter(t => !t.archived && !t.cancelled && !t.isFileOnly && !t.isLesson && t.status !== 'completed')
+        .slice(0, 10)
+        .map(t => ({
+            id: t.id, name: t.name, task: t.task, status: String(t.status).replace('_', ' '),
+            editable: t.status === 'not_started' || t.status === 'paused',
+            planGoal: t.plan ? t.plan.goal : '',
+            files: getTaskFiles(agent, t.id).filter(f => f.role === 'input').map(f => f.name)
+        }));
+}
+
 async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussInfo, relatedItemId) {
     if (currentAgent === agent) showTypingIndicator(agent);
 
@@ -17334,6 +17348,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 task_context: taskContext,
                 project_context: projectContext,
                 is_task_run: !!taskId,
+                open_tasks: taskId ? [] : buildOpenTasksForChat(agent),
                 is_lesson: !!(taskId && (findWorkspaceTaskById(agent, taskId) || {}).isLesson)
             }),
             signal
@@ -17397,6 +17412,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 || (taskProposal ? taskProposal.task : '')
                 || (createdFiles.length ? `Here you go — ${createdFiles.map(f => f.name).join(', ')}` : '')
                 || (data.calendar_update ? describeCalendarUpdate(data.calendar_update) : '')
+                || ((data.task_refinements || []).length ? `I've updated the task "${data.task_refinements[0].name || 'your task'}" with what we just settled.` : '')
                 // Belt-and-suspenders fallback - the system prompt asks for a
                 // confirming reply alongside update_task, but if it's ever
                 // skipped this still gives Francis visible proof the change
@@ -17435,6 +17451,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
         if (projectProposal) displayProjectsList();
         if (agent === 'lana' && data.add_lessons && data.add_lessons.length) applyAddedLessons(agent, data.add_lessons);
+        // The agent sharpening a task that already exists (instead of making a second one).
+        (data.task_refinements || []).forEach(r => {
+            const existing = findWorkspaceTaskById(agent, r.task_id);
+            if (existing && (existing.status === 'not_started' || existing.status === 'paused')) applyProjectTaskUpdate(agent, r.task_id, r.task, r.name);
+        });
 
         // Once this agent calls update_task with a settled change to the
         // project task Francis is discussing (see discussInfo above), apply

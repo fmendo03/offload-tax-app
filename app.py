@@ -7582,6 +7582,7 @@ def chat():
         task_context = str(data.get('task_context', '') or '').strip()
         project_context = str(data.get('project_context', '') or '').strip()
         is_task_run = bool(data.get('is_task_run'))
+        open_tasks = [t for t in (data.get('open_tasks') or []) if isinstance(t, dict) and t.get('id')][:10] if not data.get('is_task_run') else []
         # A Lana task that is preparing one interactive lesson (see create_lesson).
         is_lesson_run = bool(data.get('is_lesson')) and agent == 'lana' and is_task_run
 
@@ -7642,6 +7643,18 @@ def chat():
                 "other event you create with no such quote."
             )
 
+        if open_tasks:
+            lines = []
+            for t in open_tasks:
+                files = ", ".join(str(f)[:80] for f in (t.get('files') or [])[:6])
+                lines.append(
+                    f"- id {t['id']} | \"{str(t.get('name') or '')[:100]}\" | status: {str(t.get('status') or '')} "
+                    f"({'editable with refine_task' if t.get('editable') else 'already underway - not editable'}) | "
+                    f"task: {str(t.get('task') or '')[:600]}"
+                    + (f" | plan goal: {str(t['planGoal'])[:300]}" if t.get('planGoal') else '')
+                    + (f" | files given for it: {files}" if files else '')
+                )
+            system_prompt += "\n\nYOUR EXISTING TASKS:\n" + "\n".join(lines) + OPEN_TASKS_RULES
         if agent == 'lana':
             system_prompt += get_lana_context() + LANA_LESSON_RULES
             if is_lesson_run:
@@ -7748,6 +7761,9 @@ def chat():
             tools.append(MANAGE_CALENDAR_TOOL)
         if library_has_content():
             tools.append(SEARCH_LIBRARY_TOOL)
+        editable_task_ids = {str(t['id']) for t in open_tasks if t.get('editable')}
+        if editable_task_ids:
+            tools.append(REFINE_TASK_TOOL)
 
         # Build the conversation, then fold any attachments (images, PDFs, or
         # extracted text from Word/Excel/etc.) into the final turn's content as
@@ -7836,6 +7852,7 @@ def chat():
         propose_project = None
         propose_tasks = []
         add_lessons = []
+        task_refinements = []
         created_files = []
         social_draft = None
         task_update = None
@@ -7962,6 +7979,13 @@ def chat():
                         'data': base64.b64encode(lesson_json.encode('utf-8')).decode('ascii'),
                         'fileType': 'lesson', 'content': lesson_json
                     })
+            elif block_name == 'refine_task':
+                block_input = block.input or {}
+                refine_id = str(block_input.get('task_id') or '').strip()
+                refine_text = str(block_input.get('task') or '').strip()
+                if refine_id in editable_task_ids and refine_text:
+                    task_refinements = [r for r in task_refinements if r['task_id'] != refine_id]
+                    task_refinements.append({'task_id': refine_id, 'task': refine_text, 'name': str(block_input.get('name') or '').strip()[:100]})
             elif block_name == 'add_lessons' and agent == 'lana':
                 for x in ((block.input or {}).get('lessons') or [])[:4]:
                     if isinstance(x, dict) and str(x.get('task') or '').strip() and str(x.get('name') or '').strip():
@@ -8110,6 +8134,7 @@ def chat():
             'propose_project': propose_project,
             'propose_tasks': propose_tasks,
             'add_lessons': add_lessons,
+            'task_refinements': task_refinements,
             'created_files': created_files,
             'social_draft': social_draft,
             'task_update': task_update,
@@ -8300,7 +8325,8 @@ PROPOSE_TASK_TOOL = {
         "for every small clarifying detail Francis asks about after already proposing it - just "
         "answer the question directly. If you call this again for the same person after an earlier "
         "proposal that Francis hasn't accepted yet, it UPDATES that proposal in place (it does not "
-        "create a second one)."
+        "create a second one). If one of your EXISTING TASKS (listed in your context) already covers this - Francis is "
+        "discussing it, or answering your questions about it - do NOT propose a new task: use refine_task on that task."
     ),
     "input_schema": {
         "type": "object",
@@ -8451,6 +8477,37 @@ UPDATE_TASK_TOOL = {
         "required": ["task", "name"]
     }
 }
+
+REFINE_TASK_TOOL = {
+    "name": "refine_task",
+    "description": (
+        "Update one of YOUR EXISTING tasks (listed in your context as editable) when what you and Francis have been "
+        "discussing about that task has settled into a clearer or changed version of it - new details, answers to your "
+        "questions, a narrowed or expanded scope. It rewrites that task's description in place (its plan is redrafted); it "
+        "does NOT create a new task, and the files Francis sent for it stay attached. Use this instead of propose_task "
+        "whenever the work is the same task. Call it only once the change has actually settled, and always say in your "
+        "reply that you've updated the existing task."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "string", "description": "The id of the existing task, exactly as listed."},
+            "task": {"type": "string", "description": "The task's full new description, specific enough to act on without re-reading the conversation."},
+            "name": {"type": "string", "description": "A short 3-6 word title."}
+        },
+        "required": ["task_id", "task", "name"]
+    }
+}
+
+OPEN_TASKS_RULES = (
+    "\n\nThese tasks already exist for you in the app (you or Francis created them earlier). If what Francis is "
+    "saying - discussing, answering your questions, handing you the file you asked for - is about one of them, the "
+    "conversation IS about that task: never propose a new task for it. Files he sends in that conversation belong to "
+    "it (the app attaches them). When the discussion changes or sharpens the task, call refine_task for the one marked "
+    "editable and tell him you've updated the existing task; if it's already running or in review, say so and work "
+    "from it instead. Only propose a new task for genuinely separate work."
+)
+
 
 CONVERSATION_STYLE_INSTRUCTIONS = """
 
