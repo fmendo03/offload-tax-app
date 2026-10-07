@@ -2208,6 +2208,11 @@
 .lesson-ex-pron { font-size: 12px; color: #8a7a45; font-style: italic; }
 .lesson-speak { flex: none; width: 34px; height: 34px; border-radius: 50%; border: none; background: #ede6bd; cursor: pointer; font-size: 15px; }
 .lesson-speak:hover { background: #e0d58f; }
+.lesson-speak.playing { background: #d9c24f; box-shadow: 0 0 0 2px #b59d2b inset; }
+.lr-mic.listening { background: #ffd9d4; }
+/* Sound out and the mic never run together. */
+body.lesson-mic-on .lesson-speak { opacity: 0.4; pointer-events: none; }
+body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
 .lesson-practice { border-top: 2px dashed #e0d9b0; padding-top: 16px; }
 .lesson-instructions { margin: 6px 0 0; color: #6b5f36; font-style: italic; }
 .lesson-pending { padding: 24px; text-align: center; color: #8a7a45; }
@@ -15153,12 +15158,43 @@ function lessonPercent(lesson, progress) {
     return Math.round(100 * sum / items.length);
 }
 
-function speakLessonText(text, lang) {
+// Audio out and the mic never run together (the mic would hear the speaker and mark it right), and
+// pressing a button that's already going turns it off.
+const lessonVoice = { playingBtn: null, rec: null, micBtn: null, session: 0 };
+
+function stopLessonSpeech() {
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    if (lessonVoice.playingBtn) lessonVoice.playingBtn.classList.remove('playing');
+    lessonVoice.playingBtn = null;
+    document.body.classList.remove('lesson-audio-on');
+}
+
+function stopLessonMic() {
+    const rec = lessonVoice.rec;
+    lessonVoice.session++;        // a stop he asked for isn't an error to report: late events from this session are ignored
+    lessonVoice.rec = null;
+    if (lessonVoice.micBtn) { lessonVoice.micBtn.classList.remove('listening'); lessonVoice.micBtn.textContent = '🎤 Say it'; }
+    lessonVoice.micBtn = null;
+    document.body.classList.remove('lesson-mic-on');
+    if (rec) { try { rec.abort(); } catch (e) { /* already finished */ } }
+}
+
+function stopAllLessonVoice() { stopLessonSpeech(); stopLessonMic(); }
+
+function speakLessonText(text, lang, button) {
     if (!window.speechSynthesis) { alert("This browser can't read text aloud."); return; }
-    speechSynthesis.cancel();
+    if (lessonVoice.rec) return;                                        // the mic is listening
+    if (button && lessonVoice.playingBtn === button) { stopLessonSpeech(); return; }   // pressed again: stop
+    stopLessonSpeech();
     const utterance = new SpeechSynthesisUtterance(text);
     if (lang) utterance.lang = lang;
     utterance.rate = 0.85;
+    lessonVoice.playingBtn = button || null;
+    if (button) button.classList.add('playing');
+    document.body.classList.add('lesson-audio-on');
+    const done = () => { if (lessonVoice.playingBtn === (button || null)) stopLessonSpeech(); };
+    utterance.onend = done;
+    utterance.onerror = done;
     speechSynthesis.speak(utterance);
 }
 
@@ -15439,6 +15475,7 @@ function refreshLessonQuestion(file, root, i) {
 }
 
 function wireLessonView(file, content) {
+    stopAllLessonVoice();   // a freshly drawn page starts silent
     const root = content.querySelector('.lesson');
     if (!root) return;
     const act = file.activity || null;
@@ -15474,7 +15511,7 @@ function wireLessonView(file, content) {
     let matchPick = null;   // { i, k } the left tile waiting for its partner
     root.addEventListener('click', (e) => {
         const speakBtn = e.target.closest('.lesson-speak');
-        if (speakBtn) { e.preventDefault(); speakLessonText(speakBtn.dataset.text, speakBtn.dataset.lang); return; }
+        if (speakBtn) { e.preventDefault(); speakLessonText(speakBtn.dataset.text, speakBtn.dataset.lang, speakBtn); return; }
         if (progress.submitted) { /* a submitted quiz is read-only */ }
         const qEl = e.target.closest('.lesson-q');
         const i = qEl ? +qEl.dataset.i : null;
@@ -15523,19 +15560,34 @@ function wireLessonView(file, content) {
             if (self) { saveAnswer(i, self.dataset.v); refreshLessonQuestion(file, root, i); return; }
             const mic = e.target.closest('.lr-mic');
             if (mic) {
+                // Pressing it while it's listening turns it off; it can't start while audio is playing.
+                if (lessonVoice.rec) { stopLessonMic(); return; }
+                if (lessonVoice.playingBtn) return;
                 const heard = qEl.querySelector('.lr-heard');
-                mic.disabled = true;
-                mic.textContent = '🎤 Listening…';
-                listenForLessonSpeech(lesson.languageCode, (alternatives) => {
+                const session = ++lessonVoice.session;
+                lessonVoice.micBtn = mic;
+                mic.classList.add('listening');
+                mic.textContent = '🎤 Listening… tap to stop';
+                document.body.classList.add('lesson-mic-on');
+                const finish = () => {
+                    lessonVoice.rec = null; lessonVoice.micBtn = null;
+                    document.body.classList.remove('lesson-mic-on');
+                };
+                lessonVoice.rec = listenForLessonSpeech(lesson.languageCode, (alternatives) => {
+                    if (session !== lessonVoice.session) return;
+                    finish();
                     const target = lessonSpokenTarget(ex);
                     const best = alternatives.slice().sort((a, b) => lessonSimilarity(b, target) - lessonSimilarity(a, target))[0];
                     saveAnswer(i, ex.type === 'card' ? `said:${best}` : best);
                     refreshLessonQuestion(file, root, i);
                 }, (error) => {
-                    mic.disabled = false;
+                    if (session !== lessonVoice.session) return;
+                    finish();
+                    mic.classList.remove('listening');
                     mic.textContent = '🎤 Say it';
                     heard.textContent = error === 'not-allowed' ? 'Microphone access is blocked - allow it for this site to use this exercise.' : "I didn't catch that - try again.";
                 });
+                if (!lessonVoice.rec) { document.body.classList.remove('lesson-mic-on'); lessonVoice.micBtn = null; }
                 return;
             }
         }
