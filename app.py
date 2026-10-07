@@ -3265,9 +3265,13 @@ def calendar_checkins_today():
     try:
         sync_calendar_import()
         today_iso = today_local().isoformat()
+        # A to-do that's already checked off has nothing left to start or finish,
+        # so none of its blocks (splits included) get a check-in.
+        all_todos = load_todos()
         todays_events = [
             e for e in load_calendar_events()
             if not e.get('allDay') and e.get('status') == 'confirmed' and (e.get('start') or '').startswith(today_iso)
+            and not (_todo_for_event(all_todos, e) or {}).get('completed')
         ]
         todays_events.sort(key=lambda e: e['start'])
 
