@@ -2214,6 +2214,9 @@
 .lesson-activity-row .lesson-score-chip { margin-left: auto; }
 .lesson-activity-row .lesson-score-chip.pass { background: #e6f4ea; color: #1a6b1a; }
 .lesson-activity-row.locked { opacity: 0.65; cursor: pointer; }
+.lana-level-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: #555; }
+.lana-level-row select { font-size: 12px; padding: 3px 6px; }
+.lana-estimate { margin-top: 4px; font-size: 12px; font-weight: 600; color: #4b58c4; }
 /* Interactive Projects: a folder tree, not a task list. */
 .ip-project { margin-bottom: 10px; }
 .ip-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: white; border: 1px solid #e6e6e6; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
@@ -16345,7 +16348,43 @@ async function loadLanaSettings() {
     }
 }
 
+// Study hours it takes to finish each level (a typical figure for an English speaker learning a
+// Romance language) - the time estimate in Settings is these hours at his daily study time.
+const LANA_LEVELS = [
+    { id: 'beginner', label: 'Complete beginner', hours: 0 },
+    { id: 'A1', label: 'A1 · Beginner', hours: 80 },
+    { id: 'A2', label: 'A2 · Elementary', hours: 100 },
+    { id: 'B1', label: 'B1 · Intermediate', hours: 150 },
+    { id: 'B2', label: 'B2 · Upper intermediate', hours: 200 },
+    { id: 'C1', label: 'C1 · Advanced (proficient)', hours: 250 }
+];
+
+function lanaLevelIndex(id, fallback) {
+    const i = LANA_LEVELS.findIndex(l => l.id === id);
+    return i < 0 ? fallback : i;
+}
+
+// Hours from where he is to where he wants to be, and what that comes to at his daily study time.
+function lanaStudyEstimate(language, dailyMinutes) {
+    const from = lanaLevelIndex(language.level, 0);
+    const to = lanaLevelIndex(language.target, LANA_LEVELS.length - 1);
+    if (to <= from) return null;
+    const hours = LANA_LEVELS.slice(from + 1, to + 1).reduce((n, l) => n + l.hours, 0);
+    const days = Math.ceil(hours * 60 / dailyMinutes);
+    return { hours, days };
+}
+
+function formatStudyDuration(days) {
+    if (days < 14) return `${days} days`;
+    if (days < 84) return `about ${Math.round(days / 7)} weeks`;
+    const months = days / 30.4;
+    if (months < 24) return `about ${Math.round(months)} months`;
+    const years = Math.round(months / 6) / 2;   // nearest half year
+    return `about ${years} years`;
+}
+
 async function saveLanaSettings() {
+    renderLanaSettingsCard();   // the time estimates follow the new choice right away
     try {
         const response = await fetch('/lana/settings', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -16366,7 +16405,8 @@ function findLanguagePlan(languageName) {
 
 function startLanguagePlan(language) {
     selectAgent('lana');
-    inputBox.value = `I'd like to start learning ${language.name}${language.focus ? ` (${language.focus})` : ''}. I'm starting from zero and can study about ${lanaSettings.dailyMinutes} minutes a day. Please put together my learning plan.`;
+    const from = LANA_LEVELS[lanaLevelIndex(language.level, 0)], to = LANA_LEVELS[lanaLevelIndex(language.target, LANA_LEVELS.length - 1)];
+    inputBox.value = `I'd like to start learning ${language.name}${language.focus ? ` (${language.focus})` : ''}. I'm at ${from.id === 'beginner' ? 'complete beginner' : from.label}, I want to reach ${to.label}, and I can study about ${lanaSettings.dailyMinutes} minutes a day. Please put together my learning plan.`;
     autoGrowInputBox();
     sendMessage();
 }
@@ -16394,6 +16434,24 @@ function renderLanaSettingsCard() {
             status = `Plan in progress - ${done} of ${total} lessons done`;
         }
         info.appendChild(el('div', 'social-row-status', status));
+
+        // Where he is now, where he wants to get to, and how long that takes at his daily study time.
+        const levels = el('div', 'lana-level-row');
+        const levelSelect = (current, options, onPick) => {
+            const sel = el('select');
+            options.forEach(l => { const o = document.createElement('option'); o.value = l.id; o.textContent = l.label; if (l.id === current) o.selected = true; sel.appendChild(o); });
+            sel.addEventListener('change', () => { onPick(sel.value); saveLanaSettings(); });
+            return sel;
+        };
+        levels.appendChild(el('span', '', 'I am at'));
+        levels.appendChild(levelSelect(LANA_LEVELS[lanaLevelIndex(language.level, 0)].id, LANA_LEVELS.slice(0, -1), v => { language.level = v; }));
+        levels.appendChild(el('span', '', 'and want to reach'));
+        levels.appendChild(levelSelect(LANA_LEVELS[lanaLevelIndex(language.target, LANA_LEVELS.length - 1)].id, LANA_LEVELS.slice(1), v => { language.target = v; }));
+        info.appendChild(levels);
+        const estimate = lanaStudyEstimate(language, lanaSettings.dailyMinutes);
+        info.appendChild(el('div', 'lana-estimate', estimate
+            ? `⏱ Expect ${formatStudyDuration(estimate.days)} - about ${estimate.hours} hours of study, at ${lanaSettings.dailyMinutes} minutes a day`
+            : 'Pick a goal above your current level to see how long it takes.'));
         const actions = el('div', 'social-row-actions');
         if (plan && plan.status !== 'proposed') actions.appendChild(socialButton('Open plan', () => goToProject(plan.id)));
         else if (!plan) actions.appendChild(socialButton('Start plan', () => startLanguagePlan(language)));
@@ -16415,7 +16473,7 @@ function renderLanaSettingsCard() {
         const name = nameInput.value.trim();
         if (!name) { nameInput.focus(); return; }
         if (lanaSettings.languages.some(l => l.name.toLowerCase() === name.toLowerCase())) { nameInput.value = ''; return; }
-        lanaSettings.languages.push({ name, focus: focusInput.value.trim() });
+        lanaSettings.languages.push({ name, focus: focusInput.value.trim(), level: 'beginner', target: 'C1' });
         saveLanaSettings();
     });
     add.appendChild(nameInput); add.appendChild(focusInput); add.appendChild(list); add.appendChild(addBtn);

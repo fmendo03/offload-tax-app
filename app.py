@@ -4923,6 +4923,11 @@ def suggestions_reorder():
 LANA_SETTINGS_FILE = _data_path('lana_settings.json')
 lana_settings_lock = threading.Lock()
 LANA_DAILY_MINUTES = (15, 30, 45, 60, 90, 120)
+# Where he is now and where he wants to get to, per language (CEFR levels; 'beginner' = no experience yet).
+LANA_CURRENT_LEVELS = ('beginner', 'A1', 'A2', 'B1', 'B2', 'C1')
+LANA_TARGET_LEVELS = ('A1', 'A2', 'B1', 'B2', 'C1')
+LANA_LEVEL_NAMES = {'beginner': 'a complete beginner', 'A1': 'A1 (beginner)', 'A2': 'A2 (elementary)', 'B1': 'B1 (intermediate)',
+                    'B2': 'B2 (upper intermediate)', 'C1': 'C1 (advanced / proficient)'}
 
 
 def load_lana_settings():
@@ -4966,7 +4971,9 @@ def lana_settings_save():
             languages.append({
                 'id': re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or uuid.uuid4().hex[:8],
                 'name': name,
-                'focus': str(raw.get('focus') or '').strip()[:120]
+                'focus': str(raw.get('focus') or '').strip()[:120],
+                'level': raw.get('level') if raw.get('level') in LANA_CURRENT_LEVELS else 'beginner',
+                'target': raw.get('target') if raw.get('target') in LANA_TARGET_LEVELS else 'C1'
             })
         try:
             minutes = int(data.get('daily_minutes'))
@@ -4988,22 +4995,27 @@ def get_lana_context():
     settings = load_lana_settings()
     languages = settings['languages']
     if languages:
-        listing = "; ".join(l['name'] + (f" ({l['focus']})" if l.get('focus') else '') for l in languages)
+        listing = "; ".join(
+            l['name'] + (f" ({l['focus']})" if l.get('focus') else '')
+            + f" - currently {LANA_LEVEL_NAMES.get(l.get('level'), LANA_LEVEL_NAMES['beginner'])}, wants to reach {LANA_LEVEL_NAMES.get(l.get('target'), LANA_LEVEL_NAMES['C1'])}"
+            for l in languages)
         lang_line = f"Languages Francis chose to learn in Settings: {listing}."
     else:
         lang_line = "Francis hasn't picked a language to learn in Settings yet - if he wants to start one, ask which."
     return (
         "\n\nLANGUAGE SETTINGS (set by Francis in Settings > Agents > Lana): "
         f"{lang_line} He can study about {settings['dailyMinutes']} minutes a day. "
-        "Use these instead of asking again. Only ask what you still need (goal, preferred style, level if he isn't a "
-        "complete beginner), one question at a time."
+        "Use these instead of asking again - including his current and target level. The plan runs from his current level to "
+        "his target level and no further (fewer modules for a shorter journey; skip what he already knows). Only ask what "
+        "you still need (goal, preferred style), one question at a time."
     )
 
 
 LANA_LESSON_RULES = (
     "\n\nHow Lana's course works: a language course is an INTERACTIVE PROJECT - a folder you and Francis work through together (modules, lessons, exercises, quizzes) - not a job with tasks. The goal is real: take him "
     "from NOVICE to PROFICIENT, so the plan is long. Lay out the whole journey in propose_language_plan as a syllabus: "
-    "MODULES grouped by level (A1 beginner, A2, B1, B2, C1 - about 8 to 12 modules in all, each with a CEFR level and a "
+    "MODULES grouped by level (A1 beginner, A2, B1, B2, C1 - for a full novice-to-C1 journey about 8 to 12 modules in all, "
+    "fewer when his Settings show a shorter journey from his current level to his target level; each with a CEFR level and a "
     "rough timeframe). The FIRST module is spelled out as numbered LESSONS (about 12 to 15, sized to his daily study time), "
     "each with its specific TOPICS (the actual words, forms and skills it teaches - concrete, like \"all six forms of "
     "avere\"). Build the course around EVERYDAY SITUATIONS he will really talk about - ordering at a restaurant, a trip to "
@@ -5093,7 +5105,7 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
                     },
                     "required": ["name", "goal"]
                 },
-                "minItems": 4
+                "minItems": 2
             }
         },
         "required": ["language", "name", "summary", "modules"]
