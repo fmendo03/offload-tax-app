@@ -5554,7 +5554,7 @@ QUIZ_TOOL = {
 
 # What each exercise style asks the writer for.
 STYLE_GUIDE = {
-    'flashcards': "ONLY flash cards (type card): front = the target-language word or phrase, back = meaning plus a tip.",
+    'flashcards': "ONLY flash cards (type card): front = the target-language word or phrase, back = meaning plus a tip. ALWAYS set `speak` to exactly the single word or phrase he should say aloud for that card (plain words only - no slashes, dashes or letters spelled out), because he hears it and then says it into his mic and is marked on how close he gets.",
     'listening': "Listening items: every item has `speak` so he hears it - choice (pick what he heard / what it means) and fill (type what he heard).",
     'fill': "ONLY fill-in-the-blank items (type fill) in short sentences.",
     'matching': "ONLY match items (type match) with 4-6 pairs each; make 2-3 match items.",

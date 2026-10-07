@@ -2245,6 +2245,8 @@
 .lo-tile.built { background: #eef0ff; border-color: #667eea; }
 .lesson-repeat { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .lr-mic { background: #fff3f0; border-color: #e57373; }
+.lesson-card .lr-heard { margin-top: 8px; font-size: 13px; color: #555; text-align: center; }
+.lesson-card .lc-actions { flex-wrap: wrap; justify-content: center; }
 .lr-heard { flex-basis: 100%; font-size: 13px; color: #555; }
 .lesson-card { border: 1px solid #e3dcb8; background: #fdfbf1; border-radius: 12px; padding: 16px; text-align: center; }
 .lc-front { font-size: 22px; font-weight: 700; color: #2d2a1d; }
@@ -15068,6 +15070,23 @@ function lessonParse(answer, fallback) {
     try { return JSON.parse(answer); } catch (e) { return fallback; }
 }
 
+// What he's meant to say aloud for a flash card or a say-it-aloud item.
+function lessonSpokenTarget(ex) {
+    return String(ex.type === 'card' ? (ex.speak || ex.front) : (ex.answer || ex.speak || '')).replace(/[–—\/]/g, ' ');
+}
+
+function lessonSaidMatches(ex, said) {
+    return lessonSimilarity(said, lessonSpokenTarget(ex)) >= (ex.type === 'card' ? 0.7 : 0.75);
+}
+
+// The verdict shown right under the mic once he's spoken.
+function lessonSaidVerdict(ex, said) {
+    if (!said) return '';
+    return lessonSaidMatches(ex, said)
+        ? `✓ Good - I heard “${escapeHtml(said)}”.`
+        : `✗ I heard “${escapeHtml(said)}” - listen again and try once more.`;
+}
+
 // { status: 'correct'|'close'|'wrong'|'partial'|'blank', score: 0..1 }
 function gradeLessonItem(ex, answer) {
     const blank = { status: 'blank', score: 0 };
@@ -15093,8 +15112,9 @@ function gradeLessonItem(ex, answer) {
             if (!given) return blank;
             if (given === '__ok__') return ok;
             if (given === '__no__') return no;
-            return lessonSimilarity(given, ex.answer) >= 0.75 ? ok : no;
+            return lessonSaidMatches(ex, given) ? ok : no;
         case 'card':
+            if (given.startsWith('said:')) return lessonSaidMatches(ex, given.slice(5)) ? ok : no;
             return given === 'known' ? ok : (given === 'learning' ? no : blank);
         case 'choice': case 'odd':
             if (!given) return blank;
@@ -15194,18 +15214,25 @@ function renderLessonItemBody(ex, i, answer, code, flipped) {
                 ${supported
                     ? `<button type="button" class="lr-mic">🎤 Say it</button>`
                     : `<button type="button" class="lr-self" data-v="__ok__">I said it</button><button type="button" class="lr-self" data-v="__no__">Not yet</button>`}
-                <div class="lr-heard">${said ? `You said: “${escapeHtml(said)}”` : (answer === '__ok__' ? 'You said it.' : (answer === '__no__' ? 'Not yet - try again.' : ''))}</div>
+                <div class="lr-heard">${said ? lessonSaidVerdict(ex, said) : (answer === '__ok__' ? 'You said it.' : (answer === '__no__' ? 'Not yet - try again.' : ''))}</div>
             </div>`;
         }
-        case 'card':
+        case 'card': {
+            const supported = !!getSpeechRecognitionCtor();
+            const said = answer && String(answer).startsWith('said:') ? String(answer).slice(5) : '';
+            const verdict = said ? lessonSaidVerdict(ex, said) : (answer === 'known' ? 'You marked this one as known.' : (answer === 'learning' ? 'Marked as still learning.' : ''));
             return `<div class="lesson-card${flipped ? ' flipped' : ''}" data-i="${i}">
                 <div class="lc-face"><div class="lc-front">${escapeHtml(ex.front)}</div>${flipped ? `<div class="lc-back">${escapeHtml(ex.back)}</div>` : ''}</div>
                 <div class="lc-actions">
+                    <button type="button" class="lesson-speak lr-listen" data-text="${escapeHtml(ex.speak || ex.front)}" data-lang="${escapeHtml(code || '')}">🔊 Listen</button>
+                    ${supported
+                        ? `<button type="button" class="lr-mic">🎤 Say it</button>`
+                        : `<button type="button" class="lc-rate${answer === 'known' ? ' on' : ''}" data-v="known">I knew it</button><button type="button" class="lc-rate${answer === 'learning' ? ' on' : ''}" data-v="learning">Still learning</button>`}
                     <button type="button" class="lc-flip">${flipped ? 'Hide' : 'Flip'}</button>
-                    <button type="button" class="lc-rate${answer === 'known' ? ' on' : ''}" data-v="known">I knew it</button>
-                    <button type="button" class="lc-rate${answer === 'learning' ? ' on' : ''}" data-v="learning">Still learning</button>
                 </div>
+                <div class="lr-heard">${verdict}</div>
             </div>`;
+        }
         default:   // fill, translate
             return `<input type="text" class="lesson-input" data-i="${i}" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${ex.type === 'translate' ? 'Type the translation' : 'Type your answer'}" value="${escapeHtml(answer || '')}">`;
     }
@@ -15317,9 +15344,9 @@ function buildLessonHtml(file) {
 
 function lessonFeedbackText(ex, grade, answer) {
     const s = grade.status;
-    if (s === 'correct') return ex.type === 'card' ? '✓ Nice - that one is yours.' : '✓ Correct';
+    if (s === 'correct') return ex.type === 'card' ? '✓ Nice - you said it right.' : '✓ Correct';
     if (s === 'close') return `✓ Nearly - mind the accents: ${ex.answer}`;
-    if (ex.type === 'card') return `Keep at it: ${ex.front} = ${ex.back}`;
+    if (ex.type === 'card') return `${answer && String(answer).startsWith('said:') ? `I heard “${String(answer).slice(5)}”. ` : ''}Keep at it: ${ex.front} = ${ex.back}`;
     if (ex.type === 'match') return `${s === 'partial' ? 'Some right - ' : '✗ '}the pairs are: ${ex.pairs.map(p => `${p.left} = ${p.right}`).join('; ')}`;
     if (ex.type === 'repeat') return `${answer && !String(answer).startsWith('__') ? `I heard “${answer}”. ` : ''}The phrase is: ${ex.answer}`;
     if (s === 'blank') return `Not answered - the answer is: ${ex.answer}`;
@@ -15474,8 +15501,9 @@ function wireLessonView(file, content) {
                 mic.disabled = true;
                 mic.textContent = '🎤 Listening…';
                 listenForLessonSpeech(lesson.languageCode, (alternatives) => {
-                    const best = alternatives.slice().sort((a, b) => lessonSimilarity(b, ex.answer) - lessonSimilarity(a, ex.answer))[0];
-                    saveAnswer(i, best);
+                    const target = lessonSpokenTarget(ex);
+                    const best = alternatives.slice().sort((a, b) => lessonSimilarity(b, target) - lessonSimilarity(a, target))[0];
+                    saveAnswer(i, ex.type === 'card' ? `said:${best}` : best);
                     refreshLessonQuestion(file, root, i);
                 }, (error) => {
                     mic.disabled = false;
