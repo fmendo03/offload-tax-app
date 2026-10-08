@@ -5584,6 +5584,81 @@ STYLE_GUIDE = {
 
 # Fresh activities on demand: a lesson's quiz, an endless practice set, an extra exercise, or a module quiz. New
 # questions every time - earlier questions are passed in so none repeat.
+# The question bank: every item Lana's writer produces is kept, so a practice set or quiz can be put
+# together from questions that already exist - the ones he missed come back for another go, and the
+# AI is only asked to write whatever the bank can't cover. Saved with the rest of the app's data.
+LANA_BANK_FILE = _data_path('lana_bank.json')
+lana_bank_lock = threading.Lock()
+LANA_BANK_MAX = 4000
+
+
+def _bank_key(item):
+    text = str(item.get('prompt') or item.get('front') or item.get('answer') or '')
+    text = re.sub(r'\[\[|\]\]', '', text)
+    text = re.sub(r'\s*\(answer:.*\)\s*$', '', text)
+    return re.sub(r'\s+', ' ', text).strip().lower()
+
+
+def _bank_load():
+    if os.path.exists(LANA_BANK_FILE):
+        try:
+            with open(LANA_BANK_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+        except (json.JSONDecodeError, OSError):
+            pass
+    return []
+
+
+def _bank_add(language, lesson, topics, items):
+    if not items:
+        return
+    try:
+        with lana_bank_lock:
+            bank = _bank_load()
+            seen = {(b.get('language'), b.get('key')) for b in bank}
+            lang = language.lower()
+            for item in items:
+                key = _bank_key(item)
+                if key and (lang, key) not in seen:
+                    seen.add((lang, key))
+                    bank.append({'language': lang, 'lesson': lesson.lower(), 'topics': [t.lower() for t in topics][:30],
+                                 'key': key, 'item': item, 'createdAt': now_local().isoformat()})
+            with open(LANA_BANK_FILE, 'w', encoding='utf-8') as f:
+                json.dump(bank[-LANA_BANK_MAX:], f)
+    except Exception as e:
+        print(f"Question bank save error: {e}")
+
+
+# Up to `count` banked items for this language that belong to the lesson (or share a topic with the
+# request): first the ones he missed, then ones he hasn't seen. Returns the items and their keys.
+def _bank_pick(language, lesson, topics, avoid, weak, count):
+    bank = [b for b in _bank_load() if b.get('language') == language.lower()]
+    if not bank:
+        return []
+    seen = {_bank_key({'prompt': a}) for a in avoid}
+    missed = {_bank_key({'prompt': w}) for w in weak}
+    topic_set = {t.lower() for t in topics}
+    lesson_l = lesson.lower()
+    relevant = [b for b in bank if b.get('lesson') == lesson_l or topic_set & set(b.get('topics') or [])]
+    again = [b for b in relevant if b['key'] in missed][:max(1, count // 3)]
+    fresh = [b for b in relevant if b['key'] not in seen and b['key'] not in missed]
+    random.shuffle(fresh)
+    # A spread of item types rather than ten of one kind.
+    by_type = {}
+    for b in fresh:
+        by_type.setdefault(b['item'].get('type'), []).append(b)
+    spread = []
+    while len(spread) < count and any(by_type.values()):
+        for t in list(by_type):
+            if by_type[t] and len(spread) < count:
+                spread.append(by_type[t].pop())
+    chosen = (again + spread)[:count]
+    random.shuffle(chosen)
+    return [b['item'] for b in chosen]
+
+
 def _generate_activity(data):
     mode = str(data.get('mode') or 'module_quiz').strip()
     if mode not in ACTIVITY_GUIDE:
@@ -5599,9 +5674,32 @@ def _generate_activity(data):
     level = str(data.get('level') or '').strip()[:60]
     code = str(data.get('language_code') or '').strip()[:12]
     style = str(data.get('style') or '').strip()[:20]
+    kind = {'lesson_quiz': 'quiz', 'practice': 'practice', 'exercise': 'exercise', 'module_quiz': 'module_quiz'}[mode]
+    title = {'lesson_quiz': f"{lesson} - Quiz", 'practice': f"{lesson} - Practice", 'exercise': str(data.get('title') or 'Extra exercise').strip()[:100], 'module_quiz': f"{lesson} Quiz"}[mode]
+
+    # Practice sets and quizzes start from the question bank; only the shortfall is written fresh.
+    target_n = {'practice': 10, 'lesson_quiz': 12, 'module_quiz': 14}.get(mode)
+    picked = _bank_pick(language, lesson, topics, avoid, weak, target_n) if target_n else []
+    need = (target_n - len(picked)) if target_n else None
+    base = {'language': language, 'languageCode': code, 'level': level, 'lesson': lesson, 'objective': ''}
+
+    def finish(all_items):
+        activity = _make_activity(kind, title, base, all_items, topics=topics, story=story_out[0])
+        if mode == 'module_quiz':
+            activity['kind'] = 'quiz'          # the module quiz uses the existing retakeable page
+            activity['module'] = lesson
+            activity['objective'] = f"Check you've got everything in {lesson}. New questions every time you retake it."
+        return activity
+
+    story_out = [None]
+    if target_n and need <= 0:
+        return finish(picked), None
+    if picked:
+        avoid = avoid + [_bank_key(p) for p in picked]
 
     prompt = (
-        f"Write {ACTIVITY_GUIDE[mode]} in {language} for \"{lesson}\".\n"
+        (f"IMPORTANT: write exactly {need} items - the other {len(picked)} of the set are already chosen.\n" if picked else '')
+        + f"Write {ACTIVITY_GUIDE[mode]} in {language} for \"{lesson}\".\n"
         + (f"Cover these topics fairly evenly: {'; '.join(topics)}.\n" if topics else '')
         + (f"Focus: {focus}\n" if focus else '')
         + (f"Exercise style: {STYLE_GUIDE[style]}\n" if style in STYLE_GUIDE else (f"Preferred style: {style}.\n" if style and style != 'mixed' else ''))
@@ -5640,22 +5738,16 @@ def _generate_activity(data):
         if style == 'story' and not story:
             problem = 'That came back without a story - try again.'
             continue
-        if len(items) < minimum:
+        if len(items) + len(picked) < minimum:
             problem = 'That came back too short - try again.'
             continue
         problem = None
         break
     if problem:
         return None, problem
-    base = {'language': language, 'languageCode': code, 'level': level, 'lesson': lesson, 'objective': ''}
-    kind = {'lesson_quiz': 'quiz', 'practice': 'practice', 'exercise': 'exercise', 'module_quiz': 'module_quiz'}[mode]
-    title = {'lesson_quiz': f"{lesson} - Quiz", 'practice': f"{lesson} - Practice", 'exercise': str(data.get('title') or 'Extra exercise').strip()[:100], 'module_quiz': f"{lesson} Quiz"}[mode]
-    activity = _make_activity(kind, title, base, items, topics=topics, story=story)
-    if mode == 'module_quiz':
-        activity['kind'] = 'quiz'          # the module quiz uses the existing retakeable page
-        activity['module'] = lesson
-        activity['objective'] = f"Check you've got everything in {lesson}. New questions every time you retake it."
-    return activity, None
+    _bank_add(language, lesson, topics, items)
+    story_out[0] = story
+    return finish(picked + items), None
 
 
 @app.route('/lana/activity', methods=['POST'])
