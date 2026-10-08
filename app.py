@@ -63,6 +63,9 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 # The one model every AI call in the app uses - change it here.
 CLAUDE_MODEL = 'claude-sonnet-5-5'
+# Small, simple jobs (a short check-in line, sorting something into a category, matching a file to a task,
+# writing flash cards) run on the cheaper model - the main one is kept for chat, plans, files and quizzes.
+CLAUDE_FAST_MODEL = 'claude-haiku-4-5-20251001'
 
 
 # Where every *_FILE below actually lives. Defaults to the app's own
@@ -3325,7 +3328,7 @@ def calendar_checkins_today():
 
         try:
             response = claude_create(
-                model=CLAUDE_MODEL,
+                model=CLAUDE_FAST_MODEL,
                 max_tokens=150,
                 log_agent='ashanti',
                 system=get_agent_system_prompt('ashanti'),
@@ -3452,7 +3455,7 @@ def categorize_discussion_topic(text, details, existing_categories):
         "No other text, no explanation."
     )
     response = claude_create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_FAST_MODEL,
         max_tokens=150,
         messages=[{'role': 'user', 'content': prompt}]
     )
@@ -5399,6 +5402,8 @@ def _clean_item(ex):
         if not answer:
             return None
         words = [text(w, 60) for w in (ex.get('words') or []) if text(w, 60)][:16] or answer.split()
+        if len(words) < 3:
+            return None    # a word-order item needs a real sentence
         item.update(prompt=prompt or 'Put the words in order.', answer=answer, words=words,
                     accepted=[text(a, 300) for a in (ex.get('accepted') or []) if text(a, 300)][:6])
     elif kind == 'repeat':
@@ -5719,9 +5724,9 @@ def _generate_activity(data):
     minimum = 2 if style == 'matching' else (4 if mode == 'exercise' else 6)
     items, story = [], None
     problem = 'That came back without anything usable - try again.'
-    for _attempt in range(2):
+    for _attempt in range(1):   # no automatic retry - a repeat of the same request costs the same again
         response = claude_create(
-            log_agent='lana', log_purpose='lana_activity', model=CLAUDE_MODEL, max_tokens=7000,
+            log_agent='lana', log_purpose='lana_activity', model=(CLAUDE_FAST_MODEL if mode in ('exercise', 'practice') and style != 'story' else CLAUDE_MODEL), max_tokens=7000,
             system="You are Lana, a warm but rigorous language teacher writing practice material. Always return it by calling the make_quiz tool - never reply with plain text.",
             messages=[{'role': 'user', 'content': prompt + (f"\n\nGive at least {minimum + 2} items." if _attempt else '') + "\n\nCall make_quiz now with the finished items."}],
             tools=[QUIZ_TOOL]
@@ -5933,7 +5938,7 @@ def backgrounds(filename):
 # is opened on or after it), scenes are only written when the page is opened
 # (two per day, both in one call), and nothing runs on days it isn't opened.
 BREAKROOM_MODEL = 'claude-haiku-4-5-20251001'
-BREAKROOM_POOL_MODEL = CLAUDE_MODEL
+BREAKROOM_POOL_MODEL = CLAUDE_FAST_MODEL
 BREAKROOM_POOL_FILE = _data_path('breakroom_pool.json')
 BREAKROOM_SCENES_FILE = _data_path('breakroom_scenes.json')
 BREAKROOM_PREFS_FILE = _data_path('breakroom_prefs.json')
@@ -7964,7 +7969,7 @@ def classify_task_needed():
         attachment_names = [str(n)[:120] for n in (data.get('attachment_names') or []) if str(n).strip()][:10]
 
         response = claude_create(
-            model=CLAUDE_MODEL,
+            model=CLAUDE_FAST_MODEL,
             max_tokens=200,
             system=(
                 "You triage incoming requests to a team of AI assistants. Decide whether the request "
@@ -8034,7 +8039,7 @@ def match_file_to_task():
             f"Open tasks:\n{listing}\n\nCall match with the id of the task the files are for, or \"none\"."
         )
         response = claude_create(
-            log_agent=None, log_purpose='match_file_task', model=CLAUDE_MODEL, max_tokens=100,
+            log_agent=None, log_purpose='match_file_task', model=CLAUDE_FAST_MODEL, max_tokens=100,
             messages=[{'role': 'user', 'content': prompt}],
             tools=[MATCH_FILE_TASK_TOOL]
         )

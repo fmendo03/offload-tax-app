@@ -13615,14 +13615,13 @@ async function startProjectTask(agent, taskId, continueCount = 0, reminder = nul
     }
     const paused = !!(result && result.paused);
 
-    if (paused && continueCount + 1 < MAX_TASK_AUTO_CONTINUES) {
-        await startProjectTask(agent, taskId, continueCount + 1, result.reminder);
-    } else if (paused) {
-        // Hit the cap - stays 'paused' (already set by pauseProjectTask) for
-        // Francis to Resume by hand instead of silently looping forever.
+    // No automatic retry: if a run stops before it's finished, trying the exact same thing again
+    // would only cost the same again. It stays paused, and Resume is there when you want another go.
+    if (paused) {
+        const missing = result && result.reminder ? ' (it still needs to produce some of the files asked for)' : '';
         chatHistory[agent].push({
             type: 'agent',
-            text: `I've paused ${MAX_TASK_AUTO_CONTINUES} times on this without finishing - click Resume when you'd like me to keep going.`,
+            text: `I stopped before finishing${missing}. Nothing is retried automatically - press Resume when you'd like me to try again, or tell me what to change first.`,
             timestamp: new Date()
         });
         saveToLocalStorage(agent);
