@@ -2224,6 +2224,9 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
 .lesson-activity-row .lesson-score-chip { margin-left: auto; }
 .lesson-activity-row .lesson-score-chip.pass { background: #e6f4ea; color: #1a6b1a; }
 .lesson-activity-row.locked { opacity: 0.65; cursor: pointer; }
+.task-recurring-tag { background: #e8f4ff; color: #1a5a8a; margin-left: 6px; white-space: nowrap; }
+.task-countdown { background: #fff3d6; color: #8a5a00; white-space: nowrap; }
+.task-countdown.due { background: #ffe0dc; color: #a61a1a; }
 .lana-level-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: #555; }
 .lana-level-row select { font-size: 12px; padding: 3px 6px; }
 .lana-estimate { margin-top: 4px; font-size: 12px; font-weight: 600; color: #4b58c4; }
@@ -8681,6 +8684,57 @@ body.va-open #notification-toasts {
                 <label for="task-modal-text">Task Description <span class="required-asterisk">*</span></label>
                 <textarea id="task-modal-text" rows="3" placeholder="What should this agent do?"></textarea>
             </div>
+            <!-- Recurring: a repeating task is never completed - it counts down to its next run. -->
+            <div id="task-modal-repeat-section">
+                <div class="calendar-form-row">
+                    <label for="task-modal-repeat">Repeat</label>
+                    <select id="task-modal-repeat">
+                        <option value="">Does not repeat</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="yearly">Yearly</option>
+                    </select>
+                </div>
+                <div class="todos-recurrence-options" id="task-modal-recurrence-options" style="display:none;">
+                    <div class="todos-recurrence-row">
+                        <label>Every</label>
+                        <input type="number" id="task-modal-recurrence-interval" min="1" value="1">
+                        <span id="task-modal-recurrence-interval-unit">day(s)</span>
+                    </div>
+                    <div class="todos-recurrence-row" id="task-modal-recurrence-weekday-row" style="display:none;">
+                        <label>On</label>
+                        <div class="todos-weekday-toggles" id="task-modal-recurrence-weekdays"></div>
+                    </div>
+                    <div class="todos-recurrence-row" id="task-modal-recurrence-monthday-row" style="display:none;">
+                        <label>On day</label>
+                        <input type="number" id="task-modal-recurrence-monthday" min="1" max="31" value="1">
+                        <span>of the month</span>
+                    </div>
+                    <div class="todos-recurrence-row" id="task-modal-recurrence-yearly-row" style="display:none;">
+                        <label>On</label>
+                        <select id="task-modal-recurrence-month"></select>
+                        <input type="number" id="task-modal-recurrence-day" min="1" max="31" value="1">
+                    </div>
+                    <div class="todos-recurrence-row todos-recurrence-start-row">
+                        <label>Starts</label>
+                        <input type="date" id="task-modal-recurrence-start">
+                        <label>At</label>
+                        <input type="time" id="task-modal-recurrence-time" value="09:00">
+                    </div>
+                    <div class="todos-recurrence-row">
+                        <label>Ends</label>
+                        <select id="task-modal-recurrence-end-type">
+                            <option value="never">Never</option>
+                            <option value="on">On date</option>
+                        </select>
+                        <input type="date" id="task-modal-recurrence-end-date" style="display:none;">
+                    </div>
+                    <div class="todos-recurrence-row">
+                        <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="task-modal-autostart"> Start it automatically when it's due (otherwise you press Start)</label>
+                    </div>
+                </div>
+            </div>
             <div class="calendar-form-row">
                 <label>Attachments</label>
                 <div id="task-modal-attachments-zone"></div>
@@ -8689,6 +8743,7 @@ body.va-open #notification-toasts {
             <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 8px;">
                 <button id="task-modal-cancel-btn" type="button" style="padding: 10px 20px; background: #e0e0e0; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
                 <button id="task-modal-save-btn" type="button" style="padding: 10px 20px; background: #1F3A5F; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Save</button>
+                <button id="task-modal-save-repeat-btn" type="button" style="display:none; padding: 10px 20px; background: #1F3A5F; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Save repeat</button>
                 <button id="task-modal-discuss-btn" type="button" style="display:none; padding: 10px 20px; background: #5b3a9b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Discuss</button>
             </div>
         </div>
@@ -10771,6 +10826,7 @@ function appendTaskTreeRow(container, agent, task, taskExpanded) {
 
     taskTop.appendChild(chevronT);
     taskTop.appendChild(taskText);
+    if (task.recurrence) taskTop.appendChild(buildRecurringTag(task));
     taskRow.appendChild(taskTop);
     taskRow.appendChild(buildTaskActionsRow(agent, task));
     container.appendChild(taskRow);
@@ -12079,6 +12135,7 @@ function buildTaskRowWithFiles(agent, task, body) {
     text.addEventListener('click', () => { if (hasTextSelection()) return; markTaskViewed(agent, task.id); toggleTaskPlan(agent, task); });
 
     row.appendChild(text);
+    if (task.recurrence) row.appendChild(buildRecurringTag(task));
     row.appendChild(buildTaskActionsRow(agent, task));
     body.appendChild(row);
 
@@ -12928,12 +12985,188 @@ async function announceTaskPlanChange(agent, task, before, after) {
 function approveTask(agent, taskId) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task || task.status !== 'in_review') return;
+    if (task.recurrence) { finishRecurringRun(agent, task); return; }
     task.status = 'completed';
     task.completedAt = new Date();
     task.viewed = true;
     taskFeedbackOpen[taskId] = false;
     delete taskFeedbackDraft[taskId];
     refreshTaskViewsForAgent(agent);
+}
+
+// ---- Recurring tasks ----
+// A repeating task is never completed. It counts down to its next run; when that comes it's due (and
+// starts by itself if it was set to). Approving a finished run puts it straight back on the countdown.
+const RECURRING_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const RECURRING_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function localDateFromIso(iso) {
+    const [y, m, d] = String(iso).split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
+
+// What the form (same one the to-do's Repeat uses) produces, in the shape kept on the task.
+function readTaskRecurrenceForm(prefix) {
+    const raw = readNewTodoRecurrenceForm(prefix);
+    if (!raw) return null;
+    const rec = { freq: raw.freq, interval: raw.interval, startDate: raw.start_date, time: raw.time, endDate: raw.end_date || null };
+    if (raw.by_weekday) rec.byWeekday = raw.by_weekday;
+    if (raw.by_monthday) rec.byMonthday = raw.by_monthday;
+    if (raw.month) { rec.month = raw.month; rec.day = raw.day; }
+    return rec;
+}
+
+function fillRecurrenceForm(prefix, rec, autoStart) {
+    todoFormEl(prefix, 'repeat').value = rec.freq;
+    updateNewTodoRecurrenceVisibility(prefix);
+    todoFormEl(prefix, 'recurrence-interval').value = rec.interval || 1;
+    todoFormEl(prefix, 'recurrence-start').value = rec.startDate;
+    todoFormEl(prefix, 'recurrence-time').value = rec.time;
+    todoFormEl(prefix, 'recurrence-end-type').value = rec.endDate ? 'on' : 'never';
+    todoFormEl(prefix, 'recurrence-end-date').value = rec.endDate || '';
+    todoFormEl(prefix, 'recurrence-end-date').style.display = rec.endDate ? '' : 'none';
+    todoFormEl(prefix, 'recurrence-weekdays').querySelectorAll('.todos-weekday-toggle')
+        .forEach(b => b.classList.toggle('active', (rec.byWeekday || []).includes(+b.dataset.day)));
+    if (rec.byMonthday) todoFormEl(prefix, 'recurrence-monthday').value = rec.byMonthday;
+    if (rec.month) { todoFormEl(prefix, 'recurrence-month').value = String(rec.month); todoFormEl(prefix, 'recurrence-day').value = rec.day; }
+    document.getElementById(`${prefix}-autostart`).checked = !!autoStart;
+}
+
+// The first run time strictly after `from`, or null once the end date has passed.
+function recurrenceNextAfter(rec, from) {
+    const start = localDateFromIso(rec.startDate);
+    const end = rec.endDate ? localDateFromIso(rec.endDate) : null;
+    const [hh, mm] = String(rec.time || '09:00').split(':').map(Number);
+    const startWeek = new Date(start.getFullYear(), start.getMonth(), start.getDate() - start.getDay());
+    const interval = Math.max(1, rec.interval || 1);
+    const day = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+    if (day < start) day.setTime(start.getTime());
+    for (let n = 0; n < 4000; n++, day.setDate(day.getDate() + 1)) {
+        if (end && day > end) return null;
+        let matches = false;
+        if (rec.freq === 'daily') matches = Math.round((day - start) / 86400000) % interval === 0;
+        else if (rec.freq === 'weekly') matches = Math.floor(Math.round((day - startWeek) / 86400000) / 7) % interval === 0 && (rec.byWeekday || []).includes(day.getDay());
+        else if (rec.freq === 'monthly') matches = day.getDate() === rec.byMonthday && ((day.getFullYear() - start.getFullYear()) * 12 + day.getMonth() - start.getMonth()) % interval === 0;
+        else if (rec.freq === 'yearly') matches = day.getMonth() + 1 === rec.month && day.getDate() === rec.day && (day.getFullYear() - start.getFullYear()) % interval === 0;
+        if (!matches) continue;
+        const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hh, mm, 0, 0);
+        if (at > from) return at;
+    }
+    return null;
+}
+
+function describeRecurrence(rec) {
+    const every = rec.interval > 1 ? `Every ${rec.interval} ` : '';
+    const when = new Date(2000, 0, 1, ...String(rec.time || '09:00').split(':').map(Number)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    let text;
+    if (rec.freq === 'daily') text = rec.interval > 1 ? `${every}days` : 'Daily';
+    else if (rec.freq === 'weekly') text = `${every || 'Every '}${rec.interval > 1 ? 'weeks on ' : ''}${(rec.byWeekday || []).map(d => RECURRING_WEEKDAYS[d]).join(', ')}`;
+    else if (rec.freq === 'monthly') text = `${every || 'Every '}${rec.interval > 1 ? 'months' : 'month'} on day ${rec.byMonthday}`;
+    else text = `${every || 'Every '}${rec.interval > 1 ? 'years' : 'year'} on ${RECURRING_MONTHS[(rec.month || 1) - 1]} ${rec.day}`;
+    return `${text} at ${when}`;
+}
+
+function formatCountdown(ms) {
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return 'under a minute';
+    const d = Math.floor(minutes / 1440), h = Math.floor((minutes % 1440) / 60), m = minutes % 60;
+    if (d >= 2) return `${d}d ${h}h`;
+    if (d === 1) return `1d ${h}h`;
+    if (h >= 1) return `${h}h ${m}m`;
+    return `${m}m`;
+}
+
+function countdownLabel(task) {
+    if (!task.nextRun) return 'Series ended';
+    const left = new Date(task.nextRun) - Date.now();
+    return left <= 0 ? 'Due now' : `Next run in ${formatCountdown(left)}`;
+}
+
+function buildRecurringCountdownChip(task) {
+    const chip = document.createElement('span');
+    chip.className = 'workspace-input-tag task-countdown' + (task.due ? ' due' : '');
+    chip.dataset.taskId = task.id;
+    chip.textContent = `⏱ ${countdownLabel(task)}`;
+    chip.title = describeRecurrence(task.recurrence);
+    return chip;
+}
+
+function buildRecurringTag(task) {
+    const tag = document.createElement('span');
+    tag.className = 'workspace-input-tag task-recurring-tag';
+    tag.textContent = `🔁 ${describeRecurrence(task.recurrence)}`;
+    return tag;
+}
+
+// Starts (or restarts) the countdown.
+function setTaskRecurrence(task, rec, autoStart) {
+    task.recurrence = rec;
+    task.autoStart = !!autoStart;
+    const next = recurrenceNextAfter(rec, new Date());
+    task.nextRun = next ? next.toISOString() : null;
+    task.due = false;
+    if (task.status === 'completed') { task.status = 'not_started'; task.completedAt = null; task.startedAt = null; }
+}
+
+// Approved run: back to counting down, never "completed".
+function finishRecurringRun(agent, task) {
+    task.runCount = (task.runCount || 0) + 1;
+    task.lastRunAt = new Date().toISOString();
+    task.status = 'not_started';
+    task.startedAt = null;
+    task.completedAt = null;
+    task.viewed = true;
+    task.due = false;
+    const next = recurrenceNextAfter(task.recurrence, new Date());
+    task.nextRun = next ? next.toISOString() : null;
+    taskFeedbackOpen[task.id] = false;
+    delete taskFeedbackDraft[task.id];
+    refreshTaskViewsForAgent(agent);
+}
+
+// Called by the timer below: a countdown that reaches zero makes the task due.
+function checkRecurringTasks() {
+    let changed = false;
+    Object.keys(workspaceTasks).forEach(agent => {
+        (workspaceTasks[agent] || []).forEach(task => {
+            if (!task.recurrence || task.archived || task.status !== 'not_started' || task.due || !task.nextRun) return;
+            if (new Date(task.nextRun) > new Date()) return;
+            task.due = true;
+            changed = true;
+            const name = task.name || task.task;
+            postAgentChatMessage(agent, task.autoStart
+                ? `"${name}" is due - I'm starting it now.`
+                : `"${name}" is due - press Start in Projects & Tasks when you're ready and I'll do it.`);
+            if (task.autoStart) startProjectTask(agent, task.id);
+            else refreshTaskViewsForAgent(agent);
+        });
+    });
+    if (changed) saveWorkspaceTasks();
+}
+
+function tickRecurringTasks() {
+    checkRecurringTasks();
+    document.querySelectorAll('.task-countdown').forEach(chip => {
+        const task = Object.values(workspaceTasks).flat().find(t => t.id === chip.dataset.taskId);
+        if (task) chip.textContent = `⏱ ${countdownLabel(task)}`;
+    });
+}
+
+// "Save repeat" in an existing task's Edit window - changes only how it repeats.
+function saveTaskRecurrence() {
+    const taskId = document.getElementById('task-modal-task-id').value || null;
+    const agent = document.getElementById('task-modal-agent-orig').value || null;
+    const task = taskId ? findWorkspaceTaskById(agent, taskId) : null;
+    if (!task) return;
+    if (!document.getElementById('task-modal-repeat').value) {
+        delete task.recurrence; delete task.nextRun; delete task.autoStart; delete task.due;
+    } else {
+        const rec = readTaskRecurrenceForm('task-modal');
+        if (!rec) return;
+        setTaskRecurrence(task, rec, document.getElementById('task-modal-autostart').checked);
+    }
+    refreshTaskViewsForAgent(agent);
+    closeTaskModal();
 }
 
 function openTaskFeedback(agent, taskId) {
@@ -13059,6 +13292,8 @@ function buildTaskActionsRow(agent, task) {
         // produces shows as its own card below, with its own Preview/Download.
         const startBtn = document.createElement('button');
         startBtn.type = 'button';
+        // A repeating task shows how long until its next run.
+        if (task.recurrence && task.status === 'not_started') actions.appendChild(buildRecurringCountdownChip(task));
         const stepInfo = task.status === 'not_started' ? getProjectStepInfo(task) : null;
         if (stepInfo && stepInfo.blocker) {
             startBtn.className = 'task-action-btn start';
@@ -13067,7 +13302,8 @@ function buildTaskActionsRow(agent, task) {
             startBtn.title = `Step ${stepInfo.step} - starts once "${stepInfo.blocker.name || stepInfo.blocker.task}" is completed`;
         } else if (task.status === 'not_started') {
             startBtn.className = 'task-action-btn solid-start';
-            startBtn.textContent = 'Start';
+            startBtn.textContent = task.recurrence && !task.due ? 'Run now' : 'Start';
+            if (task.recurrence && !task.due) startBtn.title = 'Run it now without waiting - the countdown to the next scheduled run carries on';
             startBtn.addEventListener('click', stop(() => startProjectTask(agent, task.id)));
         } else if (task.status === 'paused') {
             startBtn.className = 'task-action-btn solid-start';
@@ -13117,7 +13353,8 @@ function buildTaskActionsRow(agent, task) {
                 completeBtn.disabled = true;
                 completeBtn.title = `Every exercise at ${LESSON_PASS_PERCENT}% opens the quiz; ${LESSON_PASS_PERCENT}% on the quiz completes the lesson.`;
             } else {
-                completeBtn.textContent = 'Approve & Complete';
+                completeBtn.textContent = task.recurrence ? 'Approve' : 'Approve & Complete';
+                if (task.recurrence) completeBtn.title = 'Approve this run - the countdown to the next one starts';
                 completeBtn.addEventListener('click', stop(() => approveTask(agent, task.id)));
             }
         } else if (task.status !== 'completed') {
@@ -13129,7 +13366,8 @@ function buildTaskActionsRow(agent, task) {
             completeBtn.textContent = 'Completed';
             completeBtn.addEventListener('click', stop(() => unmarkProjectTaskComplete(agent, task.id)));
         }
-        actions.appendChild(completeBtn);
+        // A repeating task is never completed - only a finished run is approved.
+        if (!(task.recurrence && task.status !== 'in_review')) actions.appendChild(completeBtn);
 
         if (task.status === 'in_review' && !(task.isLesson && !task.isQuiz)) {
             const changesBtn = document.createElement('button');
@@ -13657,6 +13895,7 @@ function pauseProjectTask(agent, taskId, createdFiles) {
 function countWorkspacePendingTasks(agent) {
     return (workspaceTasks[agent] || []).filter(t => {
         if (t.archived || t.isLesson) return false;
+        if (t.recurrence && t.status === 'not_started' && !t.due) return false;   // just counting down
         return t.status !== 'completed' || !t.viewed;
     }).length;
 }
@@ -17360,6 +17599,13 @@ function openTaskModal(projectId, agent, taskId) {
     document.getElementById('task-modal-name').value = editing ? (task.name || '') : '';
     document.getElementById('task-modal-text').value = editing ? task.task : '';
 
+    // Repeating only makes sense for a task on its own, not a step in a project.
+    document.getElementById('task-modal-repeat-section').style.display = projectId ? 'none' : '';
+    resetNewTodoRecurrenceUi('task-modal');
+    document.getElementById('task-modal-autostart').checked = false;
+    if (editing && task.recurrence) fillRecurrenceForm('task-modal', task.recurrence, !!task.autoStart);
+    document.getElementById('task-modal-save-repeat-btn').style.display = editing && !projectId ? 'inline-block' : 'none';
+
     // Editing an existing task (standalone or in a project) swaps Save for a "Discuss
     // with..." button - sends whatever's currently typed to a chat as a
     // reply-quote (see discussTaskWithAgent) instead of silently overwriting
@@ -17387,6 +17633,11 @@ function saveTaskModal() {
     const taskName = document.getElementById('task-modal-name').value.trim();
     const taskText = document.getElementById('task-modal-text').value.trim();
     if (!agent || !taskText) { alert('Please choose an agent and describe the task.'); return; }
+    let recurrence = null;
+    if (!projectId && !taskId && document.getElementById('task-modal-repeat').value) {
+        recurrence = readTaskRecurrenceForm('task-modal');
+        if (!recurrence) return;
+    }
 
     // A project id is only expected/used when this task belongs to one - a
     // task (see createTaskEntry) never has one, so projectId being
@@ -17417,6 +17668,7 @@ function saveTaskModal() {
     } else {
         const created = createTaskEntry(agent, taskText, new Date(), taskName || null);
         created.attachments = [...taskModalAttachments];
+        if (recurrence) setTaskRecurrence(created, recurrence, document.getElementById('task-modal-autostart').checked);
         saveWorkspaceTasks();
         setActivePreview({ type: 'task', agent, taskId: created.id });
     }
@@ -24938,7 +25190,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const startDate = todoFormEl(prefix, 'recurrence-start').value;
             const time = todoFormEl(prefix, 'recurrence-time').value;
             if (!startDate || !time) {
-                alert('Please choose a start date and time for the repeating to-do.');
+                alert('Please choose a start date and time for the repeat.');
                 return null;
             }
             const recurrence = {
@@ -28044,6 +28296,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('task-modal-save-btn').addEventListener('click', saveTaskModal);
         document.getElementById('task-modal-attachments-zone').appendChild(buildAttachmentDropzone(taskModalAttachments, refreshTaskModalAttachments));
         document.getElementById('task-modal-discuss-btn').addEventListener('click', discussTaskWithAgent);
+        document.getElementById('task-modal-save-repeat-btn').addEventListener('click', saveTaskRecurrence);
+        initNewTodoRecurrenceUi('task-modal');
+        setInterval(tickRecurringTasks, 30000);
+        setTimeout(tickRecurringTasks, 2000);
         document.getElementById('task-modal').addEventListener('click', (e) => {
             if (e.target.id === 'task-modal') closeTaskModal();
         });
