@@ -477,11 +477,13 @@ MODEL_PRICING = {
 WEB_SEARCH_COST_EACH = 0.01
 
 
-def _estimate_call_cost(model, input_tokens, output_tokens, cache_write, cache_read, web_searches):
+def _estimate_call_cost(model, input_tokens, output_tokens, cache_write, cache_read, web_searches, cache_write_1h=0):
     price = MODEL_PRICING.get(model) or MODEL_PRICING['claude-sonnet-5']
+    # A 1-hour cache write costs twice the normal input price; a 5-minute one 1.25x.
     return (
         input_tokens * price['input'] + output_tokens * price['output']
-        + cache_write * price['cache_write'] + cache_read * price['cache_read']
+        + (cache_write - cache_write_1h) * price['cache_write'] + cache_write_1h * price['input'] * 2
+        + cache_read * price['cache_read']
     ) / 1_000_000 + web_searches * WEB_SEARCH_COST_EACH
 
 
@@ -494,12 +496,14 @@ def _log_claude_usage(purpose, agent, model, response):
         output_tokens = int(getattr(usage, 'output_tokens', 0) or 0)
         cache_write = int(getattr(usage, 'cache_creation_input_tokens', 0) or 0)
         cache_read = int(getattr(usage, 'cache_read_input_tokens', 0) or 0)
+        detail = getattr(usage, 'cache_creation', None)
+        cache_write_1h = int(getattr(detail, 'ephemeral_1h_input_tokens', 0) or 0) if detail else 0
         entry = {
             'ts': now_local().isoformat(), 'purpose': purpose, 'agent': agent, 'model': model,
             'input_tokens': input_tokens, 'output_tokens': output_tokens,
             'cache_write_tokens': cache_write, 'cache_read_tokens': cache_read,
             'web_searches': web_searches,
-            'cost': round(_estimate_call_cost(model, input_tokens, output_tokens, cache_write, cache_read, web_searches), 6)
+            'cost': round(_estimate_call_cost(model, input_tokens, output_tokens, cache_write, cache_read, web_searches, cache_write_1h), 6)
         }
         with usage_log_lock:
             with open(USAGE_LOG_FILE, 'a', encoding='utf-8') as f:
@@ -522,9 +526,11 @@ def claude_create(log_agent=None, log_purpose=None, **kwargs):
 # task context, an abbreviated older history) comes last, uncached - a change
 # anywhere only invalidates what comes after it.
 def build_system_blocks(static_text, notes_text, volatile_text):
-    blocks = [{'type': 'text', 'text': static_text, 'cache_control': {'type': 'ephemeral'}}]
+    # Kept for an hour rather than the default 5 minutes: a message after a pause then reads the setup
+    # back cheaply instead of paying to load it again.
+    blocks = [{'type': 'text', 'text': static_text, 'cache_control': {'type': 'ephemeral', 'ttl': '1h'}}]
     if notes_text.strip():
-        blocks.append({'type': 'text', 'text': notes_text, 'cache_control': {'type': 'ephemeral'}})
+        blocks.append({'type': 'text', 'text': notes_text, 'cache_control': {'type': 'ephemeral', 'ttl': '1h'}})
     if volatile_text.strip():
         blocks.append({'type': 'text', 'text': volatile_text})
     return blocks
