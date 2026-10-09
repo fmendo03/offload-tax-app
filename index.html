@@ -243,186 +243,6 @@
             margin-top: 4px;
         }
 
-        /* Break Room - a scrolling feed of short scenes where the agents chat
-           about one real, specific thing (see /breakroom/* in app.py). */
-        .breakroom-toolbar {
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-            padding: 10px 28px;
-            background: white;
-            border-bottom: 1px solid #e6e6e6;
-        }
-
-        .breakroom-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-
-        .breakroom-chip {
-            border: 1px solid #d8d8e6;
-            background: white;
-            color: #555;
-            border-radius: 999px;
-            padding: 4px 12px;
-            font-size: 13px;
-            cursor: pointer;
-        }
-
-        .breakroom-chip:hover { border-color: #667eea; color: #667eea; }
-        .breakroom-chip.active { background: #667eea; border-color: #667eea; color: white; }
-
-        .breakroom-status { font-size: 13px; color: #777; }
-
-        .breakroom-feed-scroll { flex: 1; overflow-y: auto; padding: 20px 16px 40px; }
-
-        .breakroom-feed { max-width: 660px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
-
-        .breakroom-notice {
-            text-align: center;
-            color: #777;
-            font-size: 14px;
-            padding: 22px 12px;
-            background: white;
-            border: 1px dashed #d8d8e6;
-            border-radius: 12px;
-        }
-
-        .breakroom-notice button {
-            margin-top: 10px;
-            border: none;
-            background: #667eea;
-            color: white;
-            border-radius: 8px;
-            padding: 7px 16px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-
-        .breakroom-card {
-            background: white;
-            border: 1px solid #e6e6ee;
-            border-radius: 14px;
-            padding: 16px 18px 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-        }
-
-        .breakroom-card-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888; margin-bottom: 4px; }
-
-        .breakroom-tag {
-            background: #eef0ff;
-            color: #4b58c4;
-            border-radius: 999px;
-            padding: 2px 10px;
-            font-weight: 700;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-        }
-
-        .breakroom-card-title { font-size: 18px; font-weight: 800; color: #222; margin: 2px 0 2px; line-height: 1.3; }
-
-        .breakroom-source { font-size: 12px; color: #667eea; text-decoration: none; }
-        .breakroom-source:hover { text-decoration: underline; }
-
-        .breakroom-lines { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 12px; }
-
-        .breakroom-line { display: flex; gap: 10px; align-items: flex-start; }
-
-        .breakroom-line.you { flex-direction: row-reverse; }
-
-        .breakroom-avatar {
-            flex: 0 0 38px;
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
-            overflow: hidden;
-            border: 2px solid var(--agent-color, #bbb);
-            background: #f2f2f2;
-        }
-
-        .breakroom-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: 50% 12%;
-            transform: scale(1.9);
-            transform-origin: 50% 18%;
-        }
-
-        .breakroom-avatar.you {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #667eea;
-            border-color: #667eea;
-            color: white;
-            font-weight: 800;
-            font-size: 13px;
-        }
-
-        .breakroom-bubble {
-            background: #f4f5fa;
-            border-radius: 4px 14px 14px 14px;
-            padding: 8px 12px;
-            font-size: 14px;
-            line-height: 1.45;
-            color: #2b2b2b;
-            min-width: 0;
-        }
-
-        .breakroom-line.you .breakroom-bubble { background: #e8ebff; border-radius: 14px 4px 14px 14px; }
-
-        .breakroom-bubble .breakroom-speaker { font-weight: 800; font-size: 12px; color: var(--agent-color, #555); display: block; margin-bottom: 1px; }
-
-        .breakroom-takeaway {
-            background: #fff8e6;
-            border-left: 4px solid #f5b301;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 14px;
-            color: #4a3b00;
-            margin-bottom: 10px;
-        }
-
-        .breakroom-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid #f0f0f5; padding-top: 8px; }
-
-        .breakroom-action-btn {
-            border: 1px solid #e0e0ea;
-            background: white;
-            border-radius: 8px;
-            padding: 4px 11px;
-            font-size: 13px;
-            color: #555;
-            cursor: pointer;
-        }
-
-        .breakroom-action-btn:hover { border-color: #667eea; color: #667eea; }
-        .breakroom-action-btn.on { background: #eef0ff; border-color: #667eea; color: #4b58c4; font-weight: 700; }
-
-        .breakroom-reply { display: flex; gap: 8px; width: 100%; margin-top: 4px; }
-
-        .breakroom-reply input {
-            flex: 1;
-            border: 1px solid #d8d8e6;
-            border-radius: 8px;
-            padding: 7px 10px;
-            font-size: 14px;
-            font-family: inherit;
-        }
-
-        .breakroom-reply button {
-            border: none;
-            background: #667eea;
-            color: white;
-            border-radius: 8px;
-            padding: 0 14px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-
-        .breakroom-reply button:disabled { opacity: 0.6; cursor: default; }
-
         /* Projects / Archived full pages - same slot as home-view/landing-view */
         .page-view {
             flex: 1;
@@ -7606,7 +7426,6 @@ body.va-open #notification-toasts {
             <button id="topics-nav-btn" class="home-nav-btn">&#128172; Discussion Topics</button>
             <button id="archive-nav-btn" class="home-nav-btn">&#128451;&#65039; Archived</button>
             <button id="knowledgebase-nav-btn" class="home-nav-btn">&#128218; Knowledge Base</button>
-            <button id="breakroom-nav-btn" class="home-nav-btn">&#9749; Break Room</button>
             <button id="suggestions-nav-btn" class="home-nav-btn">&#128161; Suggestions</button>
             <button id="settings-nav-btn" class="home-nav-btn">&#9881;&#65039; Settings</button>
             <button id="sidebar-logout-btn" class="sidebar-logout-btn" type="button">&#8618; Log Out</button>
@@ -8255,20 +8074,6 @@ body.va-open #notification-toasts {
                         <div id="reminders-list"></div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Break Room - the agents hanging out, nothing to do with work: a
-             feed of short chats about one real thing each (see /breakroom/*
-             in app.py). New scenes are only written when this page is opened. -->
-        <div class="page-view" id="breakroom-view" style="display: none;">
-            <div class="page-view-header"><h1>Break Room</h1><div class="agent-quickbar" id="breakroom-agent-quickbar"></div></div>
-            <div class="breakroom-toolbar">
-                <div class="breakroom-chips" id="breakroom-chips"></div>
-                <div class="breakroom-status" id="breakroom-status"></div>
-            </div>
-            <div class="breakroom-feed-scroll">
-                <div class="breakroom-feed" id="breakroom-feed"></div>
             </div>
         </div>
 
@@ -8973,7 +8778,6 @@ body.va-open #notification-toasts {
                 else if (descriptor.kind === 'todos') showTodosPage();
                 else if (descriptor.kind === 'reminders') showRemindersPage();
                 else if (descriptor.kind === 'suggestions') showSuggestionsPage();
-                else if (descriptor.kind === 'breakroom') showBreakroomPage();
                 else if (descriptor.kind === 'settings') showSettingsPage();
             } finally {
                 suppressNavHistory = false;
@@ -17826,7 +17630,7 @@ function capitalizeAgent(agent) {
             });
         }
 
-        const AGENT_QUICKBAR_PAGES = ['chat', 'projects', 'todos', 'calendar', 'topics', 'archive', 'knowledgebase', 'breakroom'];
+        const AGENT_QUICKBAR_PAGES = ['chat', 'projects', 'todos', 'calendar', 'topics', 'archive', 'knowledgebase'];
 
         // Select an agent
  // Which tab of the agent's right pane is showing. The chat is display:none
@@ -20184,7 +19988,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function hideAllSpecialViews() {
             if (kbPollInterval) { clearInterval(kbPollInterval); kbPollInterval = null; }
             if (calendarPollInterval) { clearInterval(calendarPollInterval); calendarPollInterval = null; }
-            if (typeof stopBreakroomPolling === 'function') stopBreakroomPolling();
             document.getElementById('landing-view').style.display = 'none';
             document.getElementById('home-view').style.display = 'none';
             document.getElementById('projects-view').style.display = 'none';
@@ -20196,7 +19999,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('todos-view').style.display = 'none';
             document.getElementById('reminders-view').style.display = 'none';
             document.getElementById('suggestions-view').style.display = 'none';
-            document.getElementById('breakroom-view').style.display = 'none';
             document.getElementById('settings-view').style.display = 'none';
             document.getElementById('landing-nav-btn').classList.remove('active');
             document.getElementById('home-nav-btn').classList.remove('active');
@@ -20209,7 +20011,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.getElementById('todos-nav-btn').classList.remove('active');
             document.getElementById('reminders-nav-btn').classList.remove('active');
             document.getElementById('suggestions-nav-btn').classList.remove('active');
-            document.getElementById('breakroom-nav-btn').classList.remove('active');
             document.getElementById('settings-nav-btn').classList.remove('active');
         }
 
@@ -27200,287 +27001,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
         }
 
-        // --- Break Room ---
-        // The feed is written by the server (Haiku) only when this page is
-        // opened - at most two new scenes a day - so opening it is the one
-        // thing that costs anything. The page polls with ?poll=1, which only
-        // reads, while a scene is being written.
-        let breakroomState = { scenes: [], generating: false, remainingToday: 0, poolExhausted: false, error: null, categories: [] };
-        let breakroomFilter = 'All';
-        let breakroomPollTimer = null;
-        let breakroomLoaded = false;
-        let breakroomOpenReplyId = null;
-        const breakroomReplySending = new Set();
-
-        function stopBreakroomPolling() {
-            if (breakroomPollTimer) { clearTimeout(breakroomPollTimer); breakroomPollTimer = null; }
-        }
-
-        async function loadBreakroom(poll) {
-            stopBreakroomPolling();
-            try {
-                const response = await fetch(poll ? '/breakroom/feed?poll=1' : '/breakroom/feed');
-                const data = await response.json();
-                if (!data.success) throw new Error(data.error || 'Could not load the break room');
-                breakroomState = data;
-                breakroomLoaded = true;
-            } catch (error) {
-                console.error('Failed to load break room:', error);
-                breakroomState = { ...breakroomState, generating: false, error: 'Could not reach the break room. Try again.' };
-            }
-            renderBreakroom();
-            const view = document.getElementById('breakroom-view');
-            if (breakroomState.generating && view && view.style.display !== 'none') {
-                breakroomPollTimer = setTimeout(() => loadBreakroom(true), 3000);
-            }
-        }
-
-        function showBreakroomPage() {
-            currentAgent = null;
-            document.getElementById('content-wrapper').style.display = 'none';
-            hideAllSpecialViews();
-            clearSidebarActiveState();
-            document.getElementById('breakroom-view').style.display = 'flex';
-            document.getElementById('breakroom-nav-btn').classList.add('active');
-            renderBreakroom();
-            loadBreakroom(false);
-            recordNavHistory({ kind: 'breakroom' });
-        }
-
-        function formatBreakroomDate(isoDate) {
-            const parts = String(isoDate || '').split('-').map(Number);
-            if (parts.length !== 3 || parts.some(isNaN)) return '';
-            const d = new Date(parts[0], parts[1] - 1, parts[2]);
-            const today = new Date();
-            const startOf = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-            const days = Math.round((startOf(today) - startOf(d)) / 86400000);
-            if (days === 0) return 'Today';
-            if (days === 1) return 'Yesterday';
-            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        }
-
-        function renderBreakroom() {
-            const st = breakroomState;
-            const feed = document.getElementById('breakroom-feed');
-            const chips = document.getElementById('breakroom-chips');
-            const status = document.getElementById('breakroom-status');
-            if (!feed) return;
-
-            const present = new Set(st.scenes.map(s => s.category));
-            const names = ['All', ...(st.categories || []).filter(c => present.has(c))];
-            if (!names.includes(breakroomFilter)) breakroomFilter = 'All';
-            chips.innerHTML = '';
-            names.forEach(name => {
-                const chip = document.createElement('button');
-                chip.type = 'button';
-                chip.className = 'breakroom-chip' + (name === breakroomFilter ? ' active' : '');
-                chip.textContent = name;
-                chip.addEventListener('click', () => { breakroomFilter = name; renderBreakroom(); });
-                chips.appendChild(chip);
-            });
-            names.length > 2 ? chips.style.display = 'flex' : chips.style.display = 'none';
-
-            if (st.generating) status.textContent = 'The team is on a break... writing today’s scenes';
-            else if (st.poolExhausted) status.textContent = 'Out of fresh topics until Wednesday';
-            else if (st.remainingToday > 0 && breakroomLoaded && !st.error) status.textContent = '';
-            else status.textContent = breakroomLoaded ? 'That’s today’s break — new scenes tomorrow' : '';
-
-            feed.innerHTML = '';
-            if (st.generating) {
-                const note = document.createElement('div');
-                note.className = 'breakroom-notice';
-                note.textContent = st.scenes.length
-                    ? 'New scenes are being written — this can take up to a minute.'
-                    : 'The team is gathering this week’s topics and starting to chat. This can take up to a minute.';
-                feed.appendChild(note);
-            }
-            if (st.error && !st.generating) {
-                const note = document.createElement('div');
-                note.className = 'breakroom-notice';
-                note.textContent = 'The team couldn’t get today’s scenes together (' + st.error + ').';
-                const retry = document.createElement('button');
-                retry.type = 'button';
-                retry.textContent = 'Try again';
-                retry.addEventListener('click', () => loadBreakroom(false));
-                note.appendChild(document.createElement('br'));
-                note.appendChild(retry);
-                feed.appendChild(note);
-            }
-            const scenes = st.scenes.filter(s => breakroomFilter === 'All' || s.category === breakroomFilter);
-            scenes.forEach(scene => feed.appendChild(buildBreakroomCard(scene)));
-            if (!scenes.length && !st.generating && !st.error && breakroomLoaded) {
-                const note = document.createElement('div');
-                note.className = 'breakroom-notice';
-                note.textContent = st.scenes.length ? 'Nothing in this category yet.' : 'Nothing in the break room yet.';
-                feed.appendChild(note);
-            }
-        }
-
-        function buildBreakroomLine(line) {
-            const row = document.createElement('div');
-            const isYou = line.agent === 'you';
-            row.className = 'breakroom-line' + (isYou ? ' you' : '');
-            const avatar = document.createElement('div');
-            avatar.className = 'breakroom-avatar' + (isYou ? ' you' : '');
-            const bubble = document.createElement('div');
-            bubble.className = 'breakroom-bubble';
-            if (isYou) {
-                avatar.textContent = 'You';
-            } else {
-                avatar.style.setProperty('--agent-color', agentColors[line.agent] || '#bbb');
-                const img = document.createElement('img');
-                img.src = `avatars/${line.agent}.png`;
-                img.alt = '';
-                avatar.appendChild(img);
-                bubble.style.setProperty('--agent-color', agentColors[line.agent] || '#555');
-                const who = document.createElement('span');
-                who.className = 'breakroom-speaker';
-                who.textContent = (agentInfo[line.agent] || {}).name || line.agent;
-                bubble.appendChild(who);
-            }
-            bubble.appendChild(document.createTextNode(line.text));
-            row.appendChild(avatar);
-            row.appendChild(bubble);
-            return row;
-        }
-
-        function buildBreakroomCard(scene) {
-            const card = document.createElement('div');
-            card.className = 'breakroom-card';
-            card.dataset.sceneId = scene.id;
-
-            const meta = document.createElement('div');
-            meta.className = 'breakroom-card-meta';
-            const tag = document.createElement('span');
-            tag.className = 'breakroom-tag';
-            tag.textContent = scene.category;
-            const when = document.createElement('span');
-            when.textContent = formatBreakroomDate(scene.date);
-            meta.appendChild(tag);
-            meta.appendChild(when);
-            card.appendChild(meta);
-
-            const title = document.createElement('div');
-            title.className = 'breakroom-card-title';
-            title.textContent = scene.topic;
-            card.appendChild(title);
-
-            if (scene.sourceUrl && /^https:\/\//.test(scene.sourceUrl)) {
-                const link = document.createElement('a');
-                link.className = 'breakroom-source';
-                link.href = scene.sourceUrl;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.textContent = (scene.sourceName ? scene.sourceName + ' ↗' : 'Source ↗');
-                card.appendChild(link);
-            }
-
-            const lines = document.createElement('div');
-            lines.className = 'breakroom-lines';
-            scene.lines.concat(scene.replies || []).forEach(line => lines.appendChild(buildBreakroomLine(line)));
-            card.appendChild(lines);
-
-            if (scene.takeaway) {
-                const take = document.createElement('div');
-                take.className = 'breakroom-takeaway';
-                const strong = document.createElement('strong');
-                strong.textContent = 'Try it: ';
-                take.appendChild(strong);
-                take.appendChild(document.createTextNode(scene.takeaway));
-                card.appendChild(take);
-            }
-
-            const actions = document.createElement('div');
-            actions.className = 'breakroom-actions';
-            [['up', '👍 More like this'], ['down', '👎 Less like this']].forEach(([value, label]) => {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'breakroom-action-btn' + (scene.feedback === value ? ' on' : '');
-                btn.textContent = label;
-                btn.addEventListener('click', () => sendBreakroomFeedback(scene, scene.feedback === value ? null : value));
-                actions.appendChild(btn);
-            });
-            const jump = document.createElement('button');
-            jump.type = 'button';
-            jump.className = 'breakroom-action-btn';
-            jump.textContent = '💬 Jump in';
-            jump.addEventListener('click', () => {
-                breakroomOpenReplyId = breakroomOpenReplyId === scene.id ? null : scene.id;
-                renderBreakroom();
-                if (breakroomOpenReplyId) {
-                    const input = document.querySelector(`.breakroom-card[data-scene-id="${scene.id}"] .breakroom-reply input`);
-                    if (input) input.focus();
-                }
-            });
-            actions.appendChild(jump);
-
-            if (breakroomOpenReplyId === scene.id) {
-                const sending = breakroomReplySending.has(scene.id);
-                const form = document.createElement('div');
-                form.className = 'breakroom-reply';
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.maxLength = 500;
-                input.placeholder = 'Say something to the group...';
-                input.disabled = sending;
-                const send = document.createElement('button');
-                send.type = 'button';
-                send.textContent = sending ? 'Sending...' : 'Send';
-                send.disabled = sending;
-                const submit = () => sendBreakroomReply(scene, input.value);
-                send.addEventListener('click', submit);
-                input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
-                form.appendChild(input);
-                form.appendChild(send);
-                actions.appendChild(form);
-            }
-            card.appendChild(actions);
-            return card;
-        }
-
-        async function sendBreakroomFeedback(scene, value) {
-            const previous = scene.feedback;
-            scene.feedback = value;
-            renderBreakroom();
-            try {
-                const response = await fetch('/breakroom/feedback', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sceneId: scene.id, value })
-                });
-                const data = await response.json();
-                if (!data.success) throw new Error(data.error);
-            } catch (error) {
-                console.error('Failed to save break room feedback:', error);
-                scene.feedback = previous;
-                renderBreakroom();
-            }
-        }
-
-        async function sendBreakroomReply(scene, text) {
-            text = (text || '').trim();
-            if (!text || breakroomReplySending.has(scene.id)) return;
-            breakroomReplySending.add(scene.id);
-            renderBreakroom();
-            try {
-                const response = await fetch('/breakroom/reply', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sceneId: scene.id, text })
-                });
-                const data = await response.json();
-                if (!data.success) throw new Error(data.error || 'Reply failed');
-                scene.replies = data.replies;
-                breakroomOpenReplyId = null;
-            } catch (error) {
-                console.error('Break room reply failed:', error);
-                alert(error.message || 'Reply failed');
-            } finally {
-                breakroomReplySending.delete(scene.id);
-                renderBreakroom();
-            }
-        }
-
         function showSuggestionsPage() {
             currentAgent = null;
             document.getElementById('content-wrapper').style.display = 'none';
@@ -28232,7 +27752,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
 
         document.getElementById('suggestions-nav-btn').addEventListener('click', showSuggestionsPage);
-        document.getElementById('breakroom-nav-btn').addEventListener('click', showBreakroomPage);
         document.getElementById('settings-nav-btn').addEventListener('click', showSettingsPage);
         document.querySelectorAll('.settings-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => showSettingsTab(btn.dataset.tab));
