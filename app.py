@@ -919,6 +919,37 @@ def save_kb_notes(data):
         json.dump(data, f, indent=2)
 
 
+# One-time repair: the report used to call the owner "Manny" (the AI teammate who asked the question) instead
+# of Francis. Runs once, remembered in kb_fixes.json, then never touches the notes again.
+KB_FIXES_FILE = _data_path('kb_fixes.json')
+
+
+def _fix_kb_owner_name_once():
+    try:
+        done = {}
+        if os.path.exists(KB_FIXES_FILE):
+            with open(KB_FIXES_FILE, 'r', encoding='utf-8') as f:
+                done = json.load(f)
+        if done.get('ownerName'):
+            return
+        notes = load_kb_notes()
+        changed = False
+        for side, text in list(notes.items()):
+            if isinstance(text, str) and re.search(r'\bManny\b', text):
+                notes[side] = re.sub(r'\bManny\b', 'Francis', text)
+                changed = True
+        if changed:
+            save_kb_notes(notes)
+        done['ownerName'] = True
+        with open(KB_FIXES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(done, f)
+    except Exception as e:
+        print(f"KB owner-name fix error: {e}")
+
+
+_fix_kb_owner_name_once()
+
+
 def kb_subject_label(side):
     return 'this tax practice / firm' if side == 'firm' else "Francis, the firm owner, personally (not business facts)"
 
@@ -1124,6 +1155,16 @@ def run_library_search(args):
     return output
 
 
+# Who's who, for the report writer: the owner is Francis. The names on the questions are his AI teammates,
+# not people in the firm - the report once called the owner "Manny" because Manny had asked the question.
+KB_OWNER_RULE = (
+    "The owner of the firm is Francis - always refer to him as Francis (or \"the owner\"). Some questions say who asked them: "
+    "those are Francis's AI teammates (" + ", ".join(a.capitalize() for a in ALL_AGENTS) + "), NOT people in the firm and not "
+    "the owner. Never use a teammate's name for the owner or any staff member, and don't mention who asked a question. "
+    "Other people's names (staff, clients) only ever come from what the answers actually say.\n"
+)
+
+
 def merge_into_kb_report(side, new_info, source_label=None):
     notes = load_kb_notes()
     current_report = (notes.get(side) or '').strip()
@@ -1136,6 +1177,7 @@ def merge_into_kb_report(side, new_info, source_label=None):
             f"---\n{current_report}\n---\n\n"
             f"Here is NEW information just learned{source_note}:\n\n---\n{new_info}\n---\n\n"
             "Rewrite the report to incorporate this new information. Rules:\n"
+            "- " + KB_OWNER_RULE +
             "- Keep every still-accurate existing fact - don't drop anything.\n"
             "- If the new information corrects or updates something already in the report, replace the old version "
             "with the corrected one instead of listing both.\n"
@@ -1148,6 +1190,7 @@ def merge_into_kb_report(side, new_info, source_label=None):
         prompt = (
             f"You maintain a living knowledge-base report about {subject}. There's no report yet. "
             f"Here is the first piece of information{source_note}:\n\n---\n{new_info}\n---\n\n"
+            + KB_OWNER_RULE + "\n"
             "Write an initial report organizing this into clear markdown sections with headers (##) and bullet "
             "points (a table only if the information is genuinely tabular). Plain factual third-person style, no "
             "meta-commentary. Reply with ONLY the report in markdown - no preamble."
@@ -1206,7 +1249,7 @@ def merge_pending_kb_answers(side):
     if not snapshot:
         return 0
     new_info = "\n\n".join(
-        f"Q (asked by {agent.capitalize()}): {question}\nA (answered {date}): {answer}"
+        f"Q (asked by his AI teammate {agent.capitalize()}): {question}\nA (from Francis, {date}): {answer}"
         for agent, date, question, answer in snapshot
     )
     # If this raises (network, API), nothing is marked merged and the answers
@@ -8866,7 +8909,7 @@ def get_knowledge_base_context():
         recent = entries[-30:]
 
         lines = "\n".join(
-            f"- ({entry_date}, asked by {agent.capitalize()}) Q: {question} A: {answer}"
+            f"- ({entry_date}, asked by teammate {agent.capitalize()}) Q: {question} A: {answer}"
             for entry_date, agent, question, answer in recent
         )
 
@@ -8899,7 +8942,7 @@ def get_personal_knowledge_context():
         recent = entries[-30:]
 
         lines = "\n".join(
-            f"- ({entry_date}, asked by {agent.capitalize()}) Q: {question} A: {answer}"
+            f"- ({entry_date}, asked by teammate {agent.capitalize()}) Q: {question} A: {answer}"
             for entry_date, agent, question, answer in recent
         )
 

@@ -251,3 +251,6 @@ attachments/
 
 # Local Claude Code tooling config, not part of the deployed app
 .claude/
+
+kb_fixes.json
+lana_bank.json
