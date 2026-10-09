@@ -919,35 +919,45 @@ def save_kb_notes(data):
         json.dump(data, f, indent=2)
 
 
-# One-time repair: the report used to call the owner "Manny" (the AI teammate who asked the question) instead
+# One-time repairs to the report. The first: it used to call the owner "Manny" (the AI teammate who asked the question) instead
 # of Francis. Runs once, remembered in kb_fixes.json, then never touches the notes again.
 KB_FIXES_FILE = _data_path('kb_fixes.json')
 
 
-def _fix_kb_owner_name_once():
+# Each repair is (name, pattern, replacement). It runs once, is remembered in kb_fixes.json, and is never
+# applied again, so later edits to the notes are left alone.
+KB_REPAIRS = [
+    ('ownerName', r'\bManny\b', 'Francis'),
+    ('currentQuarterYear', r'2025 \(current quarter\)', '2026 (current quarter)'),
+]
+
+
+def _apply_kb_repairs_once():
     try:
         done = {}
         if os.path.exists(KB_FIXES_FILE):
             with open(KB_FIXES_FILE, 'r', encoding='utf-8') as f:
                 done = json.load(f)
-        if done.get('ownerName'):
+        pending = [r for r in KB_REPAIRS if not done.get(r[0])]
+        if not pending:
             return
         notes = load_kb_notes()
         changed = False
-        for side, text in list(notes.items()):
-            if isinstance(text, str) and re.search(r'\bManny\b', text):
-                notes[side] = re.sub(r'\bManny\b', 'Francis', text)
-                changed = True
+        for name, pattern, replacement in pending:
+            for side, text in list(notes.items()):
+                if isinstance(text, str) and re.search(pattern, text):
+                    notes[side] = re.sub(pattern, replacement, text)
+                    changed = True
+            done[name] = True
         if changed:
             save_kb_notes(notes)
-        done['ownerName'] = True
         with open(KB_FIXES_FILE, 'w', encoding='utf-8') as f:
             json.dump(done, f)
     except Exception as e:
-        print(f"KB owner-name fix error: {e}")
+        print(f"KB repair error: {e}")
 
 
-_fix_kb_owner_name_once()
+_apply_kb_repairs_once()
 
 
 def kb_subject_label(side):
@@ -1178,6 +1188,7 @@ def merge_into_kb_report(side, new_info, source_label=None):
             f"Here is NEW information just learned{source_note}:\n\n---\n{new_info}\n---\n\n"
             "Rewrite the report to incorporate this new information. Rules:\n"
             "- " + KB_OWNER_RULE +
+            f"- Today's date is {today_local().isoformat()}. When an answer says \"this year\", \"this quarter\" or \"now\", use that date's year - never guess a different one.\n"
             "- Keep every still-accurate existing fact - don't drop anything.\n"
             "- If the new information corrects or updates something already in the report, replace the old version "
             "with the corrected one instead of listing both.\n"
@@ -1191,6 +1202,7 @@ def merge_into_kb_report(side, new_info, source_label=None):
             f"You maintain a living knowledge-base report about {subject}. There's no report yet. "
             f"Here is the first piece of information{source_note}:\n\n---\n{new_info}\n---\n\n"
             + KB_OWNER_RULE + "\n"
+            f"Today's date is {today_local().isoformat()}; when an answer says \"this year\" or \"this quarter\", use that date's year.\n"
             "Write an initial report organizing this into clear markdown sections with headers (##) and bullet "
             "points (a table only if the information is genuinely tabular). Plain factual third-person style, no "
             "meta-commentary. Reply with ONLY the report in markdown - no preamble."
