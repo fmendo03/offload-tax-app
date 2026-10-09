@@ -1153,14 +1153,15 @@ def merge_into_kb_report(side, new_info, source_label=None):
             "meta-commentary. Reply with ONLY the report in markdown - no preamble."
         )
 
-    response = claude_create(
-        model=CLAUDE_MODEL,
-        max_tokens=1800,
-        messages=[{'role': 'user', 'content': prompt}]
-    )
-    updated = "".join(
-        block.text for block in response.content if getattr(block, 'type', None) == 'text'
-    ).strip()
+    def write_report(model):
+        response = claude_create(model=model, max_tokens=1800, messages=[{'role': 'user', 'content': prompt}])
+        return "".join(block.text for block in response.content if getattr(block, 'type', None) == 'text').strip()
+
+    # The cheaper model does the merge. A rewrite that comes back much shorter than the report it started
+    # from has probably dropped facts, so in that case only, the main model does it instead.
+    updated = write_report(CLAUDE_FAST_MODEL)
+    if current_report and len(updated) < 0.85 * len(current_report):
+        updated = write_report(CLAUDE_MODEL)
 
     notes[side] = updated
     save_kb_notes(notes)
@@ -1705,7 +1706,7 @@ def _finish_connection_sync(side, conn, attachments, new_signature, source_desc)
     content_blocks = overview_blocks + [{'type': 'text', 'text': instruction}]
 
     response = claude_create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_FAST_MODEL,   # a 3-5 bullet overview is a simple job
         max_tokens=400,
         messages=[{'role': 'user', 'content': content_blocks}]
     )
