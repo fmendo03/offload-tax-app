@@ -9332,7 +9332,8 @@ body.va-open #notification-toasts {
         function notifyTaskComplete(agent, taskName) {}
 
         // `tab`: which of the agent's tabs clicking it opens (their chat by default).
-        function showAgentNotification(agent, label, text, tab) {
+        // `onOpen`: runs when the pop-up is clicked, after the agent's office opens.
+        function showAgentNotification(agent, label, text, tab, onOpen) {
             flashingAgents.add(agent);
             updateAgentFlash();
             playBubblePop();
@@ -9361,6 +9362,7 @@ body.va-open #notification-toasts {
                 if (e.target.closest('.notification-toast-close')) { dismiss(); return; }
                 dismiss();
                 selectAgent(agent);
+                if (onOpen) onOpen();
                 if (tab) showAgentTab(tab);
             });
             // Stays until you click it (opens that agent) or its ×.
@@ -22668,11 +22670,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const response = await fetch('/calendar/checkins/today');
                 const data = await response.json();
                 if (!data.success || !data.checkin) return;
-                // The check-in is a real message in Ashanti's chat (not a separate
-                // card with a "Got it" button), so it counts as unread like any
-                // other, you answer it by just replying, and she knows exactly what
-                // you're answering because it's part of the conversation she sees.
-                postAgentChatMessage('ashanti', data.checkin.message, { calendarCheckin: true });
+                // The nudge is written by the server with no AI involved, and it's only a pop-up in
+                // Ashanti's colours. Clicking it opens her chat with the message in it - and from
+                // there, replying is what brings her in - so the AI is only used if he engages.
+                const message = data.checkin.message;
+                showAgentNotification('ashanti', 'Checking in', message, undefined,
+                    () => postAgentChatMessage('ashanti', message, { calendarCheckin: true }));
             } catch (error) {
                 console.error('Failed to load calendar check-in:', error);
             }

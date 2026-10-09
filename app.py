@@ -3311,32 +3311,19 @@ def calendar_checkins_today():
             return jsonify({'success': True, 'checkin': None})
 
         e = item['event']
+        # Plain text built right here - no AI call. Ashanti only gets involved if he clicks the
+        # notification (which puts this in her chat) and replies.
         if item['kind'] == 'upcoming':
-            prompt = (
-                f"His event \"{e['title']}\" starts in about {item['minutes_until']} minutes"
-                + (f" at {e['location']}" if e.get('location') else "") + ". Write one short, warm, "
-                "in-character check-in (1-2 sentences) reminding him and asking if he's still on track or "
-                "needs to adjust the plan. No preamble, no quotation marks around it - just the message."
-            )
+            n = item['minutes_until']
+            message = (f"Heads up - \"{e['title']}\" starts in about {n} minute{'' if n == 1 else 's'}"
+                       + (f" at {e['location']}" if e.get('location') else "") + ". Still on track, or does the plan need to shift?")
         else:
-            prompt = (
-                f"His event \"{e['title']}\" was supposed to have ended by now but is still open on the "
-                "calendar. Write one short, warm, in-character check-in (1-2 sentences) asking if it's done "
-                "or if the rest of the day's plan needs to shift. No preamble, no quotation marks around it "
-                "- just the message."
-            )
-
-        try:
-            response = claude_create(
-                model=CLAUDE_FAST_MODEL,
-                max_tokens=150,
-                log_agent='ashanti',
-                system=get_agent_system_prompt('ashanti'),
-                messages=[{'role': 'user', 'content': prompt}]
-            )
-            message = "".join(b.text for b in response.content if getattr(b, 'type', None) == 'text').strip()
-        except Exception:
-            message = f"Quick check-in: \"{e['title']}\" is coming up soon - still on track?"
+            try:
+                ended_at = _format_time_no_leading_zero(datetime.fromisoformat(e['end']))
+            except (ValueError, TypeError, KeyError):
+                ended_at = 'now'
+            message = (f"\"{e['title']}\" was due to wrap up at {ended_at} and is still open on your calendar. "
+                       "Is it done, or do you need more time?")
 
         shown_today.append(item['key'])
         status[today_iso] = shown_today
