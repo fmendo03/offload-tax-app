@@ -13221,6 +13221,24 @@ function migrateSingleTaskProjects() {
     }
 }
 
+// One-time cleanup: Lana used to write her learning plan as a task with a Word document, which only repeated
+// what the course outline already shows. Those loose tasks (and their documents) are removed; her course
+// lives in her Interactive Projects and her lesson tasks are left alone.
+function migrateLanaPlanTasks() {
+    let done = false;
+    try { done = !!localStorage.getItem('lanaPlanTasksCleared'); } catch (e) { done = false; }
+    if (done) return;
+    const tasks = workspaceTasks.lana || [];
+    const doomed = new Set(tasks.filter(t => !t.isLesson && !t.projectId).map(t => t.id));
+    if (doomed.size) {
+        workspaceTasks.lana = tasks.filter(t => !doomed.has(t.id));
+        if (workspaceFiles.lana) workspaceFiles.lana = workspaceFiles.lana.filter(f => !doomed.has(f.taskId));
+        saveWorkspaceTasks();
+        saveWorkspaceFiles();
+    }
+    try { localStorage.setItem('lanaPlanTasksCleared', '1'); } catch (e) { /* try again next time */ }
+}
+
 // A project is an ordered chain: a task's place in project.tasks is its step
 // number, and it can't start until every live step before it is completed
 // (archived/cancelled steps no longer hold it up). Returns null for a task
@@ -29649,6 +29667,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             window.addEventListener('resize', applyArchiveColumnWidths);
             migrateTaskData();
             migrateSingleTaskProjects();
+            migrateLanaPlanTasks();
             migrateLooseGeneratedFiles();
             loadInsightCardAnchors();
             loadTopicsCollapsedState();
