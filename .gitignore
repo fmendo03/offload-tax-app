@@ -258,3 +258,6 @@ lana_bank.json
 old-local-data-*/
 
 store/
+
+offload-desktop.log
+.offload-window/
