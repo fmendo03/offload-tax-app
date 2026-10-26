@@ -8129,6 +8129,7 @@ body.va-open #notification-toasts {
                 <button type="button" class="settings-tab-btn" data-tab="todos">To-Dos</button>
                 <button type="button" class="settings-tab-btn active" data-tab="calendar">Calendar</button>
                 <button type="button" class="settings-tab-btn" data-tab="usage">Usage</button>
+                <button type="button" class="settings-tab-btn" data-tab="data">Data</button>
                 <button type="button" class="task-action-btn solid-complete" id="settings-global-save-btn" style="display: none; margin-left: auto; padding: 6px 18px; flex-shrink: 0;">Save</button>
             </div>
             <div class="settings-body">
@@ -8145,6 +8146,28 @@ body.va-open #notification-toasts {
                             repeated, unchanged part of each message would have cost without it.
                         </p>
                         <div id="usage-summary">Loading...</div>
+                    </div>
+                </div>
+                <div class="settings-tab-panel" id="settings-tab-data">
+                    <div class="settings-section">
+                        <h2>Back up everything</h2>
+                        <p class="settings-section-desc">
+                            Downloads one file with everything Offload keeps: your to-dos, calendar, knowledge base and
+                            attachments (stored on the server), plus your tasks, projects, chats and lessons (stored in this
+                            browser). Use it to move to another computer or as a safety copy.
+                        </p>
+                        <button type="button" class="task-action-btn solid-complete" id="data-backup-btn">Download backup</button>
+                        <span class="settings-section-desc" id="data-backup-status" style="margin-left: 10px;"></span>
+                    </div>
+                    <div class="settings-section">
+                        <h2>Restore from a backup</h2>
+                        <p class="settings-section-desc">
+                            Replaces everything in this copy of Offload with what's in the backup file - the server data and
+                            this browser's data. A safety copy of what's here now is kept first. The page reloads when it's done.
+                        </p>
+                        <input type="file" id="data-restore-file" accept=".json,application/json">
+                        <button type="button" class="task-action-btn solid-archive" id="data-restore-btn" style="margin-left: 8px;">Restore</button>
+                        <span class="settings-section-desc" id="data-restore-status" style="margin-left: 10px;"></span>
                     </div>
                 </div>
                 <div class="settings-tab-panel" id="settings-tab-todos">
@@ -21202,6 +21225,59 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // spot for settings that'll live there later. Calendar has
         // everything that used to be the whole Settings page (Availability,
         // Lunch).
+        // ---- Settings > Data: back up / restore everything (server files + this browser's storage) ----
+        async function downloadFullBackup() {
+            const status = document.getElementById('data-backup-status');
+            status.textContent = 'Gathering everything…';
+            try {
+                const response = await fetch('/admin/backup');
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error || 'The server could not make a backup.');
+                const browser = {};
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    browser[key] = localStorage.getItem(key);
+                }
+                const bundle = { app: 'offload-backup', version: 1, createdAt: new Date().toISOString(), server: data.zip, serverFiles: data.files, browser };
+                const blob = new Blob([JSON.stringify(bundle)], { type: 'application/json' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `offload-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+                status.textContent = `Saved - ${data.files} server files and ${Object.keys(browser).length} browser items.`;
+            } catch (error) {
+                console.error('Backup failed:', error);
+                status.textContent = `Couldn't make the backup: ${error.message}`;
+            }
+        }
+
+        async function restoreFullBackup() {
+            const status = document.getElementById('data-restore-status');
+            const file = document.getElementById('data-restore-file').files[0];
+            if (!file) { status.textContent = 'Choose a backup file first.'; return; }
+            if (!confirm('Replace everything in this copy of Offload with the contents of this backup? A safety copy of the current server data is kept first.')) return;
+            status.textContent = 'Restoring…';
+            try {
+                const bundle = JSON.parse(await file.text());
+                if (bundle.app !== 'offload-backup' || !bundle.server) throw new Error("That isn't an Offload backup file.");
+                const response = await fetch('/admin/restore', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ zip: bundle.server })
+                });
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error || 'The server could not restore it.');
+                localStorage.clear();
+                Object.entries(bundle.browser || {}).forEach(([key, value]) => localStorage.setItem(key, value));
+                status.textContent = `Restored ${data.restored} server files and ${Object.keys(bundle.browser || {}).length} browser items - reloading…`;
+                setTimeout(() => window.location.reload(), 1200);
+            } catch (error) {
+                console.error('Restore failed:', error);
+                status.textContent = `Couldn't restore: ${error.message}`;
+            }
+        }
+
         function showSettingsTab(tab) {
             document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
             document.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-tab-${tab}`));
@@ -27753,6 +27829,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         document.getElementById('suggestions-nav-btn').addEventListener('click', showSuggestionsPage);
         document.getElementById('settings-nav-btn').addEventListener('click', showSettingsPage);
+        document.getElementById('data-backup-btn').addEventListener('click', downloadFullBackup);
+        document.getElementById('data-restore-btn').addEventListener('click', restoreFullBackup);
         document.querySelectorAll('.settings-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => showSettingsTab(btn.dataset.tab));
         });

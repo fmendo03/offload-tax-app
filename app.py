@@ -5979,6 +5979,89 @@ def avatars(filename):
 def backgrounds(filename):
     return send_from_directory('backgrounds', filename)
 
+# --- Backup & restore -------------------------------------------------------
+# Moves the server-side data (everything the app keeps in files, plus uploaded attachments) between
+# computers - e.g. from the hosted copy to a local one. The browser-side data (tasks, projects, chats,
+# lessons) is bundled with it by the Settings > Data page, since only the browser can read that.
+import zipfile
+
+BACKUP_FILES = [
+    'availability_settings.json', 'calendar_checkin_status.json', 'calendar_events.json', 'calendar_settings.json',
+    'discussion_topics.json', 'kb_connections.json', 'kb_fixes.json', 'kb_merge_state.json', 'kb_notes.json',
+    'knowledge_base.json', 'lana_bank.json', 'lana_settings.json', 'lunch_settings.json',
+    'personal_knowledge_base.json', 'personal_thought_status.json', 'reminders.json', 'social_accounts.json',
+    'social_publish_log.jsonl', 'suggestions.json', 'thought_status.json', 'todo_checkin_status.json',
+    'todo_series.json', 'todo_settings.json', 'todo_templates.json', 'todos.json', 'usage_log.jsonl', 'users.json'
+]
+
+
+def _zip_data_files(target):
+    count = 0
+    with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
+        for name in BACKUP_FILES:
+            path = _data_path(name)
+            if os.path.isfile(path):
+                z.write(path, name)
+                count += 1
+        if os.path.isdir(ATTACHMENTS_DIR):
+            for root, _dirs, files in os.walk(ATTACHMENTS_DIR):
+                for fname in files:
+                    full = os.path.join(root, fname)
+                    z.write(full, 'attachments/' + os.path.relpath(full, ATTACHMENTS_DIR).replace('\\', '/'))
+                    count += 1
+    return count
+
+
+@app.route('/admin/backup', methods=['GET'])
+def admin_backup():
+    try:
+        buf = io.BytesIO()
+        count = _zip_data_files(buf)
+        return jsonify({'success': True, 'zip': base64.b64encode(buf.getvalue()).decode('ascii'), 'files': count})
+    except Exception as e:
+        print(f"Backup error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/restore', methods=['POST'])
+def admin_restore():
+    try:
+        raw = base64.b64decode((request.json or {}).get('zip') or '')
+        archive = zipfile.ZipFile(io.BytesIO(raw))
+    except Exception:
+        return jsonify({'success': False, 'error': "That doesn't look like an Offload backup."}), 400
+    allowed = set(BACKUP_FILES)
+    entries = []
+    for info in archive.infolist():
+        name = info.filename
+        if name.endswith('/'):
+            continue
+        parts = name.split('/')
+        if name in allowed:
+            entries.append(name)
+        elif len(parts) == 3 and parts[0] == 'attachments' and all(p and p not in ('.', '..') and '\\' not in p and ':' not in p for p in parts):
+            entries.append(name)
+    if not entries:
+        return jsonify({'success': False, 'error': 'That backup has no Offload data in it.'}), 400
+    try:
+        # A safety copy of what's here now, in case the restore turns out to be the wrong one.
+        safety_dir = _data_path('backups')
+        os.makedirs(safety_dir, exist_ok=True)
+        with open(os.path.join(safety_dir, f"before-restore-{now_local().strftime('%Y%m%d-%H%M%S')}.zip"), 'wb') as f:
+            buf = io.BytesIO()
+            _zip_data_files(buf)
+            f.write(buf.getvalue())
+        for name in entries:
+            dest = _data_path(name)
+            os.makedirs(os.path.dirname(dest) or '.', exist_ok=True)
+            with open(dest, 'wb') as f:
+                f.write(archive.read(name))
+        return jsonify({'success': True, 'restored': len(entries)})
+    except Exception as e:
+        print(f"Restore error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/usage/summary', methods=['GET'])
 def usage_summary():
     try:
@@ -8985,4 +9068,5 @@ if __name__ == '__main__':
     # gunicorn's own --bind flag rather than anything here.
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', '1') == '1'
-    app.run(host='0.0.0.0', debug=debug, port=port, threaded=True)
+    # HOST=127.0.0.1 keeps it reachable from this computer only (the start-offload script sets it).
+    app.run(host=os.getenv('HOST', '0.0.0.0'), debug=debug, port=port, threaded=True)
