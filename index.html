@@ -13226,7 +13226,7 @@ function migrateSingleTaskProjects() {
 // lives in her Interactive Projects and her lesson tasks are left alone.
 function migrateLanaPlanTasks() {
     let done = false;
-    try { done = !!localStorage.getItem('lanaPlanTasksCleared'); } catch (e) { done = false; }
+    try { done = !!localStorage.getItem('lanaPlanTasksCleared2'); } catch (e) { done = false; }
     if (done) return;
     const tasks = workspaceTasks.lana || [];
     const doomed = new Set(tasks.filter(t => !t.isLesson && !t.projectId).map(t => t.id));
@@ -13236,7 +13236,7 @@ function migrateLanaPlanTasks() {
         saveWorkspaceTasks();
         saveWorkspaceFiles();
     }
-    try { localStorage.setItem('lanaPlanTasksCleared', '1'); } catch (e) { /* try again next time */ }
+    try { localStorage.setItem('lanaPlanTasksCleared2', '1'); } catch (e) { /* try again next time */ }
 }
 
 // A project is an ordered chain: a task's place in project.tasks is its step
@@ -15311,7 +15311,6 @@ async function sendWorkspaceReview() {
 // There's also a practice set with new questions every time. Answers and best scores are saved
 // on the files; the quiz results go to Lana, who can add exercises (add_exercises) to the lesson.
 let lanaSettings = { languages: [], dailyMinutes: 30 };
-let lanaAutoAcceptUntil = 0;   // set by Settings > Start plan: the plan Lana proposes next is accepted automatically
 let lanaPendingLesson = null;   // { taskId } while Lana's reply to submitted results may add exercises/lessons
 
 const LESSON_PASS_PERCENT = 75;
@@ -18306,7 +18305,6 @@ function startLanguagePlan(language) {
     selectAgent('lana');
     const from = LANA_LEVELS[lanaLevelIndex(language.level, 0)], to = LANA_LEVELS[lanaLevelIndex(language.target, LANA_LEVELS.length - 1)];
     inputBox.value = `I'd like to start learning ${language.name}${language.focus ? ` (${language.focus})` : ''}. I'm at ${from.id === 'beginner' ? 'complete beginner' : from.label}, I want to reach ${to.label}, and I can study about ${languageDailyMinutes(language)} minutes a day. Please put together my learning plan.`;
-    lanaAutoAcceptUntil = Date.now() + 30 * 60 * 1000;   // pressing Start plan means he wants it - no separate Accept step
     autoGrowInputBox();
     sendMessage();
 }
@@ -18932,6 +18930,10 @@ function acceptProject(chatAgent, msgIndex) {
 
     saveToLocalStorage(chatAgent);
     if (currentAgent === chatAgent) displayMessages(chatAgent);
+    // A new course starts writing its first lesson right away (the others open one after another).
+    if (isLanguagePlan && firstCreated) {
+        Promise.resolve(startProjectTask(firstCreated.agent, firstCreated.task.id)).catch(e => console.error('Could not start the first lesson:', e));
+    }
 }
 
 // Same idea as acceptProject, for a single standalone task (see
@@ -20353,9 +20355,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 updateChatUnreadBadge(agent);
             }
             updateAgentBadge(agent);
-            // Settings > Start plan: the course is created straight away, no separate Accept click.
-            if (projectProposal && projectProposal.kind === 'language' && Date.now() < lanaAutoAcceptUntil) {
-                lanaAutoAcceptUntil = 0;
+            // A course from Lana is created straight away - no separate Accept click.
+            if (projectProposal && projectProposal.kind === 'language') {
                 acceptProject(agent, proposalMsgIndex);
             }
         }
