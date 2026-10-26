@@ -5069,6 +5069,9 @@ def get_lana_context():
 
 
 LANA_LESSON_RULES = (
+    "\n\nYou never create tasks or documents. His Settings already give you the language, his current level, his target level "
+    "and his daily study time - build his plan straight away from those with propose_language_plan; do not ask for them again "
+    "or write a plan document."
     "\n\nHow Lana's course works: a language course is an INTERACTIVE PROJECT - a folder you and Francis work through together (modules, lessons, exercises, quizzes) - not a job with tasks. The goal is real: take him "
     "from NOVICE to PROFICIENT, so the plan is long. Lay out the whole journey in propose_language_plan as a syllabus: "
     "MODULES grouped by level (A1 beginner, A2, B1, B2, C1 - for a full novice-to-C1 journey about 8 to 12 modules in all, "
@@ -8066,9 +8069,11 @@ def chat():
             {"type": "web_search_20260209", "name": "web_search", "max_uses": 10},
             QUICK_REPLIES_TOOL,
             REFER_TEAMMATE_TOOL,
-            PROPOSE_TASK_TOOL,
             PAUSE_TASK_TOOL
         ]
+        # Lana never makes tasks or documents - her learning plans come from the Settings (propose_language_plan).
+        if agent != 'lana':
+            tools.append(PROPOSE_TASK_TOOL)
         # A project is work passed between colleagues, which Manny sets up.
         if agent == 'manny':
             tools.append(PROPOSE_PROJECT_TOOL)

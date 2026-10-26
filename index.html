@@ -12111,17 +12111,16 @@ function buildTaskRowWithFiles(agent, task, body) {
     const groupKey = `task:${task.id}`;
     const collapsed = files.length > 0 && !!workspaceGroupsCollapsed[`${agent}:${groupKey}`];
 
-    if (files.length > 0) {
-        const chevron = document.createElement('span');
-        chevron.className = 'workspace-task-files-chevron';
-        chevron.textContent = collapsed ? '▸' : '▾';
-        chevron.title = collapsed ? 'Show files' : 'Hide files';
-        chevron.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleWorkspaceGroup(agent, groupKey);
-        });
-        row.appendChild(chevron);
-    }
+    const boxOpen = isTaskPlanOpen(task) && !collapsed;
+    const chevron = document.createElement('span');
+    chevron.className = 'workspace-task-files-chevron';
+    chevron.textContent = boxOpen ? '▾' : '▸';
+    chevron.title = boxOpen ? 'Collapse' : 'Expand';
+    chevron.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleTaskBox(agent, task, boxOpen);
+    });
+    row.appendChild(chevron);
 
     const text = document.createElement('span');
     text.className = 'workspace-project-task-text';
@@ -12129,7 +12128,7 @@ function buildTaskRowWithFiles(agent, task, body) {
     text.textContent = `${TASK_ICON} ${projectStepPrefix(task)}${task.name || task.task}`;
     text.title = task.task;
     text.classList.add('has-plan-toggle');
-    text.addEventListener('click', () => { if (hasTextSelection()) return; markTaskViewed(agent, task.id); toggleTaskPlan(agent, task); });
+    text.addEventListener('click', () => { if (hasTextSelection()) return; markTaskViewed(agent, task.id); toggleTaskBox(agent, task, boxOpen); });
 
     row.appendChild(text);
     if (task.recurrence) row.appendChild(buildRecurringTag(task));
@@ -12647,6 +12646,14 @@ function isTaskPlanOpen(task) {
     return task.status === 'not_started' || task.status === 'in_review';
 }
 
+// The arrow beside a task opens or folds everything under it - its plan and its files - together.
+function toggleTaskBox(agent, task, currentlyOpen) {
+    taskPlanOpen[task.id] = !currentlyOpen;
+    workspaceGroupsCollapsed[`${agent}:task:${task.id}`] = currentlyOpen;
+    saveWorkspaceGroupsCollapsed();
+    refreshTaskViewsForAgent(agent);
+}
+
 function toggleTaskPlan(agent, task) {
     taskPlanOpen[task.id] = !isTaskPlanOpen(task);
     refreshTaskViewsForAgent(agent);
@@ -12849,7 +12856,7 @@ function buildTaskPlanPanel(agent, task, force) {
         note.appendChild(retry);
         panel.appendChild(note);
     }
-    if (task.status === 'in_review') panel.appendChild(buildTaskReviewBox(agent, task));
+    if (task.status === 'in_review' && agent !== 'lana') panel.appendChild(buildTaskReviewBox(agent, task));
     return panel;
 }
 
@@ -13276,13 +13283,16 @@ function buildTaskActionsRow(agent, task) {
     const actions = document.createElement('div');
     actions.className = 'task-row-actions';
     const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
+    // Lana doesn't work through tasks - her learning plans are built from the settings (see Interactive Projects) -
+    // so anything of hers that shows up here only needs to be put away.
+    const archiveOnly = agent === 'lana';
 
     // File-only entries (an uploaded file or a file an agent generated
     // unprompted) aren't real tracked work - they're created already
     // completed and never move through a start/stop/modify lifecycle, so
     // those controls don't apply and are hidden. Only Archive applies to the
     // task itself - Preview/Download live on its linked file's own card.
-    if (!task.isFileOnly) {
+    if (!task.isFileOnly && !archiveOnly) {
         // Start walks through its own lifecycle in place: Start ->
         // "Working..." (animated, disabled, while task.status ===
         // 'in_progress') -> disabled "Started" label once done. Any file it
@@ -13385,7 +13395,7 @@ function buildTaskActionsRow(agent, task) {
         actions.appendChild(viewBtn);
     }
 
-    if (!task.isFileOnly) {
+    if (!task.isFileOnly && !archiveOnly) {
         // Edit opens a modal where Francis can either overwrite the task
         // text directly (creating a new task) or, when editing an existing
         // one, discuss the change instead of just typing over it - see
