@@ -6003,7 +6003,7 @@ def store_all():
     items = {}
     if os.path.isdir(folder):
         for name in os.listdir(folder):
-            if name.endswith('.json'):
+            if name.endswith('.json') and not name.startswith('__local_backup_'):   # safety copies are kept, never loaded back
                 try:
                     with open(os.path.join(folder, name), 'r', encoding='utf-8') as f:
                         items[urllib.parse.unquote(name[:-5])] = f.read()
@@ -6037,6 +6037,13 @@ def store_changes():
                 with open(tmp, 'w', encoding='utf-8') as f:
                     f.write(value)
                 os.replace(tmp, path)
+            # Only the three newest safety copies are kept.
+            backups = sorted(n for n in os.listdir(folder) if n.startswith('__local_backup_'))
+            for old in backups[:-3]:
+                try:
+                    os.remove(os.path.join(folder, old))
+                except OSError:
+                    pass
         return jsonify({'success': True})
     except Exception as e:
         print(f"Store save error: {e}")

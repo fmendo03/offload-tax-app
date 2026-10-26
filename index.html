@@ -2163,6 +2163,61 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
 .lpath-row-item.pass .lpath-chip { background: #d9f0e1; color: #2e7d4f; }
 .lp-open-path-btn { margin-right: 4px; }
 
+/* ---- the journey (inside the Workspace tab, or the whole window) and the arcade ---- */
+.lj { display: flex; flex-direction: column; flex: 1; min-height: 0; background: #fbf7e6; color: #4b3f12; }
+.lj.lj-full { position: fixed; inset: 0; z-index: 1500; }
+.lj-bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 2px solid #e3dcb8; background: #fffdf3; flex-wrap: wrap; }
+.lj-title { flex: 1; font-size: 17px; font-weight: 800; min-width: 120px; }
+.lj-chips { display: flex; gap: 8px; align-items: center; }
+.lj-btn { border: 2px solid #e3dcb8; border-bottom-width: 4px; background: #fffdf3; color: #6b5d33; font-weight: 800; font-size: 13px; padding: 7px 12px; border-radius: 12px; cursor: pointer; white-space: nowrap; }
+.lj-btn:hover { background: #f8f2d4; }
+.lj-arcade { background: #663399; border-color: #4a2573; color: #fff; }
+.lj-arcade:hover { background: #7a3fb3; }
+.lj-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.lj .lp-overlay { position: absolute; inset: 0; z-index: 5; }
+.lj .lp-overlay.lp-notes { z-index: 6; }
+.lj .lpath-overlay { position: absolute; inset: 0; z-index: 1; }
+.lj .lpath-sheet { position: absolute; z-index: 3; }
+.lp-float { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); background: #663399; color: #fff; font-weight: 800; padding: 6px 16px; border-radius: 999px; animation: lpFloat 1.2s ease-out forwards; pointer-events: none; z-index: 9; }
+@keyframes lpFloat { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -60px); } }
+
+.ar-intro { display: flex; gap: 16px; align-items: center; background: #fffdf3; border: 2px solid #e3dcb8; border-radius: 18px; padding: 14px 18px; margin: 6px 0 18px; }
+.ar-intro h2 { margin: 0 0 4px; font-size: 19px; }
+.ar-intro p { margin: 0; font-size: 14px; color: #6b5d33; }
+.ar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.ar-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; background: #fffdf3; border: 2px solid #e3dcb8; border-bottom-width: 5px; border-radius: 18px; padding: 16px; cursor: pointer; color: #4b3f12; font-family: inherit; }
+.ar-card:hover { background: #f8f2d4; transform: translateY(-2px); }
+.ar-card.blocked { opacity: 0.55; }
+.ar-card-icon { font-size: 34px; }
+.ar-card-name { font-weight: 800; font-size: 17px; }
+.ar-card-blurb { font-size: 13px; color: #6b5d33; line-height: 1.35; }
+.ar-card-high { font-size: 12px; font-weight: 800; color: #8a7a45; margin-top: auto; }
+.ar-stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 10px; }
+.ar-canvas { max-width: 100%; max-height: 100%; background: #fbf7e6; border: 3px solid #e3dcb8; border-radius: 14px; outline: none; touch-action: none; }
+.ar-ask { position: absolute; inset: 0; background: rgba(251, 247, 230, 0.93); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 4; }
+.ar-ask-card { width: 100%; max-width: 560px; background: #fffdf3; border: 2px solid #e3dcb8; border-bottom-width: 5px; border-radius: 20px; padding: 18px 20px; box-shadow: 0 8px 30px rgba(75, 63, 18, 0.15); }
+.ar-ask-title { font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; color: #8a7a45; margin-bottom: 8px; }
+.ar-timer { height: 8px; background: #e8e0bd; border-radius: 99px; overflow: hidden; margin-bottom: 10px; }
+.ar-timer span { display: block; height: 100%; width: 100%; background: #c9b25a; }
+.ar-ask-prompt { font-size: 21px; font-weight: 800; line-height: 1.3; margin-bottom: 14px; }
+.ar-opts { display: flex; flex-direction: column; gap: 10px; }
+.ar-opt { display: flex; align-items: center; gap: 12px; text-align: left; background: #fffdf3; border: 2px solid #e3dcb8; border-bottom-width: 4px; border-radius: 14px; padding: 12px 14px; font-size: 17px; font-weight: 700; color: #4b3f12; cursor: pointer; font-family: inherit; }
+.ar-opt:hover:not(:disabled) { background: #f8f2d4; }
+.ar-key { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border: 2px solid #e3dcb8; border-radius: 8px; font-size: 12px; color: #8a7a45; }
+.ar-opt.right { background: #e3f5e8; border-color: #4caf7a; }
+.ar-opt.wrong { background: #fde4e1; border-color: #d9534f; }
+.ar-ask-fb { min-height: 20px; margin-top: 12px; font-weight: 700; font-size: 14px; }
+.ar-ask-fb.ok { color: #2e7d4f; }
+.ar-ask-fb.bad { color: #c0392b; }
+.ar-ask-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
+.ar-over { position: absolute; inset: 0; background: rgba(251, 247, 230, 0.94); display: flex; align-items: center; justify-content: center; z-index: 5; }
+.ar-over-card { text-align: center; background: #fffdf3; border: 2px solid #e3dcb8; border-bottom-width: 5px; border-radius: 22px; padding: 22px 34px; }
+.ar-over-card h2 { margin: 6px 0 2px; font-size: 26px; }
+.ar-over-msg { color: #8a7a45; margin: 0 0 6px; font-weight: 700; }
+.ar-over-score { font-size: 56px; font-weight: 800; color: #8a7a45; line-height: 1.1; }
+.ar-over-best { margin: 4px 0 14px; font-weight: 800; color: #663399; }
+.ar-over-buttons { display: flex; gap: 12px; justify-content: center; }
+
 /* Interactive Projects: a folder tree, not a task list. */
 .ip-project { margin-bottom: 10px; }
 .ip-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: white; border: 1px solid #e6e6e6; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
@@ -16461,10 +16516,14 @@ function lunaSvg(mood, size) {
         </g></svg>`;
 }
 
-// ---- XP, streak and daily goal (kept with the rest of the browser data, so it's saved in the folder) ----
+// ---- XP, the streak multiplier and the XP balance (kept with the rest of the browser data, so it's saved in the folder) ----
+// Every correct answer earns XP, and a daily streak multiplies it. The balance is also what the arcade spends.
+const XP_PER_ANSWER = 10;
+const ARCADE_TURN_COST = 10;
+
 function lanaProgress() {
     try { const p = JSON.parse(localStorage.getItem('lanaProgress') || 'null'); if (p && typeof p === 'object') return p; } catch (e) { /* start fresh */ }
-    return { xp: 0, streak: 0, lastDay: null, days: {} };
+    return { xp: 0, lifetime: 0, streak: 0, lastDay: null };
 }
 
 function lanaDayKey(date) {
@@ -16472,39 +16531,41 @@ function lanaDayKey(date) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function lanaDailyGoalXp(languageName) {
-    const entry = (lanaSettings.languages || []).find(l => String(l.name).toLowerCase() === String(languageName || '').toLowerCase());
-    return Math.round(languageDailyMinutes(entry) * 15);   // about 15 XP for every minute he says he can study
+// ×1.0 on the first day, +0.1 for each extra day in a row, up to ×2.0.
+function lanaMultiplier(streak) {
+    return Math.min(2, Math.round((1 + 0.1 * Math.max(0, (streak || 1) - 1)) * 10) / 10);
 }
 
-function lanaStats(languageName) {
+function lanaStats() {
     const p = lanaProgress();
-    const today = lanaDayKey();
-    const yesterday = lanaDayKey(new Date(Date.now() - 86400000));
-    return { xp: p.xp || 0, streak: (p.lastDay === today || p.lastDay === yesterday) ? (p.streak || 0) : 0, today: (p.days || {})[today] || 0, goal: lanaDailyGoalXp(languageName) };
+    const today = lanaDayKey(), yesterday = lanaDayKey(new Date(Date.now() - 86400000));
+    const streak = (p.lastDay === today || p.lastDay === yesterday) ? (p.streak || 0) : 0;
+    return { xp: p.xp || 0, lifetime: p.lifetime || p.xp || 0, streak, mult: lanaMultiplier(streak) };
 }
 
-function lanaAwardXp(amount) {
+// base XP, multiplied by the streak; studying today counts toward the streak.
+function lanaAwardXp(base) {
     const p = lanaProgress();
-    const today = lanaDayKey();
-    const yesterday = lanaDayKey(new Date(Date.now() - 86400000));
-    if (p.lastDay !== today) p.streak = p.lastDay === yesterday ? (p.streak || 0) + 1 : 1;
-    p.lastDay = today;
-    p.xp = (p.xp || 0) + amount;
-    p.days = p.days || {};
-    p.days[today] = (p.days[today] || 0) + amount;
-    const keep = Object.keys(p.days).sort().slice(-60);   // two months of days is plenty
-    p.days = Object.fromEntries(keep.map(k => [k, p.days[k]]));
+    const today = lanaDayKey(), yesterday = lanaDayKey(new Date(Date.now() - 86400000));
+    if (p.lastDay !== today) { p.streak = p.lastDay === yesterday ? (p.streak || 0) + 1 : 1; p.lastDay = today; }
+    const mult = lanaMultiplier(p.streak || 1);
+    const gained = Math.round(base * mult);
+    p.xp = (p.xp || 0) + gained;
+    p.lifetime = (p.lifetime || 0) + gained;
     localStorage.setItem('lanaProgress', JSON.stringify(p));
-    return p;
+    return { gained, mult, streak: p.streak };
 }
 
-function lanaStatChips(languageName) {
-    const s = lanaStats(languageName);
-    const pct = Math.min(100, Math.round(100 * s.today / Math.max(1, s.goal)));
-    return `<span class="lp-chip" title="Days in a row you've studied">🔥 ${s.streak}</span>
-        <span class="lp-chip" title="Total XP">⭐ ${s.xp}</span>
-        <span class="lp-chip lp-goal" title="Today's goal: ${s.today} of ${s.goal} XP"><span class="lp-goal-bar"><span style="width:${pct}%"></span></span>🎯 ${s.today}/${s.goal}</span>`;
+function lanaSpendXp(amount) {
+    const p = lanaProgress();
+    p.xp = Math.max(0, (p.xp || 0) - amount);
+    localStorage.setItem('lanaProgress', JSON.stringify(p));
+}
+
+function lanaStatChips() {
+    const s = lanaStats();
+    return `<span class="lp-chip" title="Days in a row you've studied - each extra day adds 10% to your XP, up to double">🔥 ${s.streak} · ×${s.mult.toFixed(1)}</span>
+        <span class="lp-chip" title="Your XP to spend in the arcade - ${ARCADE_TURN_COST} XP per turn">⭐ ${s.xp} XP</span>`;
 }
 
 // ---- small sounds ----
@@ -16531,7 +16592,7 @@ function lanaChime(kind) {
 }
 
 // ================= the player =================
-const lessonPlayer = { el: null, host: null, file: null, agent: null, lesson: null, index: 0, phase: 'intro', grades: [], observer: null };
+const lessonPlayer = { el: null, host: null, file: null, agent: null, lesson: null, index: 0, phase: 'intro', grades: [], observer: null, earned: 0 };
 const LESSON_PLAYER_KINDS = ['exercise', 'quiz', 'practice'];
 
 // Whether this file can be played one question at a time (the notes page and old-style lessons are read, not played).
@@ -16546,10 +16607,12 @@ function canPlayLessonFile(file) {
 function startLessonPlayer(agent, fileId) {
     const file = findWorkspaceFileById(agent, fileId);
     if (!file || !canPlayLessonFile(file)) return false;
+    if (!ljEnsureForFile(agent, file)) return false;
+    arcadeClose();
     closeLessonPlayer(true);
     const lesson = parseLesson(file);
     lessonPlayer.file = file; lessonPlayer.agent = agent; lessonPlayer.lesson = lesson;
-    lessonPlayer.index = 0; lessonPlayer.phase = 'intro'; lessonPlayer.grades = [];
+    lessonPlayer.index = 0; lessonPlayer.phase = 'intro'; lessonPlayer.grades = []; lessonPlayer.earned = 0;
     file.lessonProgress = { answers: {}, checked: false, submitted: false };
     lessonFlippedSet(file).clear();
 
@@ -16557,10 +16620,10 @@ function startLessonPlayer(agent, fileId) {
     el.className = 'lp-overlay';
     el.id = 'lesson-player';
     el.innerHTML = `
-        <div class="lp-top"><button type="button" class="lp-close" title="Leave">✕</button><div class="lp-bar"><div class="lp-bar-fill"></div></div><div class="lp-chips">${lanaStatChips(lesson.language)}</div></div>
+        <div class="lp-top"><button type="button" class="lp-close" title="Leave">✕</button><div class="lp-bar"><div class="lp-bar-fill"></div></div><div class="lp-chips">${lanaStatChips()}</div></div>
         <div class="lp-stage"><div class="lp-stage-inner"><div class="lp-host"></div><div class="lp-screen"></div></div></div>
         <div class="lp-footer"><div class="lp-feedback"></div><div class="lp-buttons"><button type="button" class="lp-skip">Skip</button><button type="button" class="lp-main" disabled>Check</button></div></div>`;
-    document.body.appendChild(el);
+    ljMount(el);
     lessonPlayer.el = el;
     lessonPlayer.host = el.querySelector('.lp-host');
     el.querySelector('.lp-close').addEventListener('click', () => closeLessonPlayer(false));
@@ -16677,6 +16740,7 @@ function lpCheck(skipped) {
     const i = p.index;
     const ex = p.lesson.exercises[i];
     const progress = p.file.lessonProgress;
+    const act = p.file.activity;
     if (skipped) progress.answers[i] = '';
     const grade = gradeLessonItem(ex, progress.answers[i]);
     p.grades[i] = grade;
@@ -16684,6 +16748,13 @@ function lpCheck(skipped) {
     stopAllLessonVoice();
     p.host.querySelectorAll('.lesson-q')[i].classList.add('lp-locked');
     const good = grade.status === 'correct' || grade.status === 'close';
+    if (good) {
+        const award = lanaAwardXp(act.kind === 'quiz' ? 15 : XP_PER_ANSWER);
+        p.earned = (p.earned || 0) + award.gained;
+        lpFloatXp(award.gained);
+        p.el.querySelector('.lp-chips').innerHTML = lanaStatChips();
+        ljUpdateChips();
+    }
     let text;
     if (good) {
         text = grade.status === 'close' ? `Nearly - mind the accents: ${ex.answer}` : LP_PRAISE[Math.floor(Math.random() * LP_PRAISE.length)];
@@ -16716,9 +16787,10 @@ function lpFinish() {
     const total = lesson.exercises.length;
     const correct = p.grades.filter(g => g && (g.status === 'correct' || g.status === 'close')).length;
     const passed = pct >= LESSON_PASS_PERCENT;
-    const perQuestion = act.kind === 'quiz' ? 15 : 10;
-    const xp = correct * perQuestion + (passed ? 10 : 0) + (pct === 100 ? 10 : 0);
-    lanaAwardXp(xp);
+    const bonus = (passed ? 10 : 0) + (pct === 100 ? 10 : 0);
+    const bonusAward = bonus ? lanaAwardXp(bonus) : { gained: 0 };
+    const xp = (p.earned || 0) + bonusAward.gained;
+    const mult = lanaStats().mult;
     const stars = pct >= 100 ? 3 : (pct >= 90 ? 2 : (passed ? 1 : 0));
     const best = act.best != null ? act.best : pct;
     let message;
@@ -16726,7 +16798,7 @@ function lpFinish() {
     else if (act.kind === 'practice') message = 'Practice makes progress.';
     else message = passed ? `That counts toward your lesson quiz (${LESSON_PASS_PERCENT}%+ on every exercise).` : `Get ${LESSON_PASS_PERCENT}% or more to count toward the quiz - try again!`;
     p.el.querySelector('.lp-bar-fill').style.width = '100%';
-    p.el.querySelector('.lp-chips').innerHTML = lanaStatChips(lesson.language);
+    p.el.querySelector('.lp-chips').innerHTML = lanaStatChips();
     lanaChime(passed ? 'win' : 'bad');
     const failedQuiz = act.kind === 'quiz' && !passed;
     lpScreen(`
@@ -16735,7 +16807,7 @@ function lpFinish() {
             <div class="lp-stars">${[1, 2, 3].map(n => `<span class="${n <= stars ? 'on' : ''}">★</span>`).join('')}</div>
             <h1>${pct}%</h1>
             <p class="lp-result-sub">${correct} of ${total} right · best ${best}%</p>
-            <div class="lp-xp">+${xp} XP</div>
+            <div class="lp-xp">+${xp} XP${mult > 1 ? ` · ×${mult.toFixed(1)} streak` : ''}</div>
             <p>${escapeHtml(message)}</p>
         </div>`, 'lp-done');
     lpFooter(passed ? 'ok' : '', '', failedQuiz ? 'Take a new quiz' : 'Continue', true, false);
@@ -16776,41 +16848,147 @@ function closeLessonPlayer(silent) {
     if (typeof refreshLessonPath === 'function') refreshLessonPath();
 }
 
-// ================= the course path =================
+// ================= the journey: path, lessons and arcade, inside the Workspace tab =================
+const lanaJourney = { el: null, projectId: null, full: false };
 const lessonPath = { el: null, projectId: null, sheetLesson: null };
 
-function openLessonPath(projectId) {
+function ljBody() { return lanaJourney.el ? lanaJourney.el.querySelector('.lj-body') : null; }
+function ljMount(view) { const body = ljBody(); if (body) body.appendChild(view); }
+function ljIsOpen() { return !!(lanaJourney.el && lanaJourney.el.style.display !== 'none'); }
+
+function ljUpdateChips() {
+    if (!lanaJourney.el) return;
+    lanaJourney.el.querySelector('.lj-chips').innerHTML = lanaStatChips();
+}
+
+function ljEnsure() {
+    if (lanaJourney.el && document.body.contains(lanaJourney.el)) return lanaJourney.el;
+    const panel = document.querySelector('.agent-tab-panel[data-agent-panel="workspace"]');
+    const el = document.createElement('div');
+    el.className = 'lj';
+    el.id = 'lana-journey';
+    el.style.display = 'none';
+    el.innerHTML = `
+        <div class="lj-bar">
+            <div class="lj-title"></div>
+            <div class="lj-chips"></div>
+            <button type="button" class="lj-btn lj-arcade" title="Spend your XP on games">🎮 Arcade</button>
+            <button type="button" class="lj-btn lj-full-btn" title="Fill the whole window">⛶ Full window</button>
+            <button type="button" class="lj-btn lj-close" title="Close the journey and go back to your workspace">✕ Close</button>
+        </div>
+        <div class="lj-body"></div>`;
+    panel.appendChild(el);
+    lanaJourney.el = el;
+    el.querySelector('.lj-arcade').addEventListener('click', () => { closeLessonPlayer(true); openArcade(); });
+    el.querySelector('.lj-full-btn').addEventListener('click', () => ljSetFull(!lanaJourney.full));
+    el.querySelector('.lj-close').addEventListener('click', ljClose);
+    return el;
+}
+
+function ljSetFull(on) {
+    lanaJourney.full = !!on;
+    if (!lanaJourney.el) return;
+    lanaJourney.el.classList.toggle('lj-full', lanaJourney.full);
+    const btn = lanaJourney.el.querySelector('.lj-full-btn');
+    btn.textContent = lanaJourney.full ? '⤢ Exit full window' : '⛶ Full window';
+    btn.title = lanaJourney.full ? 'Go back to the workspace view' : 'Fill the whole window';
+}
+
+// Opens the journey in the owner's Workspace tab, on the path.
+function ljOpen(projectId) {
     const project = projects[projectId];
     if (!project) return;
-    closeLessonPath();
+    const owner = interactiveOwner(project);
+    if (currentAgent !== owner) selectAgent(owner);
+    showAgentTab('workspace');
+    try { clearWorkspacePreview(); } catch (e) { /* nothing was open */ }
+    const list = document.getElementById('workspace-tasks-list');
+    if (list) list.style.display = 'none';
+    const el = ljEnsure();
+    el.style.display = '';
+    lanaJourney.projectId = projectId;
+    el.querySelector('.lj-title').textContent = project.name;
+    if (!lessonPath.el || !document.body.contains(lessonPath.el)) {
+        const view = document.createElement('div');
+        view.className = 'lpath-overlay';
+        view.innerHTML = '<div class="lpath-scroll"><div class="lpath-trail"></div></div><div class="lpath-sheet" style="display:none;"></div>';
+        ljMount(view);
+        lessonPath.el = view;
+        document.addEventListener('keydown', lpathKeydown);
+    }
     lessonPath.projectId = projectId;
-    const el = document.createElement('div');
-    el.className = 'lpath-overlay';
-    el.id = 'lesson-path';
-    el.innerHTML = `
-        <div class="lpath-top"><button type="button" class="lp-close" title="Back">←</button><div class="lpath-title"></div><div class="lp-chips"></div></div>
-        <div class="lpath-scroll"><div class="lpath-trail"></div></div>
-        <div class="lpath-sheet" style="display:none;"></div>`;
-    document.body.appendChild(el);
-    lessonPath.el = el;
-    el.querySelector('.lp-close').addEventListener('click', closeLessonPath);
-    document.addEventListener('keydown', lpathKeydown);
+    lessonPath.sheetLesson = null;
     renderLessonPath(true);
+    ljUpdateChips();
 }
+
+function ljClose() {
+    closeLessonPlayer(true);
+    arcadeClose();
+    document.removeEventListener('keydown', lpathKeydown);
+    if (lanaJourney.el) {
+        const body = ljBody();
+        if (body) body.innerHTML = '';
+        ljSetFull(false);
+        lanaJourney.el.style.display = 'none';
+    }
+    lessonPath.el = null; lessonPath.sheetLesson = null;
+    const list = document.getElementById('workspace-tasks-list');
+    if (list) list.style.display = '';
+    if (currentAgent) renderWorkspaceTasks(currentAgent);
+}
+
+function ljOnAgentSwitch(agent) {
+    if (ljIsOpen() && projects[lanaJourney.projectId] && interactiveOwner(projects[lanaJourney.projectId]) !== agent) ljClose();
+}
+
+function ljProjectIdForFile(agent, file) {
+    const task = file && file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
+    return task ? task.projectId : null;
+}
+
+// Playing a lesson file from anywhere opens the journey first (the player sits on top of the path).
+function ljEnsureForFile(agent, file) {
+    if (ljIsOpen()) return true;
+    const pid = ljProjectIdForFile(agent, file);
+    if (!pid || !projects[pid]) return false;
+    ljOpen(pid);
+    return true;
+}
+
+// "Start Journey" until a lesson has been started, then "Continue Journey".
+function ljHasStarted(project) {
+    return (project.tasks || []).some(e => {
+        const t = findWorkspaceTaskById(e.agent, e.taskId);
+        return t && t.status !== 'not_started';
+    });
+}
+
+function ljButtonLabel(project) {
+    return ljHasStarted(project) ? 'Continue Journey' : 'Start Journey';
+}
+
+function openLessonPath(projectId) { ljOpen(projectId); }
+function closeLessonPath() { ljClose(); }
 
 function lpathKeydown(e) {
-    if (e.key === 'Escape' && lessonPath.el && !lessonPlayer.el) {
-        if (lessonPath.sheetLesson) { lessonPath.sheetLesson = null; renderLessonPath(); } else closeLessonPath();
-    }
+    if (e.key !== 'Escape' || lessonPlayer.el || arcade.view) return;
+    if (lessonPath.sheetLesson) { lessonPath.sheetLesson = null; renderLessonPath(); }
+    else if (lanaJourney.full) ljSetFull(false);
 }
 
-function closeLessonPath() {
-    if (!lessonPath.el) return;
-    document.removeEventListener('keydown', lpathKeydown);
-    lessonPath.el.remove();
-    lessonPath.el = null; lessonPath.sheetLesson = null;
+// A little "+10 XP" that floats up from the footer when an answer earns XP.
+function lpFloatXp(amount) {
+    const p = lessonPlayer;
+    if (!p.el) return;
+    const tag = document.createElement('div');
+    tag.className = 'lp-float';
+    tag.textContent = `+${amount} XP`;
+    p.el.appendChild(tag);
+    setTimeout(() => tag.remove(), 1300);
 }
 
+// ================= the course path =================
 function refreshLessonPath() {
     if (lessonPath.el) renderLessonPath();
 }
@@ -16831,8 +17009,7 @@ function renderLessonPath(scrollToCurrent) {
     const project = projects[lessonPath.projectId];
     if (!el || !project) return;
     const agent = interactiveOwner(project);
-    el.querySelector('.lpath-title').textContent = project.name;
-    el.querySelector('.lp-chips').innerHTML = lanaStatChips(project.language);
+    ljUpdateChips();
     const trail = el.querySelector('.lpath-trail');
     const modules = project.outline ? project.outline.modules : [{ name: 'Lessons', goal: '', lessons: (project.tasks || []).map(e => ({ name: e.name, task: e.task, topics: e.topics || [], review: !!e.review, quiz: !!e.quiz, taskId: e.taskId })) }];
     const wiggle = [0, 46, 70, 46, 0, -46, -70, -46];
@@ -16961,7 +17138,7 @@ function openLessonNotes(agent, file) {
     el.innerHTML = `<div class="lp-top"><button type="button" class="lp-close" title="Close">←</button><div class="lpath-title">Lesson notes</div></div>
         <div class="lp-stage"><div class="lp-stage-inner"><div class="lp-host-notes"></div></div></div>
         <div class="lp-footer"><div class="lp-buttons"><button type="button" class="lp-main">Got it</button></div></div>`;
-    document.body.appendChild(el);
+    ljMount(el);
     const host = el.querySelector('.lp-host-notes');
     host.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
     wireLessonView(file, host);
@@ -16970,6 +17147,798 @@ function openLessonNotes(agent, file) {
     el.querySelector('.lp-main').addEventListener('click', close);
 }
 
+
+
+// ================= the arcade =================
+// Games that run on the XP you earn from lessons. Each turn (a Tetris piece, a bubble shot, a frog's
+// crossing, a Breakout ball, a Pac-Man life) costs 10 XP. When the XP is gone you can keep playing, but a
+// question from your lessons must be answered correctly to earn each turn.
+
+function shuffled(list) {
+    const a = list.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+}
+
+function lanaHighScores() {
+    try { return JSON.parse(localStorage.getItem('lanaHighScores') || '{}') || {}; } catch (e) { return {}; }
+}
+
+// Returns true when this is a new best.
+function lanaSetHighScore(id, score) {
+    const scores = lanaHighScores();
+    if (score > (scores[id] || 0)) { scores[id] = score; localStorage.setItem('lanaHighScores', JSON.stringify(scores)); return true; }
+    return false;
+}
+
+// What the questions come from: everything in the lessons so far.
+function arcadePool() {
+    const items = [], vocab = [], seen = new Set();
+    let code = '';
+    (workspaceFiles.lana || []).forEach(f => {
+        if (f.archived || !f.activity || f.activity.pending || f.activity.kind === 'notes') return;
+        const lesson = parseLesson(f);
+        if (!lesson) return;
+        code = code || lesson.languageCode || '';
+        (lesson.exercises || []).forEach(ex => {
+            if (['choice', 'odd', 'fill', 'translate'].includes(ex.type) && ex.prompt) items.push({ ex, code: lesson.languageCode || code });
+            const add = (word, meaning, speak) => {
+                word = lessonPlain(word).trim(); meaning = arcadeShortMeaning(meaning);
+                if (word && meaning && !seen.has(word.toLowerCase())) { seen.add(word.toLowerCase()); vocab.push({ word, meaning, speak: lessonPlain(speak || word), code: lesson.languageCode || code }); }
+            };
+            if (ex.type === 'card' && ex.front && ex.back) add(ex.front, ex.back, ex.speak);
+            if (ex.type === 'match') {
+                const t = lessonTargets(ex) || ['left'];
+                (ex.pairs || []).forEach(p => (t.includes('right') && !t.includes('left')) ? add(p.right, p.left) : add(p.left, p.right));
+            }
+        });
+    });
+    return { items, vocab, code };
+}
+
+function arcadeShortMeaning(text) {
+    return lessonPlain(text).split(/\s+[-–—]\s+|;|\. /)[0].replace(/\([^)]*\)/g, '').trim();
+}
+
+// A multiple-choice question built from a lesson question (typed answers get three choices).
+function arcadeChoiceFromItem(item, pool) {
+    const ex = item.ex;
+    let options, correct;
+    if (ex.type === 'choice' || ex.type === 'odd') {
+        options = shuffled(ex.options.slice(0, 4));
+        correct = options.indexOf(ex.answer);
+        if (correct < 0) { options[0] = ex.answer; correct = 0; }
+    } else {
+        const others = shuffled(pool.items.filter(i => (i.ex.type === 'fill' || i.ex.type === 'translate') && i.ex.answer && i.ex.answer !== ex.answer).map(i => i.ex.answer)).filter((v, i, a) => a.indexOf(v) === i).slice(0, 2);
+        pool.vocab.forEach(v => { if (others.length < 2 && v.word !== ex.answer && !others.includes(v.word)) others.push(v.word); });
+        options = shuffled([ex.answer].concat(others));
+        correct = options.indexOf(ex.answer);
+    }
+    return { prompt: ex.prompt, options, correct, speak: ex.speak || '', code: item.code, explain: ex.explanation || '' };
+}
+
+// "What does gelato mean?" - the word to its meaning (or, for listening, the sound to the word).
+function arcadeVocabQuestion(pool, mode) {
+    const pick = shuffled(pool.vocab).slice(0, 3);
+    const word = pick[0];
+    if (mode === 'listen') {
+        const options = shuffled(pick.map(v => v.word));
+        return { prompt: 'Which word did you hear?', options, correct: options.indexOf(word.word), speak: word.speak, code: word.code, explain: `${word.word} = ${word.meaning}`, autoplay: true };
+    }
+    const options = shuffled(pick.map(v => v.meaning));
+    return { prompt: `What does "${word.word}" mean?`, options, correct: options.indexOf(word.meaning), speak: word.speak, code: word.code, explain: `${word.word} = ${word.meaning}` };
+}
+
+function arcadeAnyQuestion(pool) {
+    const canItem = pool.items.length > 0, canVocab = pool.vocab.length >= 3;
+    if (canItem && (!canVocab || Math.random() < 0.6)) return arcadeChoiceFromItem(shuffled(pool.items)[0], pool);
+    if (canVocab) return arcadeVocabQuestion(pool, Math.random() < 0.4 ? 'listen' : 'meaning');
+    return null;
+}
+
+const arcade = { el: null, view: null, canvas: null, ctx: null, game: null, id: null, raf: 0, last: 0, paused: 0, over: false, score: 0, keys: null, pool: null, askResolve: null };
+const ARCADE_GAMES = [
+    { id: 'tetris', name: 'Tetris', icon: '🧱', blurb: 'Stack and clear lines. Every piece is a turn.', make: arcadeTetris },
+    { id: 'bubble', name: 'Bubble Pop', icon: '🫧', blurb: 'Aim the cannon and match three. Every shot is a turn.', make: arcadeBubble },
+    { id: 'frogger', name: 'Verb Crossing', icon: '🐸', blurb: 'Hop across the road by picking the right form. Every crossing is a turn.', make: arcadeFrogger, needs: 'questions' },
+    { id: 'breakout', name: 'Word Breaker', icon: '🧩', blurb: 'Each brick is a word - translate it to break it. Every ball is a turn.', make: arcadeBreakout, needs: 'vocab' },
+    { id: 'pacman', name: 'Word Maze', icon: '👻', blurb: 'Eat everything; listen and pick the word to open the gates. Every life is a turn.', make: arcadePacman, needs: 'vocab' }
+];
+
+function arcadeCleanup() {
+    cancelAnimationFrame(arcade.raf);
+    document.removeEventListener('keydown', arcadeKeyDown);
+    document.removeEventListener('keyup', arcadeKeyUp);
+    stopAllLessonVoice();
+    if (arcade.game && arcade.game.stop) arcade.game.stop();
+    arcade.game = null; arcade.id = null; arcade.paused = 0; arcade.askResolve = null;
+}
+
+function arcadeClose() {
+    arcadeCleanup();
+    if (arcade.view) arcade.view.remove();
+    arcade.view = null;
+}
+
+// ---- the menu ----
+function openArcade() {
+    arcadeClose();
+    const body = ljBody();
+    if (!body) return;
+    const pool = arcadePool();
+    const scores = lanaHighScores();
+    const view = document.createElement('div');
+    view.className = 'lp-overlay ar-view';
+    const stats = lanaStats();
+    view.innerHTML = `
+        <div class="lp-top"><button type="button" class="lp-close" title="Back to the path">←</button><div class="lpath-title">Arcade</div><div class="lp-chips">${lanaStatChips()}</div></div>
+        <div class="lp-stage"><div class="lp-stage-inner">
+            <div class="ar-intro">${lunaSvg('cheer', 110)}<div><h2>You have <b>${stats.xp} XP</b> to play with</h2>
+            <p>Every turn costs ${ARCADE_TURN_COST} XP. Run out and you can keep playing - just answer a question from your lessons to earn each turn.</p></div></div>
+            <div class="ar-grid">${ARCADE_GAMES.map(g => {
+                const blocked = (g.needs === 'vocab' && pool.vocab.length < 3) || (g.needs === 'questions' && pool.items.length < 3 && pool.vocab.length < 3);
+                return `<button type="button" class="ar-card${blocked ? ' blocked' : ''}" data-game="${g.id}">
+                    <span class="ar-card-icon">${g.icon}</span><span class="ar-card-name">${g.name}</span><span class="ar-card-blurb">${g.blurb}</span>
+                    <span class="ar-card-high">${blocked ? 'Finish a few exercises first' : (scores[g.id] ? `Best: ${scores[g.id]}` : 'No score yet')}</span></button>`;
+            }).join('')}</div>
+        </div></div>`;
+    body.appendChild(view);
+    arcade.view = view;
+    view.querySelector('.lp-close').addEventListener('click', arcadeClose);
+    view.querySelectorAll('.ar-card').forEach(btn => btn.addEventListener('click', () => {
+        if (btn.classList.contains('blocked')) { alert('This game uses words and questions from your lessons - finish a few exercises first.'); return; }
+        startArcadeGame(btn.dataset.game);
+    }));
+}
+
+// ---- playing ----
+function startArcadeGame(id) {
+    const def = ARCADE_GAMES.find(g => g.id === id);
+    const body = ljBody();
+    if (!def || !body) return;
+    arcadeCleanup();
+    if (arcade.view) arcade.view.remove();
+    arcade.pool = arcadePool();
+    arcade.id = id; arcade.score = 0; arcade.over = false; arcade.paused = 0;
+    arcade.keys = new Set();
+    const view = document.createElement('div');
+    view.className = 'lp-overlay ar-view ar-play';
+    view.innerHTML = `
+        <div class="lp-top"><button type="button" class="lp-close ar-menu" title="Back to the arcade">←</button><div class="lpath-title">${def.icon} ${def.name}</div>
+            <div class="lp-chips"><span class="lp-chip ar-score">Score 0</span><span class="lp-chip ar-high"></span><span class="ar-chips">${lanaStatChips()}</span></div></div>
+        <div class="ar-stage"><canvas class="ar-canvas" tabindex="0"></canvas><div class="ar-ask" style="display:none;"></div><div class="ar-over" style="display:none;"></div></div>`;
+    body.appendChild(view);
+    arcade.view = view;
+    arcade.canvas = view.querySelector('.ar-canvas');
+    arcade.ctx = arcade.canvas.getContext('2d');
+    view.querySelector('.ar-menu').addEventListener('click', () => openArcade());
+    arcade.canvas.addEventListener('pointermove', e => arcadePointer('move', e));
+    arcade.canvas.addEventListener('pointerdown', e => { arcade.canvas.focus(); arcadePointer('down', e); });
+    arcadeUpdateScoreChips();
+    const api = {
+        W: 0, H: 0,
+        size: (w, h) => { arcade.canvas.width = api.W = w; arcade.canvas.height = api.H = h; },
+        ctx: arcade.ctx,
+        pool: arcade.pool,
+        addScore: n => { arcade.score += n; arcadeUpdateScoreChips(); },
+        turn: arcadeTurn,
+        ask: arcadeAsk,
+        end: arcadeEnd,
+        sleep: ms => new Promise(r => setTimeout(r, ms)),
+        alive: () => arcade.id === id && !arcade.over
+    };
+    arcade.game = def.make(api);
+    document.addEventListener('keydown', arcadeKeyDown);
+    document.addEventListener('keyup', arcadeKeyUp);
+    arcade.last = performance.now();
+    arcade.raf = requestAnimationFrame(arcadeLoop);
+    arcade.canvas.focus();
+    if (arcade.game.start) arcade.game.start();
+}
+
+function arcadeUpdateScoreChips() {
+    if (!arcade.view) return;
+    const best = Math.max(lanaHighScores()[arcade.id] || 0, arcade.score);
+    const score = arcade.view.querySelector('.ar-score'); if (score) score.textContent = `Score ${arcade.score}`;
+    const high = arcade.view.querySelector('.ar-high'); if (high) high.textContent = `🏆 ${best}`;
+    const chips = arcade.view.querySelector('.ar-chips'); if (chips) chips.innerHTML = lanaStatChips();
+    ljUpdateChips();
+}
+
+function arcadeLoop(now) {
+    arcade.raf = requestAnimationFrame(arcadeLoop);
+    const dt = Math.min(0.05, (now - arcade.last) / 1000);
+    arcade.last = now;
+    const g = arcade.game;
+    if (!g) return;
+    if (!arcade.paused && !arcade.over && g.update) g.update(dt);
+    if (g.draw) g.draw();
+}
+
+function arcadeKeyDown(e) {
+    if (!arcade.game || !arcade.view) return;
+    if (arcade.askResolve) { const n = parseInt(e.key, 10); if (n >= 1 && n <= 4) arcade.view.querySelectorAll('.ar-opt')[n - 1]?.click(); return; }
+    const k = e.key === ' ' ? 'Space' : e.key;
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(k)) e.preventDefault();
+    if (arcade.keys.has(k)) return;
+    arcade.keys.add(k);
+    if (arcade.game.key && !arcade.over) arcade.game.key(k, true);
+}
+
+function arcadeKeyUp(e) {
+    if (!arcade.game) return;
+    const k = e.key === ' ' ? 'Space' : e.key;
+    arcade.keys.delete(k);
+    if (arcade.game.key && !arcade.over) arcade.game.key(k, false);
+}
+
+function arcadePointer(type, e) {
+    if (!arcade.game || !arcade.game.pointer || arcade.paused || arcade.over) return;
+    const rect = arcade.canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (arcade.canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (arcade.canvas.height / rect.height);
+    arcade.game.pointer(type, x, y);
+}
+
+// ---- turns: spend 10 XP, or answer a question when there isn't any ----
+async function arcadeTurn() {
+    if (lanaStats().xp >= ARCADE_TURN_COST) { lanaSpendXp(ARCADE_TURN_COST); arcadeUpdateScoreChips(); return true; }
+    for (;;) {
+        const q = arcadeAnyQuestion(arcade.pool);
+        if (!q) {
+            await arcadeAsk({ title: 'Out of XP', prompt: 'There are no lesson questions to answer yet. Finish an exercise to earn some XP, then come back.', options: ['OK'], correct: 0, quit: true });
+            return false;
+        }
+        const res = await arcadeAsk(Object.assign({ title: `Out of XP - answer to earn this turn`, quit: true }, q));
+        if (res.quit) return false;
+        if (res.ok) return true;
+    }
+}
+
+// A question over the game: resolves {ok, index, timedOut, quit}. The game waits while it's up.
+function arcadeAsk(spec) {
+    return new Promise(resolve => {
+        const box = arcade.view && arcade.view.querySelector('.ar-ask');
+        if (!box) { resolve({ ok: false, quit: true }); return; }
+        arcade.paused++;
+        const code = spec.code || arcade.pool.code || '';
+        let timerId = null, ticker = null, done = false;
+        const options = spec.options.map((o, i) => `<button type="button" class="ar-opt" data-i="${i}"><span class="ar-key">${i + 1}</span>${escapeHtml(o)}</button>`).join('');
+        box.innerHTML = `<div class="ar-ask-card">
+            <div class="ar-ask-title">${escapeHtml(spec.title || 'Question')}</div>
+            ${spec.timer ? '<div class="ar-timer"><span></span></div>' : ''}
+            <div class="ar-ask-prompt">${lessonRichText(spec.prompt, code)} ${spec.speak ? lessonSpeakButton(spec.speak, code, false) : ''}</div>
+            <div class="ar-opts">${options}</div>
+            <div class="ar-ask-fb"></div>
+            <div class="ar-ask-actions">${spec.quit ? '<button type="button" class="lp-skip ar-quit">Stop playing</button>' : ''}<button type="button" class="lp-main ar-next" style="display:none;">Continue</button></div>
+        </div>`;
+        box.style.display = '';
+        box.querySelector('.ar-ask-card').addEventListener('click', e => {
+            const sp = e.target.closest('.lesson-speak');
+            if (sp) { e.preventDefault(); speakLessonText(sp.dataset.text, sp.dataset.lang, sp); }
+        });
+        if (spec.speak && (spec.autoplay || /^(listen|which word did you hear)/i.test(spec.prompt))) setTimeout(() => speakLessonText(spec.speak, code, null), 200);
+        const finish = (result) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timerId); clearInterval(ticker);
+            stopAllLessonVoice();
+            box.style.display = 'none'; box.innerHTML = '';
+            arcade.askResolve = null;
+            arcade.paused = Math.max(0, arcade.paused - 1);
+            resolve(result);
+        };
+        arcade.askResolve = finish;
+        const reveal = (index, timedOut) => {
+            if (done) return;
+            clearTimeout(timerId); clearInterval(ticker);
+            const ok = index === spec.correct;
+            box.querySelectorAll('.ar-opt').forEach((b, i) => { b.disabled = true; if (i === spec.correct) b.classList.add('right'); else if (i === index) b.classList.add('wrong'); });
+            const fb = box.querySelector('.ar-ask-fb');
+            fb.className = 'ar-ask-fb ' + (ok ? 'ok' : 'bad');
+            fb.textContent = ok ? 'Correct!' : (timedOut ? "Time's up. " : 'Not quite. ') + `The answer: ${spec.options[spec.correct]}.` + (spec.explain ? ` ${lessonPlain(spec.explain)}` : '');
+            lanaChime(ok ? 'ok' : 'bad');
+            const result = { ok, index, timedOut: !!timedOut };
+            if (spec.gate !== false && (spec.quit || !ok)) {
+                const next = box.querySelector('.ar-next'); next.style.display = '';
+                next.addEventListener('click', () => finish(result));
+                next.focus();
+            } else setTimeout(() => finish(result), ok ? 450 : 1500);
+        };
+        box.querySelectorAll('.ar-opt').forEach(b => b.addEventListener('click', () => reveal(parseInt(b.dataset.i, 10), false)));
+        const quit = box.querySelector('.ar-quit');
+        if (quit) quit.addEventListener('click', () => finish({ ok: false, quit: true }));
+        if (spec.timer) {
+            const bar = box.querySelector('.ar-timer span');
+            const start = performance.now();
+            ticker = setInterval(() => { bar.style.width = `${Math.max(0, 100 - 100 * (performance.now() - start) / (spec.timer * 1000))}%`; }, 100);
+            timerId = setTimeout(() => reveal(-1, true), spec.timer * 1000);
+        }
+    });
+}
+
+function arcadeEnd(message) {
+    if (arcade.over || !arcade.view) return;
+    arcade.over = true;
+    const wasBest = lanaSetHighScore(arcade.id, arcade.score);
+    const best = lanaHighScores()[arcade.id] || arcade.score;
+    const def = ARCADE_GAMES.find(g => g.id === arcade.id);
+    const box = arcade.view.querySelector('.ar-over');
+    box.innerHTML = `<div class="ar-over-card">${lunaSvg(wasBest ? 'cheer' : 'happy', 110)}
+        <h2>${wasBest ? 'New high score!' : 'Game over'}</h2>
+        <p class="ar-over-msg">${escapeHtml(message || '')}</p>
+        <div class="ar-over-score">${arcade.score}</div>
+        <p class="ar-over-best">🏆 Best: ${best}</p>
+        <div class="ar-over-buttons"><button type="button" class="lp-skip ar-menu2">Arcade</button><button type="button" class="lp-main ar-again">Play again</button></div></div>`;
+    box.style.display = '';
+    lanaChime(wasBest ? 'win' : 'bad');
+    arcadeUpdateScoreChips();
+    box.querySelector('.ar-menu2').addEventListener('click', () => openArcade());
+    box.querySelector('.ar-again').addEventListener('click', () => startArcadeGame(def.id));
+}
+
+// ===================== Tetris =====================
+function arcadeTetris(api) {
+    const COLS = 10, ROWS = 20, S = 28;
+    api.size(420, 560);
+    const COLORS = ['', '#4fc3d9', '#e0b43a', '#9c5fd1', '#4caf7a', '#e65a5a', '#4a7de0', '#e8903a'];
+    const SHAPES = [[[1, 1, 1, 1]], [[2, 2], [2, 2]], [[0, 3, 0], [3, 3, 3]], [[0, 4, 4], [4, 4, 0]], [[5, 5, 0], [0, 5, 5]], [[6, 0, 0], [6, 6, 6]], [[0, 0, 7], [7, 7, 7]]];
+    const board = Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
+    let cur = null, next = null, timer = 0, lines = 0, level = 1;
+    const newShape = () => SHAPES[Math.floor(Math.random() * SHAPES.length)].map(r => r.slice());
+    const rotate = m => m[0].map((_, i) => m.map(r => r[i]).reverse());
+    const fits = (m, x, y) => m.every((row, r) => row.every((v, c) => !v || (x + c >= 0 && x + c < COLS && y + r < ROWS && (y + r < 0 || !board[y + r][x + c]))));
+    async function spawn() {
+        cur = null;
+        if (!(await api.turn())) { api.end('You stopped playing'); return; }
+        if (!api.alive()) return;
+        const m = next || newShape();
+        next = newShape();
+        cur = { m, x: Math.floor((COLS - m[0].length) / 2), y: 0 };
+        timer = 0;
+        if (!fits(cur.m, cur.x, cur.y)) { cur = null; api.end('The stack reached the top'); }
+    }
+    function lock() {
+        cur.m.forEach((row, r) => row.forEach((v, c) => { if (v && cur.y + r >= 0) board[cur.y + r][cur.x + c] = v; }));
+        let cleared = 0;
+        for (let r = ROWS - 1; r >= 0; r--) {
+            if (board[r].every(v => v)) { board.splice(r, 1); board.unshift(new Array(COLS).fill(0)); cleared++; r++; }
+        }
+        if (cleared) { lines += cleared; api.addScore([0, 100, 300, 500, 800][cleared] * level); level = 1 + Math.floor(lines / 10); }
+        spawn();
+    }
+    const speed = () => Math.max(0.09, 0.75 - (level - 1) * 0.06);
+    return {
+        start: spawn,
+        update(dt) {
+            if (!cur) return;
+            timer += dt;
+            while (cur && timer >= speed()) {
+                timer -= speed();
+                if (fits(cur.m, cur.x, cur.y + 1)) cur.y++; else { lock(); break; }
+            }
+        },
+        key(k, down) {
+            if (!down || !cur) return;
+            if (k === 'ArrowLeft' && fits(cur.m, cur.x - 1, cur.y)) cur.x--;
+            else if (k === 'ArrowRight' && fits(cur.m, cur.x + 1, cur.y)) cur.x++;
+            else if (k === 'ArrowDown') { if (fits(cur.m, cur.x, cur.y + 1)) { cur.y++; api.addScore(1); } else lock(); }
+            else if (k === 'ArrowUp') {
+                const r = rotate(cur.m);
+                for (const dx of [0, -1, 1, -2, 2]) if (fits(r, cur.x + dx, cur.y)) { cur.m = r; cur.x += dx; break; }
+            } else if (k === 'Space') {
+                let n = 0;
+                while (fits(cur.m, cur.x, cur.y + 1)) { cur.y++; n++; }
+                api.addScore(2 * n);
+                lock();
+            }
+        },
+        draw() {
+            const c = api.ctx;
+            c.fillStyle = '#fbf7e6'; c.fillRect(0, 0, api.W, api.H);
+            c.fillStyle = '#2b2614'; c.fillRect(0, 0, COLS * S, ROWS * S);
+            c.strokeStyle = 'rgba(255,255,255,0.05)';
+            for (let i = 0; i <= COLS; i++) { c.beginPath(); c.moveTo(i * S, 0); c.lineTo(i * S, ROWS * S); c.stroke(); }
+            for (let i = 0; i <= ROWS; i++) { c.beginPath(); c.moveTo(0, i * S); c.lineTo(COLS * S, i * S); c.stroke(); }
+            const cell = (x, y, v, a) => { c.globalAlpha = a || 1; c.fillStyle = COLORS[v]; c.fillRect(x * S + 1, y * S + 1, S - 2, S - 2); c.fillStyle = 'rgba(255,255,255,0.22)'; c.fillRect(x * S + 1, y * S + 1, S - 2, 6); c.globalAlpha = 1; };
+            board.forEach((row, y) => row.forEach((v, x) => { if (v) cell(x, y, v); }));
+            if (cur) {
+                let gy = cur.y;
+                while (fits(cur.m, cur.x, gy + 1)) gy++;
+                cur.m.forEach((row, r) => row.forEach((v, cc) => { if (v) cell(cur.x + cc, gy + r, v, 0.18); }));
+                cur.m.forEach((row, r) => row.forEach((v, cc) => { if (v) cell(cur.x + cc, cur.y + r, v); }));
+            }
+            c.fillStyle = '#4b3f12'; c.font = '700 16px sans-serif'; c.textAlign = 'left';
+            c.fillText('NEXT', 300, 40);
+            if (next) next.forEach((row, r) => row.forEach((v, cc) => { if (v) { c.fillStyle = COLORS[v]; c.fillRect(300 + cc * 22, 56 + r * 22, 20, 20); } }));
+            c.fillStyle = '#4b3f12';
+            c.fillText(`Level ${level}`, 300, 170); c.fillText(`Lines ${lines}`, 300, 196);
+            c.font = '13px sans-serif'; c.fillStyle = '#8a7a45';
+            ['← → move', '↑ rotate', '↓ soft drop', 'Space drop'].forEach((t, i) => c.fillText(t, 300, 260 + i * 22));
+        },
+        _state: () => ({ cur, board, lines, level })
+    };
+}
+
+// ===================== Bubble Pop =====================
+function arcadeBubble(api) {
+    const W = 420, H = 580, R = 18, D = 36, COLS = 11, ROWH = R * 1.732, TOP = 8, CX = W / 2, CY = H - 46, LIMIT = 15;
+    api.size(W, H);
+    const COLORS = ['#e65a5a', '#e0b43a', '#4caf7a', '#4a7de0', '#9c5fd1'];
+    let grid = [], parity = 0, shots = 0, proj = null, cur = 0, nxt = 0, aim = Math.PI / 2, busy = false;
+    const shifted = r => ((r + parity) % 2) === 1;
+    const colsIn = r => shifted(r) ? COLS - 1 : COLS;
+    const cx = (r, c) => R + c * D + (shifted(r) ? R : 0);
+    const cy = r => TOP + R + r * ROWH;
+    const rowOf = () => Array.from({ length: COLS }, (_, c) => Math.floor(Math.random() * COLORS.length));
+    const blank = () => new Array(COLS).fill(-1);
+    const valid = (r, c) => r >= 0 && r < grid.length && c >= 0 && c < colsIn(r);
+    const nbrs = (r, c) => [[r, c - 1], [r, c + 1]].concat((shifted(r) ? [c, c + 1] : [c - 1, c]).flatMap(cc => [[r - 1, cc], [r + 1, cc]])).filter(([a, b]) => valid(a, b));
+    function fill(rows) {
+        for (let r = 0; r < rows; r++) { const row = rowOf(); for (let c = colsIn(r); c < COLS; c++) row[c] = -1; grid[r] = row; }
+        while (grid.length < 18) grid.push(blank());
+    }
+    const present = () => { const s = new Set(); grid.forEach(r => r.forEach(v => { if (v >= 0) s.add(v); })); return s.size ? Array.from(s) : [0, 1, 2]; };
+    const pickColor = () => { const p = present(); return p[Math.floor(Math.random() * p.length)]; };
+    function flood(r, c) {
+        const color = grid[r][c], seen = new Set([r + ',' + c]), stack = [[r, c]], out = [];
+        while (stack.length) {
+            const [a, b] = stack.pop(); out.push([a, b]);
+            nbrs(a, b).forEach(([x, y]) => { if (grid[x][y] === color && !seen.has(x + ',' + y)) { seen.add(x + ',' + y); stack.push([x, y]); } });
+        }
+        return out;
+    }
+    function dropFloaters() {
+        const seen = new Set(), stack = [];
+        for (let c = 0; c < colsIn(0); c++) if (grid[0][c] >= 0) { seen.add('0,' + c); stack.push([0, c]); }
+        while (stack.length) { const [a, b] = stack.pop(); nbrs(a, b).forEach(([x, y]) => { if (grid[x][y] >= 0 && !seen.has(x + ',' + y)) { seen.add(x + ',' + y); stack.push([x, y]); } }); }
+        let n = 0;
+        grid.forEach((row, r) => row.forEach((v, c) => { if (v >= 0 && !seen.has(r + ',' + c)) { row[c] = -1; n++; } }));
+        return n;
+    }
+    function snap(x, y) {
+        let r = Math.max(0, Math.min(grid.length - 1, Math.round((y - TOP - R) / ROWH)));
+        let c = Math.round((x - R - (shifted(r) ? R : 0)) / D);
+        c = Math.max(0, Math.min(colsIn(r) - 1, c));
+        if (grid[r][c] >= 0) {
+            let best = null, bd = 1e9;
+            nbrs(r, c).forEach(([a, b]) => { if (grid[a][b] < 0) { const d = Math.hypot(cx(a, b) - x, cy(a) - y); if (d < bd) { bd = d; best = [a, b]; } } });
+            if (best) [r, c] = best;
+        }
+        return [r, c];
+    }
+    function land() {
+        const [r, c] = snap(proj.x, proj.y);
+        grid[r][c] = proj.color;
+        proj = null;
+        let popped = 0;
+        const group = flood(r, c);
+        if (group.length >= 3) { group.forEach(([a, b]) => { grid[a][b] = -1; }); popped = group.length; api.addScore(10 * popped); }
+        if (popped) { const dropped = dropFloaters(); if (dropped) api.addScore(20 * dropped); }
+        shots++;
+        if (shots % 5 === 0) { const row = rowOf(); grid.unshift(row); parity ^= 1; for (let cc = colsIn(0); cc < COLS; cc++) row[cc] = -1; grid.length = Math.max(grid.length - 1, 18); }
+        if (grid.every(row => row.every(v => v < 0))) { api.addScore(500); fill(5); }
+        for (let rr = LIMIT; rr < grid.length; rr++) if (grid[rr].some(v => v >= 0)) { api.end('The bubbles reached the cannon'); return; }
+        cur = nxt; if (!present().includes(cur)) cur = pickColor(); nxt = pickColor();
+    }
+    async function fire() {
+        if (proj || busy) return;
+        busy = true;
+        const ok = await api.turn();
+        busy = false;
+        if (!ok) { api.end('You stopped playing'); return; }
+        if (!api.alive()) return;
+        proj = { x: CX, y: CY, vx: Math.cos(aim) * 640, vy: -Math.sin(aim) * 640, color: cur };
+    }
+    return {
+        start() { fill(6); cur = pickColor(); nxt = pickColor(); },
+        update(dt) {
+            if (!proj) return;
+            const steps = Math.ceil(Math.hypot(proj.vx, proj.vy) * dt / 4);
+            for (let i = 0; i < steps && proj; i++) {
+                proj.x += proj.vx * dt / steps; proj.y += proj.vy * dt / steps;
+                if (proj.x < R) { proj.x = R; proj.vx = Math.abs(proj.vx); }
+                if (proj.x > W - R) { proj.x = W - R; proj.vx = -Math.abs(proj.vx); }
+                let hit = proj.y <= TOP + R;
+                if (!hit) outer: for (let r = 0; r < grid.length; r++) { if (Math.abs(cy(r) - proj.y) > D) continue; for (let c = 0; c < colsIn(r); c++) if (grid[r][c] >= 0 && Math.hypot(cx(r, c) - proj.x, cy(r) - proj.y) < D - 4) { hit = true; break outer; } }
+                if (hit) land();
+            }
+        },
+        pointer(type, x, y) {
+            aim = Math.max(0.17, Math.min(Math.PI - 0.17, Math.atan2(CY - y, x - CX)));
+            if (type === 'down') fire();
+        },
+        key(k, down) {
+            if (!down) return;
+            if (k === 'ArrowLeft') aim = Math.min(Math.PI - 0.17, aim + 0.08);
+            else if (k === 'ArrowRight') aim = Math.max(0.17, aim - 0.08);
+            else if (k === 'Space' || k === 'ArrowUp') fire();
+        },
+        draw() {
+            const c = api.ctx;
+            c.fillStyle = '#fbf7e6'; c.fillRect(0, 0, W, H);
+            c.fillStyle = '#efe8c6'; c.fillRect(0, 0, W, TOP);
+            c.strokeStyle = '#e0b43a'; c.setLineDash([6, 6]); c.beginPath(); c.moveTo(0, cy(LIMIT) - R); c.lineTo(W, cy(LIMIT) - R); c.stroke(); c.setLineDash([]);
+            const bubble = (x, y, col) => { c.fillStyle = COLORS[col]; c.beginPath(); c.arc(x, y, R - 1, 0, 7); c.fill(); c.fillStyle = 'rgba(255,255,255,0.35)'; c.beginPath(); c.arc(x - 5, y - 6, 5, 0, 7); c.fill(); };
+            grid.forEach((row, r) => row.forEach((v, cc) => { if (v >= 0 && cc < colsIn(r)) bubble(cx(r, cc), cy(r), v); }));
+            if (proj) bubble(proj.x, proj.y, proj.color);
+            c.strokeStyle = 'rgba(75,63,18,0.45)'; c.setLineDash([4, 8]); c.beginPath(); c.moveTo(CX, CY); c.lineTo(CX + Math.cos(aim) * 150, CY - Math.sin(aim) * 150); c.stroke(); c.setLineDash([]);
+            c.save(); c.translate(CX, CY); c.rotate(Math.PI / 2 - aim); c.fillStyle = '#8a7a45'; c.fillRect(-9, -44, 18, 44); c.restore();
+            c.fillStyle = '#663399'; c.beginPath(); c.arc(CX, CY, 24, 0, 7); c.fill();
+            if (!proj) bubble(CX, CY, cur);
+            c.fillStyle = '#8a7a45'; c.font = '700 12px sans-serif'; c.textAlign = 'left'; c.fillText('NEXT', 24, H - 40);
+            bubble(34, H - 18, nxt);
+            c.textAlign = 'right'; c.font = '12px sans-serif'; c.fillText('aim with the mouse · click or Space to fire', W - 10, H - 12);
+        },
+        _state: () => ({ grid, proj, shots, aim })
+    };
+}
+
+// ===================== Verb Crossing (Frogger-style) =====================
+function arcadeFrogger(api) {
+    const W = 640, H = 480;
+    api.size(W, H);
+    let level = 1, lives = 3, row = 0, lanes = 5, hit = 0, hop = 0, cars = [], running = true, label = '', frogRow = 0;
+    const rowH = () => Math.floor(380 / (lanes + 2));
+    const laneY = r => H - 40 - r * rowH() - rowH() / 2;
+    function makeCars() {
+        cars = [];
+        for (let l = 1; l <= lanes; l++) {
+            const dir = l % 2 ? 1 : -1, n = 2 + (l % 2), speed = 60 + level * 12 + (l * 7) % 40;
+            for (let i = 0; i < n; i++) cars.push({ lane: l, x: (W / n) * i + Math.random() * 60, w: 54 + Math.random() * 26, v: dir * speed, color: ['#e65a5a', '#4a7de0', '#e0b43a', '#9c5fd1', '#4caf7a'][(l + i) % 5] });
+        }
+    }
+    async function game() {
+        while (running && api.alive() && lives > 0) {
+            if (!(await api.turn())) { api.end('You stopped playing'); return; }
+            if (!api.alive()) return;
+            lanes = Math.min(8, 4 + level);
+            makeCars();
+            row = 0; frogRow = 0; hit = 0;
+            let crossed = true;
+            while (row <= lanes) {
+                const q = api.pool.items.length && (api.pool.vocab.length < 3 || Math.random() < 0.7) ? arcadeChoiceFromItem(api.pool.items[Math.floor(Math.random() * api.pool.items.length)], api.pool) : arcadeVocabQuestion(api.pool, 'meaning');
+                const res = await api.ask(Object.assign({ title: row === lanes ? 'Last hop!' : `Lane ${row + 1} of ${lanes + 1}`, timer: 14, gate: false }, q));
+                if (!running || !api.alive()) return;
+                if (res.ok) { row++; frogRow = row; api.addScore(10 * level); await api.sleep(260); }
+                else { hit = 1; await api.sleep(900); lives--; crossed = false; break; }
+            }
+            if (crossed) { api.addScore(100 * level); level++; await api.sleep(400); }
+        }
+        if (api.alive()) api.end(lives <= 0 ? 'Out of frogs' : '');
+    }
+    return {
+        start() { game(); },
+        stop() { running = false; },
+        update(dt) { cars.forEach(c => { c.x += c.v * dt; if (c.v > 0 && c.x > W + 10) c.x = -c.w; if (c.v < 0 && c.x < -c.w - 10) c.x = W; }); },
+        draw() {
+            const c = api.ctx, rh = rowH();
+            c.fillStyle = '#fbf7e6'; c.fillRect(0, 0, W, H);
+            c.fillStyle = '#9bd18f'; c.fillRect(0, laneY(lanes + 1) - rh / 2, W, rh);              // far bank
+            c.fillStyle = '#b6df9f'; c.fillRect(0, laneY(0) - rh / 2, W, rh + 40);                  // start bank
+            for (let l = 1; l <= lanes; l++) { c.fillStyle = l % 2 ? '#4a4638' : '#3f3b2f'; c.fillRect(0, laneY(l) - rh / 2, W, rh); c.strokeStyle = 'rgba(255,255,255,0.25)'; c.setLineDash([16, 14]); c.beginPath(); c.moveTo(0, laneY(l) - rh / 2); c.lineTo(W, laneY(l) - rh / 2); c.stroke(); c.setLineDash([]); }
+            cars.forEach(car => { const y = laneY(car.lane); c.fillStyle = car.color; c.fillRect(car.x, y - rh * 0.32, car.w, rh * 0.64); c.fillStyle = 'rgba(255,255,255,0.65)'; c.fillRect(car.x + (car.v > 0 ? car.w * 0.62 : car.w * 0.12), y - rh * 0.22, car.w * 0.26, rh * 0.44); });
+            c.font = `${Math.floor(rh * 0.8)}px serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+            const fy = laneY(frogRow);
+            c.fillText(hit ? '💥' : '🐸', W / 2, fy);
+            c.textBaseline = 'alphabetic'; c.font = '700 15px sans-serif'; c.fillStyle = '#4b3f12'; c.textAlign = 'left';
+            c.fillText(`Level ${level}   ${'🐸'.repeat(Math.max(0, lives))}`, 12, 24);
+        },
+        _state: () => ({ level, lives, row, lanes })
+    };
+}
+
+// ===================== Word Breaker (Breakout) =====================
+function arcadeBreakout(api) {
+    const W = 640, H = 520, BW = 70, BH = 26, GAP = 6, COLS = 8, ROWS = 4;
+    api.size(W, H);
+    const colors = ['#e65a5a', '#e0b43a', '#4caf7a', '#4a7de0', '#9c5fd1'];
+    let bricks = [], paddle = { x: W / 2, w: 110 }, ball = null, balls = 3, level = 1, mouseX = null, busy = false, asking = false, left = false, right = false, note = '';
+    function build() {
+        const words = shuffled(api.pool.vocab);
+        bricks = [];
+        const x0 = (W - (COLS * (BW + GAP) - GAP)) / 2;
+        for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+            const v = words[(r * COLS + c) % words.length];
+            bricks.push({ x: x0 + c * (BW + GAP), y: 50 + r * (BH + GAP), w: BW, h: BH, v, alive: true, color: colors[(r + c) % colors.length], cool: 0 });
+        }
+    }
+    function attach() { ball = { x: paddle.x, y: H - 46, vx: 0, vy: 0, r: 8, attached: true }; }
+    async function launch() {
+        if (!ball || !ball.attached || busy) return;
+        busy = true;
+        const ok = await api.turn();
+        busy = false;
+        if (!ok) { api.end('You stopped playing'); return; }
+        if (!api.alive()) return;
+        const speed = 300 + level * 25;
+        ball.attached = false; ball.vx = speed * 0.45; ball.vy = -speed;
+    }
+    async function brickHit(b) {
+        asking = true;
+        const q = arcadeVocabQuestion(api.pool, 'meaning');
+        // ask about the brick's own word
+        const opts = shuffled([b.v.meaning].concat(shuffled(api.pool.vocab.filter(v => v.meaning !== b.v.meaning).map(v => v.meaning)).slice(0, 2)));
+        const res = await api.ask({ title: 'Translate to break the brick', prompt: `What does "${b.v.word}" mean?`, options: opts, correct: opts.indexOf(b.v.meaning), speak: b.v.speak, code: b.v.code, timer: 12, gate: false, explain: `${b.v.word} = ${b.v.meaning}` });
+        asking = false;
+        if (!api.alive()) return;
+        b.cool = 0.3;
+        if (res.ok) { b.alive = false; api.addScore(20 * level); note = ''; }
+        else note = `${b.v.word} = ${b.v.meaning}`;
+        if (bricks.every(x => !x.alive)) { api.addScore(100 * level); level++; build(); attach(); }
+    }
+    return {
+        start() { build(); attach(); },
+        update(dt) {
+            if (left) paddle.x -= 480 * dt; if (right) paddle.x += 480 * dt;
+            if (mouseX !== null && !left && !right) paddle.x += (mouseX - paddle.x) * Math.min(1, dt * 18);
+            paddle.x = Math.max(paddle.w / 2, Math.min(W - paddle.w / 2, paddle.x));
+            bricks.forEach(b => { if (b.cool > 0) b.cool -= dt; });
+            if (!ball) return;
+            if (ball.attached) { ball.x = paddle.x; return; }
+            const steps = Math.ceil(Math.hypot(ball.vx, ball.vy) * dt / 4);
+            for (let i = 0; i < steps && ball && !asking; i++) {
+                ball.x += ball.vx * dt / steps; ball.y += ball.vy * dt / steps;
+                if (ball.x < ball.r) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+                if (ball.x > W - ball.r) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
+                if (ball.y < ball.r) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+                if (ball.vy > 0 && ball.y + ball.r >= H - 28 && ball.y - ball.r <= H - 16 && Math.abs(ball.x - paddle.x) <= paddle.w / 2 + ball.r) {
+                    const off = (ball.x - paddle.x) / (paddle.w / 2);
+                    const sp = Math.hypot(ball.vx, ball.vy);
+                    ball.vx = sp * 0.85 * off; ball.vy = -Math.sqrt(Math.max(1, sp * sp - ball.vx * ball.vx));
+                    ball.y = H - 28 - ball.r;
+                }
+                const b = bricks.find(k => k.alive && k.cool <= 0 && ball.x + ball.r > k.x && ball.x - ball.r < k.x + k.w && ball.y + ball.r > k.y && ball.y - ball.r < k.y + k.h);
+                if (b) {
+                    const fromSide = Math.min(ball.x + ball.r - b.x, b.x + b.w - (ball.x - ball.r)) < Math.min(ball.y + ball.r - b.y, b.y + b.h - (ball.y - ball.r));
+                    if (fromSide) ball.vx = -ball.vx; else ball.vy = -ball.vy;
+                    b.cool = 0.25;
+                    brickHit(b);
+                    break;
+                }
+                if (ball.y - ball.r > H) {
+                    balls--; ball = null;
+                    if (balls <= 0) { api.end('Out of balls'); return; }
+                    attach();
+                }
+            }
+        },
+        pointer(type, x) { mouseX = x; if (type === 'down') launch(); },
+        key(k, down) {
+            if (k === 'ArrowLeft') left = down; else if (k === 'ArrowRight') right = down;
+            else if ((k === 'Space' || k === 'ArrowUp') && down) launch();
+        },
+        draw() {
+            const c = api.ctx;
+            c.fillStyle = '#fbf7e6'; c.fillRect(0, 0, W, H);
+            bricks.forEach(b => {
+                if (!b.alive) return;
+                c.fillStyle = b.color; c.fillRect(b.x, b.y, b.w, b.h);
+                c.fillStyle = 'rgba(255,255,255,0.25)'; c.fillRect(b.x, b.y, b.w, 6);
+                c.fillStyle = '#fff'; c.font = '700 13px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+                let t = b.v.word; while (c.measureText(t).width > b.w - 8 && t.length > 3) t = t.slice(0, -2) + '…';
+                c.fillText(t, b.x + b.w / 2, b.y + b.h / 2 + 1);
+            });
+            c.textBaseline = 'alphabetic';
+            c.fillStyle = '#663399'; c.fillRect(paddle.x - paddle.w / 2, H - 28, paddle.w, 12);
+            if (ball) { c.fillStyle = '#8a7a45'; c.beginPath(); c.arc(ball.x, ball.y, ball.r, 0, 7); c.fill(); }
+            c.fillStyle = '#4b3f12'; c.font = '700 15px sans-serif'; c.textAlign = 'left';
+            c.fillText(`Level ${level}   Balls ${'●'.repeat(Math.max(0, balls))}`, 12, 26);
+            if (ball && ball.attached) { c.textAlign = 'center'; c.fillStyle = '#8a7a45'; c.fillText('Click or press Space to launch', W / 2, H - 70); }
+            if (note) { c.textAlign = 'right'; c.fillStyle = '#c0392b'; c.fillText(note, W - 12, 26); }
+        },
+        _state: () => ({ bricks, ball, balls, level, asking })
+    };
+}
+
+// ===================== Word Maze (Pac-Man-style) =====================
+function arcadePacman(api) {
+    const MAZE = [
+        '###############',
+        '#....#...#....#',
+        '#.##.#.#.#.##.#',
+        '#....#...#....#',
+        '#.##.#.#.#.##.#',
+        '#....#...#....#',
+        '#....G...G....#',
+        '#....#...#....#',
+        '#.##.#.#.#.##.#',
+        '#....#...#....#',
+        '#.##.#.#.#.##.#',
+        '#....#...#....#',
+        '###############'];
+    const CS = 36, COLS = 15, ROWS = 13;
+    api.size(COLS * CS, ROWS * CS + 30);
+    let map, player, ghosts, dir = { x: 0, y: 0 }, want = { x: 0, y: 0 }, lives = 3, level = 1, moveT = 0, ghostT = 0, asking = false, running = true, pellets = 0, note = '', respawning = false;
+    const START = { x: 1, y: 1 }, GHOST_START = [{ x: 7, y: 5 }, { x: 7, y: 7 }];
+    function reset(full) {
+        if (full) { map = MAZE.map(r => r.split('')); pellets = 0; map.forEach(r => r.forEach(ch => { if (ch === '.') pellets++; })); map[1][1] = ' '; pellets--; }
+        player = Object.assign({}, START); dir = { x: 0, y: 0 }; want = { x: 0, y: 0 };
+        ghosts = GHOST_START.map(g => Object.assign({ px: 0, py: 0 }, g));
+    }
+    const wall = (x, y) => y < 0 || y >= ROWS || x < 0 || x >= COLS || map[y][x] === '#';
+    const passable = (x, y) => !wall(x, y) && map[y][x] !== 'G';
+    async function startLife() {
+        respawning = true;
+        if (!(await api.turn())) { api.end('You stopped playing'); return; }
+        respawning = false;
+    }
+    async function gate(x, y) {
+        asking = true;
+        const pool = api.pool;
+        const q = pool.vocab.length >= 3 ? arcadeVocabQuestion(pool, 'listen') : arcadeChoiceFromItem(shuffled(pool.items)[0], pool);
+        const res = await api.ask(Object.assign({ title: 'Listen and open the gate', gate: false }, q));
+        asking = false;
+        if (!api.alive()) return;
+        if (res.ok) { map[y][x] = ' '; api.addScore(50); note = ''; } else note = lessonPlain(q.explain);
+    }
+    function loseLife() {
+        lives--;
+        if (lives <= 0) { api.end('Out of lives'); return; }
+        reset(false);
+        startLife();
+    }
+    return {
+        start() { reset(true); startLife(); },
+        stop() { running = false; },
+        update(dt) {
+            if (asking || respawning) return;
+            moveT += dt; ghostT += dt;
+            const step = 0.16;
+            while (moveT >= step) {
+                moveT -= step;
+                const tryDir = (d) => { if (!d.x && !d.y) return false; const nx = player.x + d.x, ny = player.y + d.y; if (!wall(nx, ny) && map[ny][nx] === 'G') { gate(nx, ny); return 'gate'; } return passable(nx, ny); };
+                const w = tryDir(want);
+                if (w === 'gate') { moveT = 0; break; }
+                if (w) dir = Object.assign({}, want);
+                else { const d = tryDir(dir); if (d === 'gate') { moveT = 0; break; } if (!d) dir = { x: 0, y: 0 }; }
+                if (dir.x || dir.y) { player.x += dir.x; player.y += dir.y; }
+                const ch = map[player.y][player.x];
+                if (ch === '.') { map[player.y][player.x] = ' '; api.addScore(10); pellets--; }
+                if (ghosts.some(g => g.x === player.x && g.y === player.y)) { loseLife(); return; }
+                if (pellets <= 0) { api.addScore(500 * level); level++; reset(true); startLife(); return; }
+            }
+            const gstep = Math.max(0.12, 0.3 - level * 0.02);
+            while (ghostT >= gstep) {
+                ghostT -= gstep;
+                ghosts.forEach(g => {
+                    const opts = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }].filter(d => passable(g.x + d.x, g.y + d.y));
+                    if (!opts.length) return;
+                    const ahead = opts.filter(d => !(g.last && d.x === -g.last.x && d.y === -g.last.y));
+                    const choices = ahead.length ? ahead : opts;
+                    let pick;
+                    if (Math.random() < 0.65) pick = choices.slice().sort((a, b) => (Math.abs(g.x + a.x - player.x) + Math.abs(g.y + a.y - player.y)) - (Math.abs(g.x + b.x - player.x) + Math.abs(g.y + b.y - player.y)))[0];
+                    else pick = choices[Math.floor(Math.random() * choices.length)];
+                    g.x += pick.x; g.y += pick.y; g.last = pick;
+                });
+                if (ghosts.some(g => g.x === player.x && g.y === player.y)) { loseLife(); return; }
+            }
+        },
+        key(k, down) {
+            if (!down) return;
+            const m = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } }[k];
+            if (m) want = m;
+        },
+        draw() {
+            const c = api.ctx;
+            c.fillStyle = '#fbf7e6'; c.fillRect(0, 0, api.W, api.H);
+            for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+                const ch = map[y][x], px = x * CS, py = y * CS + 30;
+                if (ch === '#') { c.fillStyle = '#8a7a45'; c.fillRect(px + 1, py + 1, CS - 2, CS - 2); c.fillStyle = 'rgba(255,255,255,0.15)'; c.fillRect(px + 1, py + 1, CS - 2, 6); }
+                else if (ch === '.') { c.fillStyle = '#c9b25a'; c.beginPath(); c.arc(px + CS / 2, py + CS / 2, 4, 0, 7); c.fill(); }
+                else if (ch === 'G') { c.fillStyle = '#663399'; c.fillRect(px + 2, py + 2, CS - 4, CS - 4); c.fillStyle = '#fff'; c.font = '18px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🔒', px + CS / 2, py + CS / 2 + 1); }
+            }
+            c.font = '26px serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+            ghosts.forEach(g => c.fillText('👻', g.x * CS + CS / 2, g.y * CS + 30 + CS / 2 + 1));
+            c.fillText('🐶', player.x * CS + CS / 2, player.y * CS + 30 + CS / 2 + 1);
+            c.textBaseline = 'alphabetic';
+            c.fillStyle = '#4b3f12'; c.font = '700 15px sans-serif'; c.textAlign = 'left';
+            c.fillText(`Level ${level}   Lives ${'🐶'.repeat(Math.max(0, lives))}`, 12, 21);
+            if (note) { c.textAlign = 'right'; c.fillStyle = '#c0392b'; c.fillText(note, api.W - 12, 21); }
+        },
+        _state: () => ({ map, player, ghosts, lives, level, pellets, asking })
+    };
+}
 
 // ---- Interactive Projects ----
 // An Interactive Project is something the agent builds WITH Francis rather than a job he hands them
@@ -17143,9 +18112,9 @@ function buildInteractiveProjectEl(project) {
     title.appendChild(ipEl('div', 'ip-sub', `${done} of ${lessonTasks.length} lessons done`));
     row.appendChild(title);
     const right = ipEl('div', 'ip-right');
-    const pathBtn = ipEl('button', 'task-action-btn solid-start lp-open-path-btn', '🗺 Path');
+    const pathBtn = ipEl('button', 'task-action-btn solid-start lp-open-path-btn', ljButtonLabel(project));
     pathBtn.type = 'button';
-    pathBtn.title = 'See the whole course as a path and start your next lesson';
+    pathBtn.title = 'Open the course as a path in your Workspace - lessons, games and your XP';
     pathBtn.addEventListener('click', (e) => { e.stopPropagation(); openLessonPath(project.id); });
     right.appendChild(pathBtn);
     const archive = ipEl('button', 'task-action-btn solid-archive', 'Archive');
@@ -18346,6 +19315,7 @@ function capitalizeAgent(agent) {
  }
 
  function selectAgent(agent) {
+    if (typeof ljOnAgentSwitch === 'function') ljOnAgentSwitch(agent);
     hideHomePage();
 
     // Update active state
@@ -28791,6 +29761,17 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const same = localKeys.length === Object.keys(server).length
                     && localKeys.every(key => server[key] === localStorage.getItem(key));
                 if (!same) {
+                    // The folder wins - but what this browser holds is saved there first, so nothing is lost for good.
+                    if (localKeys.length) {
+                        const mine = {};
+                        localKeys.forEach(key => { mine[key] = localStorage.getItem(key); });
+                        try {
+                            await fetch('/store/changes', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ changes: { [`__local_backup_${new Date().toISOString().replace(/[:.]/g, '-')}`]: JSON.stringify(mine) } })
+                            });
+                        } catch (e) { console.error('Could not save a safety copy:', e); }
+                    }
                     _lsClear.call(localStorage);
                     Object.entries(server).forEach(([key, value]) => { try { _lsSetItem.call(localStorage, key, value); } catch (e) { console.error('Could not load', key, e); } });
                     window.__keepSession = true;   // this reload shouldn't sign you out (see the pagehide handler)
