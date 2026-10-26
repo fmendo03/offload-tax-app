@@ -2050,6 +2050,119 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
 .lana-level-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: #555; }
 .lana-level-row select { font-size: 12px; padding: 3px 6px; }
 .lana-estimate { margin-top: 4px; font-size: 12px; font-weight: 600; color: #4b58c4; }
+/* ---- Lana's lesson player and course path (Lana's cream, olive and gold; Luna's purple bandana) ---- */
+.lp-overlay { position: fixed; inset: 0; z-index: 1500; background: #fbf7e6; display: flex; flex-direction: column; color: #4b3f12; }
+.lp-overlay.lp-notes { z-index: 1480; }
+.lp-top { display: flex; align-items: center; gap: 14px; padding: 14px 22px; width: 100%; max-width: 900px; margin: 0 auto; box-sizing: border-box; }
+.lp-close { border: none; background: none; font-size: 24px; line-height: 1; color: #8a7a45; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+.lp-close:hover { background: #efe8c6; }
+.lp-bar { flex: 1; height: 16px; background: #e8e0bd; border-radius: 999px; overflow: hidden; }
+.lp-bar-fill { height: 100%; width: 0; background: linear-gradient(#dcc972, #c9b25a); border-radius: 999px; transition: width 0.35s ease; }
+.lp-chips { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.lp-chip { background: #fffdf3; border: 2px solid #e3dcb8; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 800; color: #5b4a1e; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.lp-goal-bar { width: 38px; height: 8px; background: #e8e0bd; border-radius: 999px; overflow: hidden; display: inline-block; }
+.lp-goal-bar > span { display: block; height: 100%; background: #663399; border-radius: 999px; }
+.lp-stage { flex: 1; overflow-y: auto; padding: 10px 22px 28px; }
+.lp-stage-inner { max-width: 680px; margin: 0 auto; }
+.lp-host .lesson { max-width: none; padding: 0; margin: 0; }
+.lp-host .lesson-head, .lp-host .lesson-actions, .lp-host .lesson-score, .lp-host .lesson-wrapup,
+.lp-host .lesson-q-feedback, .lp-host .lesson-q-num, .lp-host .lesson-section > h2:not(.lp-keep) { display: none !important; }
+.lp-host .lesson-section { border: none; background: none; padding: 0; margin: 0; }
+.lp-host .lesson-story { margin-bottom: 18px; padding: 14px 16px; background: #fffdf3; border: 2px solid #e3dcb8; border-radius: 16px; }
+.lp-host .lesson-story > h2 { display: block !important; font-size: 15px; color: #8a7a45; margin: 0 0 8px; }
+.lp-host .lesson-q { display: none; border: none; background: none; padding: 0; margin: 0; box-shadow: none; }
+.lp-host .lesson-q.lp-current { display: block; }
+.lp-host .lesson-q.lp-locked { pointer-events: none; opacity: 0.95; }
+.lp-host .lesson-q.correct, .lp-host .lesson-q.wrong, .lp-host .lesson-q.close, .lp-host .lesson-q.blank, .lp-host .lesson-q.partial { background: none; border: none; }
+.lp-host .lesson-q-top { align-items: center; gap: 12px; margin-bottom: 18px; }
+.lp-host .lesson-q-prompt { font-size: 24px; font-weight: 800; color: #4b3f12; line-height: 1.3; }
+.lp-host .lesson-options { gap: 12px; }
+.lp-host .lesson-option { padding: 14px 18px; border: 2px solid #e3dcb8; border-bottom-width: 4px; border-radius: 16px; font-size: 18px; background: #fffdf3; }
+.lp-host .lesson-option:hover { background: #f8f2d4; }
+.lp-host .lesson-option:has(input:checked) { border-color: #8a7a45; background: #f1e9bb; color: #4b3f12; font-weight: 700; }
+.lp-host .lesson-option input { display: none; }
+.lp-host .lesson-input { width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 20px; border: 2px solid #e3dcb8; border-radius: 16px; background: #fffdf3; outline: none; }
+.lp-host .lesson-input:focus { border-color: #8a7a45; }
+.lp-host .lm-left, .lp-host .lm-right, .lp-host .lo-tile, .lp-host .lc-flip, .lp-host .lr-mic, .lp-host .lr-listen, .lp-host .lc-rate, .lp-host .lo-clear { border: 2px solid #e3dcb8; border-bottom-width: 4px; border-radius: 14px; background: #fffdf3; font-size: 17px; padding: 12px 16px; }
+.lp-host .lm-left.picked { border-color: #8a7a45; background: #f1e9bb; }
+.lp-host .lm-left.paired { border-color: #8a7a45; background: #f3ecc4; }
+.lp-host .lo-tile.built { background: #f1e9bb; border-color: #8a7a45; }
+.lp-host .lr-mic { border-color: #c4a5e0; background: #f4ecfb; color: #663399; font-weight: 700; }
+.lp-host .lr-mic.listening { background: #e6d6f5; }
+.lp-host .lesson-card { background: #fffdf3; border: 2px solid #e3dcb8; border-radius: 20px; padding: 24px 16px; }
+.lp-host .lc-front { font-size: 34px; }
+.lp-host .lesson-speak { background: #e8dca0; }
+.lp-host .lesson-speak.playing { background: #c9b25a; }
+.lp-screen:empty { display: none; }
+.lp-intro, .lp-result { text-align: center; padding: 24px 8px; }
+.lp-intro h1, .lp-result h1 { margin: 10px 0 6px; font-size: 30px; color: #4b3f12; }
+.lp-result h1 { font-size: 64px; margin: 0; color: #8a7a45; }
+.lp-kind { text-transform: uppercase; letter-spacing: 1px; font-size: 12px; font-weight: 800; color: #8a7a45; margin-top: 8px; }
+.lp-facts { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+.lp-facts span { background: #fffdf3; border: 2px solid #e3dcb8; border-radius: 999px; padding: 6px 14px; font-weight: 800; font-size: 13px; color: #5b4a1e; }
+.lp-stars { font-size: 44px; letter-spacing: 6px; color: #ddd5b0; }
+.lp-stars .on { color: #e0b43a; text-shadow: 0 2px 0 #b8902a; }
+.lp-result-sub { color: #7a6a3a; font-weight: 700; margin: 4px 0 12px; }
+.lp-xp { display: inline-block; background: #663399; color: #fff; font-weight: 800; padding: 6px 16px; border-radius: 999px; margin-bottom: 12px; }
+.lp-footer { border-top: 2px solid #e3dcb8; background: #fffdf3; padding: 16px 22px; }
+.lp-footer.ok { background: #e3f5e8; border-color: #b6e2c4; }
+.lp-footer.bad { background: #fde4e1; border-color: #f3b8b1; }
+.lp-feedback, .lp-buttons { max-width: 680px; margin: 0 auto; }
+.lp-fb-row { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+.lp-fb-head { font-size: 20px; font-weight: 800; }
+.lp-footer.ok .lp-fb-head { color: #2e7d4f; }
+.lp-footer.bad .lp-fb-head { color: #c0392b; }
+.lp-fb-text { font-size: 15px; line-height: 1.45; }
+.lp-buttons { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.lp-skip { background: none; border: 2px solid #e3dcb8; border-bottom-width: 4px; color: #8a7a45; font-weight: 800; letter-spacing: 0.5px; padding: 12px 22px; border-radius: 14px; cursor: pointer; text-transform: uppercase; font-size: 14px; }
+.lp-main { margin-left: auto; min-width: 180px; background: #8a7a45; color: #fff; border: none; border-bottom: 4px solid #5f5230; font-weight: 800; letter-spacing: 0.5px; padding: 13px 26px; border-radius: 14px; cursor: pointer; text-transform: uppercase; font-size: 15px; }
+.lp-main:disabled { background: #e3dcb8; color: #a89f78; border-bottom-color: #cfc59a; cursor: default; }
+.lp-main.ok { background: #4caf7a; border-bottom-color: #2e7d4f; }
+.lp-main.bad { background: #d9534f; border-bottom-color: #a73a37; }
+@media (max-width: 640px) { .lp-main { min-width: 0; flex: 1; } .lp-host .lesson-q-prompt { font-size: 20px; } .lp-chips .lp-goal { display: none; } }
+
+.lpath-overlay { position: fixed; inset: 0; z-index: 1400; background: #fbf7e6; display: flex; flex-direction: column; color: #4b3f12; }
+.lpath-top { display: flex; align-items: center; gap: 14px; padding: 12px 22px; border-bottom: 2px solid #e3dcb8; background: #fffdf3; }
+.lpath-title { flex: 1; font-size: 18px; font-weight: 800; }
+.lpath-scroll { flex: 1; overflow-y: auto; padding: 12px 16px 120px; }
+.lpath-trail { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.lpath-unit { width: 100%; background: linear-gradient(135deg, #8a7a45, #a8955a); color: #fffdf3; border-radius: 16px; padding: 14px 18px; margin: 18px 0 6px; box-shadow: 0 4px 0 #6b5d33; }
+.lpath-unit-name { font-weight: 800; font-size: 17px; }
+.lpath-unit-goal { font-size: 13px; opacity: 0.92; margin-top: 3px; }
+.lpath-soon { color: #8a7a45; font-size: 13px; text-align: center; padding: 6px 12px 14px; }
+.lpath-row { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.lpath-node { width: 78px; height: 72px; border-radius: 50%; border: none; font-size: 28px; color: #fff; cursor: pointer; background: #c9b25a; box-shadow: 0 6px 0 #9c8a3f; transition: transform 0.1s, box-shadow 0.1s; }
+.lpath-node:active { transform: translateY(4px); box-shadow: 0 2px 0 #9c8a3f; }
+.lpath-node.locked { background: #d8d2b8; box-shadow: 0 6px 0 #b9b293; color: #8d866a; }
+.lpath-node.done { background: #e0b43a; box-shadow: 0 6px 0 #b8902a; }
+.lpath-node.quiz { background: #663399; box-shadow: 0 6px 0 #4a2573; }
+.lpath-node.quiz.locked { background: #cfc3dd; box-shadow: 0 6px 0 #aa9dbb; }
+.lpath-node.review { background: #6f9e86; box-shadow: 0 6px 0 #4d7762; }
+.lpath-node.review.locked { background: #cdd8d1; box-shadow: 0 6px 0 #aab6ae; }
+.lpath-node.current { animation: lpathPulse 1.8s infinite; }
+@keyframes lpathPulse { 0%, 100% { box-shadow: 0 6px 0 #9c8a3f, 0 0 0 0 rgba(201, 178, 90, 0.6); } 50% { box-shadow: 0 6px 0 #9c8a3f, 0 0 0 14px rgba(201, 178, 90, 0); } }
+.lpath-node-name { font-size: 12px; font-weight: 700; color: #6b5d33; max-width: 190px; text-align: center; line-height: 1.25; }
+.lpath-start { position: absolute; top: -26px; background: #fffdf3; border: 2px solid #c9b25a; color: #8a7a45; font-weight: 800; font-size: 12px; letter-spacing: 0.5px; padding: 3px 10px; border-radius: 10px; }
+.lpath-start::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 10px; background: #fffdf3; border-right: 2px solid #c9b25a; border-bottom: 2px solid #c9b25a; transform: translateX(-50%) rotate(45deg); }
+.lpath-luna { position: absolute; left: calc(50% + 62px); top: -2px; pointer-events: none; }
+.lpath-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 78vh; overflow-y: auto; z-index: 1450; background: #fffdf3; border-top: 3px solid #c9b25a; border-radius: 22px 22px 0 0; padding: 14px 22px 26px; box-shadow: 0 -10px 30px rgba(75, 63, 18, 0.18); max-width: 640px; margin: 0 auto; }
+.lpath-sheet-grip { width: 44px; height: 5px; background: #e3dcb8; border-radius: 99px; margin: 0 auto 10px; }
+.lpath-sheet-close { position: absolute; right: 16px; top: 14px; border: none; background: none; font-size: 20px; color: #8a7a45; cursor: pointer; }
+.lpath-sheet h2 { margin: 6px 0 4px; font-size: 22px; }
+.lpath-sheet-topics { color: #8a7a45; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.lpath-sheet-about { font-size: 14px; color: #5b4a1e; margin: 6px 0 12px; }
+.lpath-sheet-note { background: #f3ecc4; border-radius: 12px; padding: 12px 14px; font-weight: 700; color: #6b5d33; }
+.lpath-sheet-progress { font-size: 13px; font-weight: 800; color: #8a7a45; margin-bottom: 8px; }
+.lp-big { width: 100%; background: #8a7a45; color: #fff; border: none; border-bottom: 4px solid #5f5230; border-radius: 14px; padding: 14px; font-weight: 800; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; margin: 6px 0 12px; }
+.lp-big:disabled { background: #d8d2b8; border-bottom-color: #b9b293; cursor: default; }
+.lpath-sheet-rows { display: flex; flex-direction: column; gap: 8px; }
+.lpath-row-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fffdf3; border: 2px solid #e3dcb8; border-bottom-width: 4px; border-radius: 14px; padding: 11px 14px; font-size: 15px; font-weight: 700; color: #4b3f12; cursor: pointer; text-align: left; }
+.lpath-row-item:disabled { opacity: 0.55; cursor: default; }
+.lpath-row-item.pass { border-color: #b6e2c4; background: #f1faf4; }
+.lpath-chip { font-size: 12px; font-weight: 800; color: #8a7a45; background: #f3ecc4; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.lpath-row-item.pass .lpath-chip { background: #d9f0e1; color: #2e7d4f; }
+.lp-open-path-btn { margin-right: 4px; }
+
 /* Interactive Projects: a folder tree, not a task list. */
 .ip-project { margin-bottom: 10px; }
 .ip-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: white; border: 1px solid #e6e6e6; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
@@ -16313,6 +16426,551 @@ function lessonRunContext(task) {
     return lines.join('\n');
 }
 
+// ================= Lana's lesson player and course path =================
+// The lessons as an app rather than a document: one question at a time with instant feedback and a
+// result screen (the player), a trail of lesson circles for the whole course (the path), and XP, a daily
+// goal and a streak. It sits on top of the existing lesson pages - the questions, grading, scores, the
+// 75% rule, the quiz unlock and the question bank are all unchanged.
+
+// Luna, Lana's golden retriever with the purple paw-print bandana.
+function lunaSvg(mood, size) {
+    const px = size || 96;
+    const eyes = mood === 'cheer' || mood === 'happy'
+        ? '<path d="M66 90 q10 -13 20 0" stroke="#3a2a1a" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M114 90 q10 -13 20 0" stroke="#3a2a1a" stroke-width="5" fill="none" stroke-linecap="round"/>'
+        : '<circle cx="76" cy="90" r="8" fill="#3a2a1a"/><circle cx="124" cy="90" r="8" fill="#3a2a1a"/><circle cx="79" cy="87" r="2.6" fill="#fff"/><circle cx="127" cy="87" r="2.6" fill="#fff"/>';
+    const brows = mood === 'sad'
+        ? '<path d="M64 76 l22 8" stroke="#a9742a" stroke-width="4" stroke-linecap="round"/><path d="M136 76 l-22 8" stroke="#a9742a" stroke-width="4" stroke-linecap="round"/>' : '';
+    const mouth = mood === 'sad'
+        ? '<path d="M100 118 v6" stroke="#3a2a1a" stroke-width="4" stroke-linecap="round"/><path d="M82 136 q18 -14 36 0" stroke="#3a2a1a" stroke-width="4" fill="none" stroke-linecap="round"/>'
+        : '<path d="M100 118 v8" stroke="#3a2a1a" stroke-width="4" stroke-linecap="round"/><path d="M100 126 q-12 12 -24 0" stroke="#3a2a1a" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M100 126 q12 12 24 0" stroke="#3a2a1a" stroke-width="4" fill="none" stroke-linecap="round"/>'
+          + (mood !== 'think' ? '<path d="M91 134 q9 24 18 0 z" fill="#e8667a"/>' : '');
+    const sparkle = mood === 'cheer'
+        ? '<g fill="#c9b25a"><path d="M22 34 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4z"/><path d="M176 28 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z"/></g>' : '';
+    const tilt = mood === 'think' ? ' transform="rotate(-7 100 100)"' : '';
+    return `<svg class="luna" width="${px}" height="${px}" viewBox="0 0 200 200" role="img" aria-label="Luna the dog">
+        ${sparkle}<g${tilt}>
+        <ellipse cx="44" cy="96" rx="25" ry="48" fill="#c98a2e" transform="rotate(14 44 96)"/>
+        <ellipse cx="156" cy="96" rx="25" ry="48" fill="#c98a2e" transform="rotate(-14 156 96)"/>
+        <circle cx="100" cy="98" r="62" fill="#e8b04f"/>
+        <ellipse cx="100" cy="124" rx="36" ry="28" fill="#f6d9a0"/>
+        <ellipse cx="100" cy="108" rx="12" ry="9" fill="#3a2a1a"/>
+        ${eyes}${brows}${mouth}
+        <path d="M50 152 Q100 180 150 152 L100 200 Z" fill="#663399"/>
+        <ellipse cx="100" cy="176" rx="7" ry="5.5" fill="#fff"/>
+        <circle cx="90" cy="168" r="2.8" fill="#fff"/><circle cx="100" cy="164" r="2.8" fill="#fff"/><circle cx="110" cy="168" r="2.8" fill="#fff"/>
+        </g></svg>`;
+}
+
+// ---- XP, streak and daily goal (kept with the rest of the browser data, so it's saved in the folder) ----
+function lanaProgress() {
+    try { const p = JSON.parse(localStorage.getItem('lanaProgress') || 'null'); if (p && typeof p === 'object') return p; } catch (e) { /* start fresh */ }
+    return { xp: 0, streak: 0, lastDay: null, days: {} };
+}
+
+function lanaDayKey(date) {
+    const d = date || new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function lanaDailyGoalXp(languageName) {
+    const entry = (lanaSettings.languages || []).find(l => String(l.name).toLowerCase() === String(languageName || '').toLowerCase());
+    return Math.round(languageDailyMinutes(entry) * 15);   // about 15 XP for every minute he says he can study
+}
+
+function lanaStats(languageName) {
+    const p = lanaProgress();
+    const today = lanaDayKey();
+    const yesterday = lanaDayKey(new Date(Date.now() - 86400000));
+    return { xp: p.xp || 0, streak: (p.lastDay === today || p.lastDay === yesterday) ? (p.streak || 0) : 0, today: (p.days || {})[today] || 0, goal: lanaDailyGoalXp(languageName) };
+}
+
+function lanaAwardXp(amount) {
+    const p = lanaProgress();
+    const today = lanaDayKey();
+    const yesterday = lanaDayKey(new Date(Date.now() - 86400000));
+    if (p.lastDay !== today) p.streak = p.lastDay === yesterday ? (p.streak || 0) + 1 : 1;
+    p.lastDay = today;
+    p.xp = (p.xp || 0) + amount;
+    p.days = p.days || {};
+    p.days[today] = (p.days[today] || 0) + amount;
+    const keep = Object.keys(p.days).sort().slice(-60);   // two months of days is plenty
+    p.days = Object.fromEntries(keep.map(k => [k, p.days[k]]));
+    localStorage.setItem('lanaProgress', JSON.stringify(p));
+    return p;
+}
+
+function lanaStatChips(languageName) {
+    const s = lanaStats(languageName);
+    const pct = Math.min(100, Math.round(100 * s.today / Math.max(1, s.goal)));
+    return `<span class="lp-chip" title="Days in a row you've studied">🔥 ${s.streak}</span>
+        <span class="lp-chip" title="Total XP">⭐ ${s.xp}</span>
+        <span class="lp-chip lp-goal" title="Today's goal: ${s.today} of ${s.goal} XP"><span class="lp-goal-bar"><span style="width:${pct}%"></span></span>🎯 ${s.today}/${s.goal}</span>`;
+}
+
+// ---- small sounds ----
+function lanaChime(kind) {
+    try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        if (!notifyAudioCtx) notifyAudioCtx = new Ctx();
+        const ctx = notifyAudioCtx;
+        if (ctx.state === 'suspended') ctx.resume();
+        const notes = kind === 'ok' ? [[660, 0], [880, 0.11]] : (kind === 'win' ? [[523, 0], [659, 0.12], [784, 0.24], [1047, 0.36]] : [[300, 0], [220, 0.13]]);
+        notes.forEach(([freq, delay]) => {
+            const t = ctx.currentTime + delay;
+            const osc = ctx.createOscillator(), gain = ctx.createGain();
+            osc.type = kind === 'bad' ? 'triangle' : 'sine';
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.start(t); osc.stop(t + 0.3);
+        });
+    } catch (e) { /* sound is a nicety */ }
+}
+
+// ================= the player =================
+const lessonPlayer = { el: null, host: null, file: null, agent: null, lesson: null, index: 0, phase: 'intro', grades: [], observer: null };
+const LESSON_PLAYER_KINDS = ['exercise', 'quiz', 'practice'];
+
+// Whether this file can be played one question at a time (the notes page and old-style lessons are read, not played).
+function canPlayLessonFile(file) {
+    const act = file && file.activity;
+    if (!act || act.pending || !LESSON_PLAYER_KINDS.includes(act.kind)) return false;
+    if (act.kind === 'quiz' && act.done) return false;   // a finished quiz offers "take a new quiz" instead
+    const lesson = parseLesson(file);
+    return !!(lesson && (lesson.exercises || []).length);
+}
+
+function startLessonPlayer(agent, fileId) {
+    const file = findWorkspaceFileById(agent, fileId);
+    if (!file || !canPlayLessonFile(file)) return false;
+    closeLessonPlayer(true);
+    const lesson = parseLesson(file);
+    lessonPlayer.file = file; lessonPlayer.agent = agent; lessonPlayer.lesson = lesson;
+    lessonPlayer.index = 0; lessonPlayer.phase = 'intro'; lessonPlayer.grades = [];
+    file.lessonProgress = { answers: {}, checked: false, submitted: false };
+    lessonFlippedSet(file).clear();
+
+    const el = document.createElement('div');
+    el.className = 'lp-overlay';
+    el.id = 'lesson-player';
+    el.innerHTML = `
+        <div class="lp-top"><button type="button" class="lp-close" title="Leave">✕</button><div class="lp-bar"><div class="lp-bar-fill"></div></div><div class="lp-chips">${lanaStatChips(lesson.language)}</div></div>
+        <div class="lp-stage"><div class="lp-stage-inner"><div class="lp-host"></div><div class="lp-screen"></div></div></div>
+        <div class="lp-footer"><div class="lp-feedback"></div><div class="lp-buttons"><button type="button" class="lp-skip">Skip</button><button type="button" class="lp-main" disabled>Check</button></div></div>`;
+    document.body.appendChild(el);
+    lessonPlayer.el = el;
+    lessonPlayer.host = el.querySelector('.lp-host');
+    el.querySelector('.lp-close').addEventListener('click', () => closeLessonPlayer(false));
+    el.querySelector('.lp-skip').addEventListener('click', () => lpCheck(true));
+    el.querySelector('.lp-main').addEventListener('click', lpMainClick);
+    document.addEventListener('keydown', lpKeydown);
+    lpBuildHost();
+    lpShowIntro();
+    return true;
+}
+
+// The existing lesson page, hosted here with only one question showing at a time.
+function lpBuildHost() {
+    const { host, file } = lessonPlayer;
+    host.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
+    wireLessonView(file, host);
+    if (lessonPlayer.observer) lessonPlayer.observer.disconnect();
+    lessonPlayer.observer = new MutationObserver(() => lpUpdateReady());
+    lessonPlayer.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'value', 'checked'] });
+    ['input', 'change', 'click'].forEach(ev => host.addEventListener(ev, () => setTimeout(lpUpdateReady, 0)));
+}
+
+function lpScreen(html, className) {
+    const screen = lessonPlayer.el.querySelector('.lp-screen');
+    screen.className = 'lp-screen' + (className ? ' ' + className : '');
+    screen.innerHTML = html;
+    lessonPlayer.host.style.display = html ? 'none' : '';
+}
+
+function lpFooter(state, html, mainLabel, mainEnabled, showSkip) {
+    const footer = lessonPlayer.el.querySelector('.lp-footer');
+    footer.className = 'lp-footer' + (state ? ` ${state}` : '');
+    footer.querySelector('.lp-feedback').innerHTML = html || '';
+    const main = footer.querySelector('.lp-main');
+    main.textContent = mainLabel;
+    main.disabled = !mainEnabled;
+    main.className = 'lp-main' + (state ? ` ${state}` : '');
+    footer.querySelector('.lp-skip').style.display = showSkip ? '' : 'none';
+}
+
+function lpShowIntro() {
+    const { lesson, file } = lessonPlayer;
+    const act = file.activity;
+    const n = (lesson.exercises || []).length;
+    const kindName = { exercise: 'Exercise', quiz: 'Quiz', practice: 'Practice' }[act.kind];
+    lpScreen(`
+        <div class="lp-intro">
+            ${lunaSvg('happy', 150)}
+            <div class="lp-kind">${kindName}</div>
+            <h1>${escapeHtml(act.title || lesson.title)}</h1>
+            <p>${lesson.instructions ? escapeHtml(lesson.instructions) : ''}</p>
+            <div class="lp-facts"><span>${n} question${n === 1 ? '' : 's'}</span>${act.best != null ? `<span>Best ${act.best}%</span>` : ''}${act.kind === 'quiz' ? `<span>${LESSON_PASS_PERCENT}% to pass</span>` : ''}</div>
+        </div>`);
+    lpFooter('', '', 'Start', true, false);
+    lessonPlayer.el.querySelector('.lp-bar-fill').style.width = '0%';
+}
+
+function lpMainClick() {
+    const p = lessonPlayer;
+    if (p.phase === 'intro') { lpScreen(''); lpShowQuestion(0); return; }
+    if (p.phase === 'answering') { lpCheck(false); return; }
+    if (p.phase === 'checked') { lpNext(); return; }
+}
+
+function lpKeydown(e) {
+    if (!lessonPlayer.el) return;
+    if (e.key === 'Escape') { closeLessonPlayer(false); return; }
+    if (e.key === 'Enter' && !e.shiftKey) {
+        const main = lessonPlayer.el.querySelector('.lp-main');
+        if (main && !main.disabled && lessonPlayer.phase !== 'done' && document.activeElement.tagName !== 'BUTTON') { e.preventDefault(); lpMainClick(); }
+    }
+}
+
+function lpShowQuestion(i) {
+    const p = lessonPlayer;
+    p.index = i; p.phase = 'answering';
+    const root = p.host.querySelector('.lesson');
+    const questions = Array.from(root.querySelectorAll('.lesson-q'));
+    questions.forEach((q, k) => { q.classList.toggle('lp-current', k === i); q.classList.remove('lp-locked'); });
+    const current = questions[i];
+    root.querySelectorAll('.lesson-section').forEach(sec => { sec.style.display = sec.contains(current) ? '' : 'none'; });
+    p.el.querySelector('.lp-bar-fill').style.width = `${Math.round(100 * i / questions.length)}%`;
+    lpFooter('', '', 'Check', false, true);
+    p.el.querySelector('.lp-stage').scrollTop = 0;
+    const ex = p.lesson.exercises[i];
+    const input = current.querySelector('.lesson-input');
+    if (input) setTimeout(() => input.focus(), 50);
+    // Anything with sound plays as soon as it appears.
+    if (ex.speak) setTimeout(() => speakLessonText(ex.speak, p.lesson.languageCode, null), 250);
+    lpUpdateReady();
+}
+
+function lpAnswerReady(ex, answer) {
+    const given = typeof answer === 'string' ? answer.trim() : '';
+    if (ex.type === 'match') return Object.keys(lessonParse(answer, {})).length === (ex.pairs || []).length;
+    if (ex.type === 'order') return lessonParse(answer, []).length > 0;
+    if (ex.type === 'card') return given === 'known' || given === 'learning' || given.startsWith('said:');
+    return !!given;
+}
+
+function lpUpdateReady() {
+    const p = lessonPlayer;
+    if (!p.el || p.phase !== 'answering') return;
+    const ex = p.lesson.exercises[p.index];
+    const ready = lpAnswerReady(ex, p.file.lessonProgress.answers[p.index]);
+    p.el.querySelector('.lp-main').disabled = !ready;
+}
+
+const LP_PRAISE = ['Correct!', 'Nice one!', 'Great job!', 'Perfect!', 'You got it!', 'Well done!'];
+
+function lpCheck(skipped) {
+    const p = lessonPlayer;
+    if (p.phase !== 'answering') return;
+    const i = p.index;
+    const ex = p.lesson.exercises[i];
+    const progress = p.file.lessonProgress;
+    if (skipped) progress.answers[i] = '';
+    const grade = gradeLessonItem(ex, progress.answers[i]);
+    p.grades[i] = grade;
+    p.phase = 'checked';
+    stopAllLessonVoice();
+    p.host.querySelectorAll('.lesson-q')[i].classList.add('lp-locked');
+    const good = grade.status === 'correct' || grade.status === 'close';
+    let text;
+    if (good) {
+        text = grade.status === 'close' ? `Nearly - mind the accents: ${ex.answer}` : LP_PRAISE[Math.floor(Math.random() * LP_PRAISE.length)];
+    } else {
+        const raw = lessonFeedbackText(ex, grade, progress.answers[i]);
+        text = (skipped ? 'Skipped. ' : '') + raw.replace(/^✗\s*/, '').replace(/^Not quite - /, '').replace(/^Some right - /, '') + (ex.explanation ? ` — ${ex.explanation}` : '');
+    }
+    const hearAnswer = !good && ex.type !== 'card' && ex.type !== 'match' && ex.answer && (['fill', 'translate', 'order'].includes(ex.type) ? (ex.type === 'order' || (lessonTargets(ex) || []).includes('answer')) : lessonOptionsSpoken(ex));
+    const body = `<div class="lp-fb-row">${lunaSvg(good ? 'happy' : 'sad', 64)}<div class="lp-fb-text"><div class="lp-fb-head">${good ? '✓' : '✗'} ${good ? '' : (grade.status === 'partial' ? 'Some right' : 'Not quite')}</div><div>${lessonRichText(text, p.lesson.languageCode)}${hearAnswer ? ' ' + lessonSpeakButton(ex.answer, p.lesson.languageCode, true) : ''}</div></div></div>`;
+    lpFooter(good ? 'ok' : 'bad', good && grade.status === 'correct' ? `<div class="lp-fb-row">${lunaSvg('happy', 64)}<div class="lp-fb-text"><div class="lp-fb-head">${escapeHtml(text)}</div></div></div>` : body, 'Continue', true, false);
+    lanaChime(good ? 'ok' : 'bad');
+}
+
+function lpNext() {
+    const p = lessonPlayer;
+    const total = p.lesson.exercises.length;
+    if (p.index + 1 < total) lpShowQuestion(p.index + 1);
+    else lpFinish();
+}
+
+// Every answer has been given: the existing lesson page records the score (best score, quiz unlock, results to Lana).
+function lpFinish() {
+    const p = lessonPlayer;
+    p.phase = 'done';
+    const { file, lesson, agent } = p;
+    const act = file.activity;
+    const checkBtn = p.host.querySelector('.lesson-check-btn');
+    if (checkBtn) checkBtn.click();
+    const pct = lessonPercent(lesson, file.lessonProgress);
+    const total = lesson.exercises.length;
+    const correct = p.grades.filter(g => g && (g.status === 'correct' || g.status === 'close')).length;
+    const passed = pct >= LESSON_PASS_PERCENT;
+    const perQuestion = act.kind === 'quiz' ? 15 : 10;
+    const xp = correct * perQuestion + (passed ? 10 : 0) + (pct === 100 ? 10 : 0);
+    lanaAwardXp(xp);
+    const stars = pct >= 100 ? 3 : (pct >= 90 ? 2 : (passed ? 1 : 0));
+    const best = act.best != null ? act.best : pct;
+    let message;
+    if (act.kind === 'quiz') message = passed ? 'You passed - your next lesson is open!' : `You need ${LESSON_PASS_PERCENT}% to pass. Redo any exercise, then take a new quiz.`;
+    else if (act.kind === 'practice') message = 'Practice makes progress.';
+    else message = passed ? `That counts toward your lesson quiz (${LESSON_PASS_PERCENT}%+ on every exercise).` : `Get ${LESSON_PASS_PERCENT}% or more to count toward the quiz - try again!`;
+    p.el.querySelector('.lp-bar-fill').style.width = '100%';
+    p.el.querySelector('.lp-chips').innerHTML = lanaStatChips(lesson.language);
+    lanaChime(passed ? 'win' : 'bad');
+    const failedQuiz = act.kind === 'quiz' && !passed;
+    lpScreen(`
+        <div class="lp-result">
+            ${lunaSvg(passed ? 'cheer' : 'think', 160)}
+            <div class="lp-stars">${[1, 2, 3].map(n => `<span class="${n <= stars ? 'on' : ''}">★</span>`).join('')}</div>
+            <h1>${pct}%</h1>
+            <p class="lp-result-sub">${correct} of ${total} right · best ${best}%</p>
+            <div class="lp-xp">+${xp} XP</div>
+            <p>${escapeHtml(message)}</p>
+        </div>`, 'lp-done');
+    lpFooter(passed ? 'ok' : '', '', failedQuiz ? 'Take a new quiz' : 'Continue', true, false);
+    const redo = document.createElement('button');
+    redo.type = 'button'; redo.className = 'lp-skip lp-redo'; redo.textContent = act.kind === 'quiz' ? 'Close' : 'Try again';
+    redo.style.display = '';
+    const skip = p.el.querySelector('.lp-skip');
+    skip.replaceWith(redo);
+    redo.addEventListener('click', () => {
+        if (act.kind === 'quiz') { closeLessonPlayer(true); return; }
+        startLessonPlayer(agent, file.id);
+    });
+    const main = p.el.querySelector('.lp-main');
+    const mainClone = main.cloneNode(true);
+    main.replaceWith(mainClone);
+    mainClone.addEventListener('click', () => {
+        if (failedQuiz) {
+            const newQuiz = p.host.querySelector('.lesson-newq-btn');
+            closeLessonPlayer(true);
+            if (newQuiz) newQuiz.click();
+        } else closeLessonPlayer(true);
+    });
+    refreshTaskViewsForAgent(agent);
+    if (typeof refreshLessonPath === 'function') refreshLessonPath();
+}
+
+function closeLessonPlayer(silent) {
+    const p = lessonPlayer;
+    if (!p.el) return;
+    if (!silent && p.phase !== 'intro' && p.phase !== 'done' && !confirm('Leave this one? Your answers so far won\'t be scored.')) return;
+    stopAllLessonVoice();
+    if (p.observer) p.observer.disconnect();
+    document.removeEventListener('keydown', lpKeydown);
+    if (p.file && p.file.lessonProgress && !p.file.lessonProgress.checked) p.file.lessonProgress = { answers: {}, checked: false, submitted: false };
+    saveWorkspaceFiles();
+    p.el.remove();
+    lessonPlayer.el = null; lessonPlayer.host = null;
+    if (typeof refreshLessonPath === 'function') refreshLessonPath();
+}
+
+// ================= the course path =================
+const lessonPath = { el: null, projectId: null, sheetLesson: null };
+
+function openLessonPath(projectId) {
+    const project = projects[projectId];
+    if (!project) return;
+    closeLessonPath();
+    lessonPath.projectId = projectId;
+    const el = document.createElement('div');
+    el.className = 'lpath-overlay';
+    el.id = 'lesson-path';
+    el.innerHTML = `
+        <div class="lpath-top"><button type="button" class="lp-close" title="Back">←</button><div class="lpath-title"></div><div class="lp-chips"></div></div>
+        <div class="lpath-scroll"><div class="lpath-trail"></div></div>
+        <div class="lpath-sheet" style="display:none;"></div>`;
+    document.body.appendChild(el);
+    lessonPath.el = el;
+    el.querySelector('.lp-close').addEventListener('click', closeLessonPath);
+    document.addEventListener('keydown', lpathKeydown);
+    renderLessonPath(true);
+}
+
+function lpathKeydown(e) {
+    if (e.key === 'Escape' && lessonPath.el && !lessonPlayer.el) {
+        if (lessonPath.sheetLesson) { lessonPath.sheetLesson = null; renderLessonPath(); } else closeLessonPath();
+    }
+}
+
+function closeLessonPath() {
+    if (!lessonPath.el) return;
+    document.removeEventListener('keydown', lpathKeydown);
+    lessonPath.el.remove();
+    lessonPath.el = null; lessonPath.sheetLesson = null;
+}
+
+function refreshLessonPath() {
+    if (lessonPath.el) renderLessonPath();
+}
+
+// Where each lesson stands: done, the one to do next, in progress, or locked behind an earlier one.
+function lessonNodeState(agent, lesson, taskKnown) {
+    const task = lesson.taskId ? findWorkspaceTaskById(agent, lesson.taskId) : null;
+    if (!task) return { task: null, kind: 'locked', label: 'Coming up' };
+    if (task.status === 'completed') return { task, kind: 'done', label: 'Done' };
+    if (task.status === 'in_progress') return { task, kind: 'busy', label: 'Lana is preparing it' };
+    const info = getProjectStepInfo(task);
+    if (info && info.blocker) return { task, kind: 'locked', label: `Opens after "${info.blocker.name || info.blocker.task}"` };
+    return { task, kind: task.status === 'in_review' ? 'active' : 'ready', label: task.status === 'in_review' ? 'In progress' : 'Ready to start' };
+}
+
+function renderLessonPath(scrollToCurrent) {
+    const el = lessonPath.el;
+    const project = projects[lessonPath.projectId];
+    if (!el || !project) return;
+    const agent = interactiveOwner(project);
+    el.querySelector('.lpath-title').textContent = project.name;
+    el.querySelector('.lp-chips').innerHTML = lanaStatChips(project.language);
+    const trail = el.querySelector('.lpath-trail');
+    const modules = project.outline ? project.outline.modules : [{ name: 'Lessons', goal: '', lessons: (project.tasks || []).map(e => ({ name: e.name, task: e.task, topics: e.topics || [], review: !!e.review, quiz: !!e.quiz, taskId: e.taskId })) }];
+    const wiggle = [0, 46, 70, 46, 0, -46, -70, -46];
+    let currentEl = null;
+    let n = 0;
+    trail.innerHTML = '';
+    modules.forEach((mod, mi) => {
+        const band = document.createElement('div');
+        band.className = 'lpath-unit';
+        band.innerHTML = `<div class="lpath-unit-name">${escapeHtml(mod.name)}${mod.level ? ` · ${escapeHtml(mod.level)}` : ''}</div>${mod.goal ? `<div class="lpath-unit-goal">${escapeHtml(mod.goal)}</div>` : ''}`;
+        trail.appendChild(band);
+        const lessons = mod.lessons || [];
+        if (!lessons.length) {
+            const soon = document.createElement('div');
+            soon.className = 'lpath-soon';
+            soon.textContent = (mod.roadmap || []).length ? `Coming up: ${mod.roadmap.join(' · ')}` : 'Coming up';
+            trail.appendChild(soon);
+            return;
+        }
+        let markedCurrent = false;
+        lessons.forEach(lesson => {
+            const st = lessonNodeState(agent, lesson);
+            const isNext = !markedCurrent && (st.kind === 'ready' || st.kind === 'active' || st.kind === 'busy');
+            if (isNext) markedCurrent = true;
+            const row = document.createElement('div');
+            row.className = 'lpath-row';
+            row.style.transform = `translateX(${wiggle[n % wiggle.length]}px)`;
+            n++;
+            const node = document.createElement('button');
+            node.type = 'button';
+            node.className = `lpath-node ${st.kind}${isNext ? ' current' : ''}${lesson.quiz ? ' quiz' : ''}${lesson.review ? ' review' : ''}`;
+            node.title = `${st.task ? st.task.name : lesson.name} - ${st.label}`;
+            node.innerHTML = st.kind === 'done' ? '★' : (st.kind === 'locked' ? '🔒' : (lesson.quiz ? '🏆' : (lesson.review ? '🔁' : '▶')));
+            node.addEventListener('click', () => { lessonPath.sheetLesson = lesson; renderLessonPath(); });
+            row.appendChild(node);
+            const name = document.createElement('div');
+            name.className = 'lpath-node-name';
+            name.textContent = st.task ? st.task.name : lesson.name;
+            row.appendChild(name);
+            if (isNext) {
+                const bubble = document.createElement('div');
+                bubble.className = 'lpath-start';
+                bubble.textContent = st.kind === 'busy' ? 'PREPARING…' : (st.kind === 'active' ? 'CONTINUE' : 'START');
+                row.appendChild(bubble);
+                const luna = document.createElement('div');
+                luna.className = 'lpath-luna';
+                luna.innerHTML = lunaSvg('happy', 76);
+                row.appendChild(luna);
+                currentEl = row;
+            }
+            trail.appendChild(row);
+        });
+    });
+    renderLessonSheet(agent);
+    if (scrollToCurrent && currentEl) setTimeout(() => currentEl.scrollIntoView({ block: 'center' }), 50);
+}
+
+function lessonActivityRows(agent, task) {
+    const layout = task && task.isLesson ? lessonSetLayout(agent, task) : null;
+    return layout;
+}
+
+// The panel that slides up when a lesson circle is tapped.
+function renderLessonSheet(agent) {
+    const sheet = lessonPath.el.querySelector('.lpath-sheet');
+    const lesson = lessonPath.sheetLesson;
+    if (!lesson) { sheet.style.display = 'none'; sheet.innerHTML = ''; return; }
+    const st = lessonNodeState(agent, lesson);
+    const task = st.task;
+    const layout = lessonActivityRows(agent, task);
+    sheet.style.display = '';
+    const parts = [`<div class="lpath-sheet-grip"></div><button type="button" class="lpath-sheet-close" title="Close">✕</button>
+        <h2>${escapeHtml(task ? task.name : lesson.name)}</h2>
+        ${(lesson.topics || []).length ? `<div class="lpath-sheet-topics">${escapeHtml(lesson.topics.join(' · '))}</div>` : ''}
+        ${lesson.task && !lesson.quiz ? `<p class="lpath-sheet-about">${escapeHtml(lesson.task)}</p>` : ''}`];
+    if (st.kind === 'locked') {
+        parts.push(`<div class="lpath-sheet-note">🔒 ${escapeHtml(st.label)}</div>`);
+    } else if (st.kind === 'busy') {
+        parts.push('<div class="lpath-sheet-note">Lana is writing this lesson now - it will appear here in a moment.</div>');
+    } else if (!layout && task && (task.status === 'not_started' || task.status === 'paused')) {
+        parts.push(`<button type="button" class="lp-big" data-act="start">${task.status === 'paused' ? 'Resume' : (lesson.quiz ? 'Start the quiz' : 'Start lesson')}</button>`);
+    } else if (layout) {
+        const nextEx = layout.exercises.find(f => (f.activity.best || 0) < LESSON_PASS_PERCENT && !f.activity.pending);
+        const doneEx = layout.exercises.filter(f => (f.activity.best || 0) >= LESSON_PASS_PERCENT).length;
+        parts.push(`<div class="lpath-sheet-progress">${doneEx} of ${layout.exercises.length} exercises at ${LESSON_PASS_PERCENT}%</div>`);
+        const target = nextEx || (layout.quiz && canPlayLessonFile(layout.quiz) ? layout.quiz : null);
+        if (target) parts.push(`<button type="button" class="lp-big" data-play="${target.id}">${target === layout.quiz ? 'Take the quiz' : 'Next: ' + escapeHtml(lessonRowLabel(target))}</button>`);
+        parts.push('<div class="lpath-sheet-rows">');
+        layout.rows.forEach(r => {
+            const a = r.file ? r.file.activity : null;
+            const icons = { notes: '📖', exercise: '✏️', quiz: '📝', practice: '↻' };
+            let chip = '', can = false;
+            if (r.locked) chip = `🔒 ${layout.exercises.filter(f => (f.activity.best || 0) >= LESSON_PASS_PERCENT).length}/${layout.exercises.length}`;
+            else if (a.pending) chip = a.error ? 'tap to retry' : 'writing…';
+            else if (r.kind === 'exercise') { chip = a.best != null ? `${a.best}%` : 'new'; can = true; }
+            else if (r.kind === 'quiz') { chip = a.done ? `${a.last}%${a.last >= LESSON_PASS_PERCENT ? ' ✓' : ''}` : 'ready'; can = true; }
+            else if (r.kind === 'practice') { chip = 'endless'; can = true; }
+            else if (r.kind === 'notes') { chip = 'read'; can = true; }
+            parts.push(`<button type="button" class="lpath-row-item${r.locked ? ' locked' : ''}${a && a.best >= LESSON_PASS_PERCENT ? ' pass' : ''}" data-file="${r.file ? r.file.id : ''}" data-kind="${r.kind}"${can || (a && a.pending) ? '' : ' disabled'}><span>${icons[r.kind] || ''} ${r.letter ? r.letter + '. ' : ''}${escapeHtml(r.file ? lessonRowLabel(r.file) : 'Quiz')}</span><span class="lpath-chip">${chip}</span></button>`);
+        });
+        parts.push('</div>');
+    }
+    sheet.innerHTML = parts.join('');
+    sheet.querySelector('.lpath-sheet-close').addEventListener('click', () => { lessonPath.sheetLesson = null; renderLessonPath(); });
+    const startBtn = sheet.querySelector('[data-act="start"]');
+    if (startBtn) startBtn.addEventListener('click', async () => {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Lana is preparing it…';
+        await startProjectTask(agent, task.id);
+        refreshLessonPath();
+    });
+    sheet.querySelectorAll('[data-play]').forEach(btn => btn.addEventListener('click', () => startLessonPlayer(agent, btn.dataset.play)));
+    sheet.querySelectorAll('.lpath-row-item').forEach(btn => btn.addEventListener('click', () => {
+        const file = findWorkspaceFileById(agent, btn.dataset.file);
+        if (!file) return;
+        if (file.activity && file.activity.pending) { ensureActivityContent(agent, file); return; }
+        if (btn.dataset.kind === 'notes') { openLessonNotes(agent, file); return; }
+        if (!startLessonPlayer(agent, file.id)) { closeLessonPath(); showWorkspaceFilePreview(agent, file.id); }
+    }));
+}
+
+// The lesson notes, read in place (a lesson's explanations before its exercises).
+function openLessonNotes(agent, file) {
+    const el = document.createElement('div');
+    el.className = 'lp-overlay lp-notes';
+    el.innerHTML = `<div class="lp-top"><button type="button" class="lp-close" title="Close">←</button><div class="lpath-title">Lesson notes</div></div>
+        <div class="lp-stage"><div class="lp-stage-inner"><div class="lp-host-notes"></div></div></div>
+        <div class="lp-footer"><div class="lp-buttons"><button type="button" class="lp-main">Got it</button></div></div>`;
+    document.body.appendChild(el);
+    const host = el.querySelector('.lp-host-notes');
+    host.innerHTML = `<div class="wp-preview-body wp-lesson-body">${buildLessonHtml(file)}</div>`;
+    wireLessonView(file, host);
+    const close = () => { stopAllLessonVoice(); el.remove(); };
+    el.querySelector('.lp-close').addEventListener('click', close);
+    el.querySelector('.lp-main').addEventListener('click', close);
+}
+
+
 // ---- Interactive Projects ----
 // An Interactive Project is something the agent builds WITH Francis rather than a job he hands them
 // (the language course is the first one). It has no tasks - it's a folder: project > modules >
@@ -16485,6 +17143,11 @@ function buildInteractiveProjectEl(project) {
     title.appendChild(ipEl('div', 'ip-sub', `${done} of ${lessonTasks.length} lessons done`));
     row.appendChild(title);
     const right = ipEl('div', 'ip-right');
+    const pathBtn = ipEl('button', 'task-action-btn solid-start lp-open-path-btn', '🗺 Path');
+    pathBtn.type = 'button';
+    pathBtn.title = 'See the whole course as a path and start your next lesson';
+    pathBtn.addEventListener('click', (e) => { e.stopPropagation(); openLessonPath(project.id); });
+    right.appendChild(pathBtn);
     const archive = ipEl('button', 'task-action-btn solid-archive', 'Archive');
     archive.type = 'button';
     archive.title = 'Archive the whole project - lessons and exercises go with it';
@@ -16773,6 +17436,7 @@ function renderWorkspacePreviewPanel(agent, fileId) {
 function showWorkspaceFilePreview(agent, fileId) {
     const file = findWorkspaceFileById(agent, fileId);
     if (!file) return;
+    if (file.activity && file.activity.kind !== 'notes' && startLessonPlayer(agent, fileId)) return;   // played one question at a time
     currentWorkspacePreview = { agent, fileId };
     showAgentTab('workspace');
     openWorkspaceViewer(agent, fileId);
