@@ -28052,6 +28052,100 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             setTimeout(armNotifications, 5000);
         }
 
+        // ---- Keeping the browser's data as files ----
+        // Everything the page saves with localStorage (tasks, projects, chats, lessons, workspace files)
+        // is also sent to the server, which keeps it as files in the app's own data folder. Signing in
+        // loads those files back into the page, so the folder - not the browser - is where it really lives.
+        const storeSync = { active: false, pending: new Map(), timer: null };
+        const _lsSetItem = Storage.prototype.setItem;
+        const _lsRemoveItem = Storage.prototype.removeItem;
+        const _lsClear = Storage.prototype.clear;
+
+        function storeQueue(key, value) {
+            if (!storeSync.active) return;
+            storeSync.pending.set(key, value);
+            clearTimeout(storeSync.timer);
+            storeSync.timer = setTimeout(flushStoreChanges, 400);
+        }
+
+        async function flushStoreChanges() {
+            clearTimeout(storeSync.timer);
+            if (!storeSync.pending.size) return;
+            const batch = new Map(storeSync.pending);
+            storeSync.pending.clear();
+            try {
+                const response = await fetch('/store/changes', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ changes: Object.fromEntries(batch) })
+                });
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error || 'not saved');
+            } catch (error) {
+                console.error('Could not save to the data folder yet:', error);
+                batch.forEach((value, key) => { if (!storeSync.pending.has(key)) storeSync.pending.set(key, value); });
+                storeSync.timer = setTimeout(flushStoreChanges, 5000);
+            }
+        }
+
+        Storage.prototype.setItem = function (key, value) {
+            _lsSetItem.call(this, key, value);
+            if (this === window.localStorage) storeQueue(String(key), String(value));
+        };
+        Storage.prototype.removeItem = function (key) {
+            _lsRemoveItem.call(this, key);
+            if (this === window.localStorage) storeQueue(String(key), null);
+        };
+        Storage.prototype.clear = function () {
+            const keys = this === window.localStorage ? Object.keys(this) : [];
+            _lsClear.call(this);
+            keys.forEach(key => storeQueue(key, null));
+        };
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushStoreChanges(); });
+
+        // Called once signed in, before the app starts. The data folder wins: if it differs from what this
+        // browser holds, the browser is replaced with it and the page reloads once. If the folder is empty
+        // (first time), what this browser already holds is sent up to it. Returns 'reload' when it reloaded.
+        async function syncStoreAfterLogin() {
+            try {
+                const response = await fetch('/store/all');
+                const data = await response.json();
+                if (!data.success) return 'skipped';
+                const server = data.items || {};
+                const localKeys = Object.keys(localStorage);
+                if (!Object.keys(server).length) {
+                    const everything = {};
+                    localKeys.forEach(key => { everything[key] = localStorage.getItem(key); });
+                    if (localKeys.length) {
+                        const up = await fetch('/store/changes', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ changes: everything })
+                        });
+                        if (!(await up.json()).success) return 'skipped';
+                    }
+                    storeSync.active = true;
+                    return 'uploaded';
+                }
+                const same = localKeys.length === Object.keys(server).length
+                    && localKeys.every(key => server[key] === localStorage.getItem(key));
+                if (!same) {
+                    _lsClear.call(localStorage);
+                    Object.entries(server).forEach(([key, value]) => { try { _lsSetItem.call(localStorage, key, value); } catch (e) { console.error('Could not load', key, e); } });
+                    window.__keepSession = true;   // this reload shouldn't sign you out (see the pagehide handler)
+                    window.location.reload();
+                    return 'reload';
+                }
+                storeSync.active = true;
+                return 'same';
+            } catch (error) {
+                console.error('Could not sync with the data folder:', error);
+                return 'skipped';
+            }
+        }
+
+        async function startAppAfterSignIn() {
+            const result = await syncStoreAfterLogin();
+            if (result !== 'reload') initApp();
+        }
+
         let currentUser = null;
         // Whether no account exists yet at all - in that case the Login
         // button's modal doubles as one-time account setup (see
@@ -28220,7 +28314,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 currentUser = data.user;
                 closeAuthModal();
                 setAuthLockedUI(false);
-                initApp();
+                startAppAfterSignIn();
             } catch (e) {
                 showAuthModalError('Could not reach the server - check the app is running and try again.');
                 btn.disabled = false;
@@ -28254,7 +28348,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // it, so it forces a real logout there instead of depending on the
         // cookie's own lifetime.
         window.addEventListener('pagehide', () => {
-            if (currentUser) navigator.sendBeacon('/auth/logout');
+            if (currentUser && !window.__keepSession) navigator.sendBeacon('/auth/logout');
         });
 
         document.getElementById('landing-login-btn').addEventListener('click', () => openAuthModal());
@@ -28304,7 +28398,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (status.loggedIn) {
                 currentUser = status.user;
                 setAuthLockedUI(false);
-                initApp();
+                startAppAfterSignIn();
             } else {
                 setAuthLockedUI(true);
             }

@@ -5979,6 +5979,70 @@ def avatars(filename):
 def backgrounds(filename):
     return send_from_directory('backgrounds', filename)
 
+# --- Browser data kept as files ----------------------------------------------
+# The page keeps tasks, projects, chats, lessons and workspace files in the browser's own storage. This
+# mirrors every change into files next to the rest of the app's data (one file per item, per user), and
+# hands them back when the page signs in, so nothing depends on the browser keeping them.
+STORE_DIR = _data_path('store')
+store_lock = threading.Lock()
+STORE_MAX_VALUE_CHARS = 60_000_000
+
+
+def _store_user_dir():
+    uid = re.sub(r'[^A-Za-z0-9_-]', '_', str(session.get('user_id') or 'nobody'))
+    return os.path.join(STORE_DIR, uid)
+
+
+def _store_file(folder, key):
+    return os.path.join(folder, urllib.parse.quote(key, safe='') + '.json')
+
+
+@app.route('/store/all', methods=['GET'])
+def store_all():
+    folder = _store_user_dir()
+    items = {}
+    if os.path.isdir(folder):
+        for name in os.listdir(folder):
+            if name.endswith('.json'):
+                try:
+                    with open(os.path.join(folder, name), 'r', encoding='utf-8') as f:
+                        items[urllib.parse.unquote(name[:-5])] = f.read()
+                except OSError:
+                    continue
+    return jsonify({'success': True, 'items': items})
+
+
+@app.route('/store/changes', methods=['POST'])
+def store_changes():
+    changes = (request.json or {}).get('changes')
+    if not isinstance(changes, dict):
+        return jsonify({'success': False, 'error': 'Nothing to save'}), 400
+    folder = _store_user_dir()
+    try:
+        with store_lock:
+            os.makedirs(folder, exist_ok=True)
+            for key, value in changes.items():
+                key = str(key)
+                if not key or len(key) > 150:
+                    continue
+                path = _store_file(folder, key)
+                if value is None:
+                    if os.path.exists(path):
+                        os.remove(path)
+                    continue
+                value = str(value)
+                if len(value) > STORE_MAX_VALUE_CHARS:
+                    continue
+                tmp = path + '.tmp'
+                with open(tmp, 'w', encoding='utf-8') as f:
+                    f.write(value)
+                os.replace(tmp, path)
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Store save error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # --- Backup & restore -------------------------------------------------------
 # Moves the server-side data (everything the app keeps in files, plus uploaded attachments) between
 # computers - e.g. from the hosted copy to a local one. The browser-side data (tasks, projects, chats,
@@ -6003,12 +6067,15 @@ def _zip_data_files(target):
             if os.path.isfile(path):
                 z.write(path, name)
                 count += 1
-        if os.path.isdir(ATTACHMENTS_DIR):
-            for root, _dirs, files in os.walk(ATTACHMENTS_DIR):
-                for fname in files:
-                    full = os.path.join(root, fname)
-                    z.write(full, 'attachments/' + os.path.relpath(full, ATTACHMENTS_DIR).replace('\\', '/'))
-                    count += 1
+        for top, folder in (('attachments', ATTACHMENTS_DIR), ('store', STORE_DIR)):
+            if os.path.isdir(folder):
+                for root, _dirs, files in os.walk(folder):
+                    for fname in files:
+                        if fname.endswith('.tmp'):
+                            continue
+                        full = os.path.join(root, fname)
+                        z.write(full, top + '/' + os.path.relpath(full, folder).replace('\\', '/'))
+                        count += 1
     return count
 
 
@@ -6039,7 +6106,7 @@ def admin_restore():
         parts = name.split('/')
         if name in allowed:
             entries.append(name)
-        elif len(parts) == 3 and parts[0] == 'attachments' and all(p and p not in ('.', '..') and '\\' not in p and ':' not in p for p in parts):
+        elif len(parts) == 3 and parts[0] in ('attachments', 'store') and all(p and p not in ('.', '..') and '\\' not in p and ':' not in p for p in parts):
             entries.append(name)
     if not entries:
         return jsonify({'success': False, 'error': 'That backup has no Offload data in it.'}), 400

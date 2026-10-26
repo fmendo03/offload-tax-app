@@ -256,3 +256,5 @@ kb_fixes.json
 lana_bank.json
 
 old-local-data-*/
+
+store/

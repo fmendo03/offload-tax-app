@@ -7,4 +7,4 @@ AI agent system for tax practice management
 2. Double-click `start-offload.bat`. It starts Offload at http://localhost:5000 (this computer only) and opens your browser.
 3. First time: create an account on the sign-in screen. Close the black window to stop Offload.
 
-Your data is saved as files in this folder. Settings > Data can back it up or move it to another computer.
+Everything is saved as files in this folder - to-dos, calendar and knowledge base, plus your tasks, projects, chats and lessons (in the `store` folder) - so a synced folder like OneDrive keeps all of it. Settings > Data can back it up or move it to another computer.
