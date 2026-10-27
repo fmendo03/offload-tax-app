@@ -17294,7 +17294,7 @@ const arcade = { el: null, view: null, scope: null, canvas: null, ctx: null, gam
 const ARCADE_GAMES = [
     { id: 'tetris', name: 'Tetris', icon: '🧱', blurb: 'Stack and clear lines. Every piece is a turn.', make: arcadeTetris },
     { id: 'bubble', name: 'Bubble Pop', icon: '🫧', blurb: 'Aim the cannon and match three. Every shot is a turn.', make: arcadeBubble },
-    { id: 'frogger', name: 'Verb Crossing', icon: '🐸', blurb: 'Hop across the road by picking the right form. Every crossing is a turn.', make: arcadeFrogger, needs: 'questions' },
+    { id: 'frogger', name: 'Cross the Road', icon: '🐸', blurb: 'Steer the frog across the traffic with the arrow keys. Every try is a turn.', make: arcadeFrogger, needs: 'questions' },
     { id: 'breakout', name: 'Word Breaker', icon: '🧩', blurb: 'Each brick is a word - translate it to break it. Every ball is a turn.', make: arcadeBreakout, needs: 'vocab' },
     { id: 'pacman', name: 'Word Maze', icon: '👻', blurb: 'Eat everything; listen and pick the word to open the gates. Every life is a turn.', make: arcadePacman, needs: 'vocab' }
 ];
@@ -17822,43 +17822,75 @@ function arcadeBubble(api) {
     };
 }
 
-// ===================== Verb Crossing (Frogger-style) =====================
+// ===================== Cross the Road (Frogger-style) =====================
+// Each try costs a turn (10 XP, or one answered question). Steer the frog across the lanes with the arrow keys
+// (or tap); get run over and you answer another question to try again. Reach the far side and you go up a level.
 function arcadeFrogger(api) {
     const W = 640, H = 480;
     api.size(W, H);
-    let level = 1, lives = 3, row = 0, lanes = 5, hit = 0, hop = 0, cars = [], running = true, label = '', frogRow = 0;
+    let level = 1, crossings = 0, lanes = 4, row = 0, fx = W / 2, cars = [], running = true, playing = false, hit = 0, onHit = null;
     const rowH = () => Math.floor(380 / (lanes + 2));
     const laneY = r => H - 40 - r * rowH() - rowH() / 2;
+    const STEP_X = 48;
     function makeCars() {
         cars = [];
         for (let l = 1; l <= lanes; l++) {
-            const dir = l % 2 ? 1 : -1, n = 2 + (l % 2), speed = 60 + level * 12 + (l * 7) % 40;
-            for (let i = 0; i < n; i++) cars.push({ lane: l, x: (W / n) * i + Math.random() * 60, w: 54 + Math.random() * 26, v: dir * speed, color: ['#e65a5a', '#4a7de0', '#e0b43a', '#9c5fd1', '#4caf7a'][(l + i) % 5] });
+            const dir = l % 2 ? 1 : -1, n = 2 + (l % 2), speed = 45 + level * 9 + (l * 11) % 35;
+            for (let i = 0; i < n; i++) cars.push({ lane: l, x: (W / n) * i + Math.random() * 50, w: 50 + Math.random() * 24, v: dir * speed, color: ['#e65a5a', '#4a7de0', '#e0b43a', '#9c5fd1', '#4caf7a'][(l + i) % 5] });
         }
     }
+    function newRound() {
+        lanes = Math.min(7, 3 + level);
+        makeCars();
+        row = 0; fx = W / 2; hit = 0;
+    }
+    function crashed() { return row >= 1 && row <= lanes && cars.some(c => c.lane === row && fx + 13 > c.x && fx - 13 < c.x + c.w); }
+    function checkHit() {
+        if (!playing || !crashed()) return;
+        playing = false; hit = 1;
+        if (onHit) onHit();
+    }
     async function game() {
-        while (running && api.alive() && lives > 0) {
+        while (running && api.alive()) {
             if (!(await api.turn())) { api.end('You stopped playing'); return; }
             if (!api.alive()) return;
-            lanes = Math.min(8, 4 + level);
-            makeCars();
-            row = 0; frogRow = 0; hit = 0;
-            let crossed = true;
-            while (row <= lanes) {
-                const q = api.pool.items.length && (api.pool.vocab.length < 3 || Math.random() < 0.7) ? arcadeChoiceFromItem(api.pool.items[Math.floor(Math.random() * api.pool.items.length)], api.pool) : arcadeVocabQuestion(api.pool, 'meaning');
-                const res = await api.ask(Object.assign({ title: row === lanes ? 'Last hop!' : `Lane ${row + 1} of ${lanes + 1}`, timer: 14, gate: false }, q));
-                if (!running || !api.alive()) return;
-                if (res.ok) { row++; frogRow = row; api.addScore(10 * level); await api.sleep(260); }
-                else { hit = 1; await api.sleep(900); lives--; crossed = false; break; }
-            }
-            if (crossed) { api.addScore(100 * level); level++; await api.sleep(400); }
+            newRound();
+            playing = true;
+            // Keep crossing until the frog is run over; each far bank reached starts the next, busier road.
+            await new Promise(resolve => { onHit = resolve; });
+            onHit = null;
+            await api.sleep(900);
         }
-        if (api.alive()) api.end(lives <= 0 ? 'Out of frogs' : '');
+    }
+    function hop(dx, dy) {
+        if (!playing) return;
+        if (dy) row = Math.max(0, Math.min(lanes + 1, row + dy));
+        if (dx) fx = Math.max(20, Math.min(W - 20, fx + dx * STEP_X));
+        if (dy > 0) api.addScore(5 * level);
+        if (row === lanes + 1) {
+            crossings++; api.addScore(100 * level); level++;
+            lanes = Math.min(7, 3 + level); makeCars(); row = 0; fx = W / 2;
+            return;
+        }
+        checkHit();
     }
     return {
         start() { game(); },
-        stop() { running = false; },
-        update(dt) { cars.forEach(c => { c.x += c.v * dt; if (c.v > 0 && c.x > W + 10) c.x = -c.w; if (c.v < 0 && c.x < -c.w - 10) c.x = W; }); },
+        stop() { running = false; if (onHit) onHit(); },
+        key(k, down) {
+            if (!down) return;
+            if (k === 'ArrowUp') hop(0, 1); else if (k === 'ArrowDown') hop(0, -1);
+            else if (k === 'ArrowLeft') hop(-1, 0); else if (k === 'ArrowRight') hop(1, 0);
+        },
+        pointer(type, x, y) {
+            if (type !== 'down') return;
+            const dx = x - fx, dy = laneY(row) - y;
+            if (Math.abs(dy) >= Math.abs(dx)) hop(0, dy > 0 ? 1 : -1); else hop(dx > 0 ? 1 : -1, 0);
+        },
+        update(dt) {
+            cars.forEach(c => { c.x += c.v * dt; if (c.v > 0 && c.x > W + 10) c.x = -c.w; if (c.v < 0 && c.x < -c.w - 10) c.x = W; });
+            checkHit();
+        },
         draw() {
             const c = api.ctx, rh = rowH();
             c.fillStyle = '#fbf7e6'; c.fillRect(0, 0, W, H);
@@ -17866,13 +17898,23 @@ function arcadeFrogger(api) {
             c.fillStyle = '#b6df9f'; c.fillRect(0, laneY(0) - rh / 2, W, rh + 40);                  // start bank
             for (let l = 1; l <= lanes; l++) { c.fillStyle = l % 2 ? '#4a4638' : '#3f3b2f'; c.fillRect(0, laneY(l) - rh / 2, W, rh); c.strokeStyle = 'rgba(255,255,255,0.25)'; c.setLineDash([16, 14]); c.beginPath(); c.moveTo(0, laneY(l) - rh / 2); c.lineTo(W, laneY(l) - rh / 2); c.stroke(); c.setLineDash([]); }
             cars.forEach(car => { const y = laneY(car.lane); c.fillStyle = car.color; c.fillRect(car.x, y - rh * 0.32, car.w, rh * 0.64); c.fillStyle = 'rgba(255,255,255,0.65)'; c.fillRect(car.x + (car.v > 0 ? car.w * 0.62 : car.w * 0.12), y - rh * 0.22, car.w * 0.26, rh * 0.44); });
-            c.font = `${Math.floor(rh * 0.8)}px serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-            const fy = laneY(frogRow);
-            c.fillText(hit ? '💥' : '🐸', W / 2, fy);
-            c.textBaseline = 'alphabetic'; c.font = '700 15px sans-serif'; c.fillStyle = '#4b3f12'; c.textAlign = 'left';
-            c.fillText(`Level ${level}   ${'🐸'.repeat(Math.max(0, lives))}`, 12, 24);
+            // the frog, drawn as a solid shape
+            const fy = laneY(row), r = Math.min(15, rh * 0.38);
+            if (hit) {
+                c.strokeStyle = '#c0392b'; c.lineWidth = 6; c.lineCap = 'round';
+                c.beginPath(); c.moveTo(fx - r, fy - r); c.lineTo(fx + r, fy + r); c.moveTo(fx + r, fy - r); c.lineTo(fx - r, fy + r); c.stroke();
+            } else if (playing || running) {
+                c.fillStyle = '#2f8f3f'; c.beginPath(); c.arc(fx, fy, r, 0, 7); c.fill();
+                c.lineWidth = 2; c.strokeStyle = '#1d5e29'; c.stroke();
+                c.fillStyle = '#fff'; c.beginPath(); c.arc(fx - r * 0.5, fy - r * 0.55, r * 0.3, 0, 7); c.arc(fx + r * 0.5, fy - r * 0.55, r * 0.3, 0, 7); c.fill();
+                c.fillStyle = '#111'; c.beginPath(); c.arc(fx - r * 0.5, fy - r * 0.55, r * 0.14, 0, 7); c.arc(fx + r * 0.5, fy - r * 0.55, r * 0.14, 0, 7); c.fill();
+            }
+            c.font = '700 15px sans-serif'; c.fillStyle = '#4b3f12'; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+            c.fillText(`Level ${level}   Crossings ${crossings}`, 12, 24);
+            c.textAlign = 'right'; c.font = '600 13px sans-serif'; c.fillStyle = '#6b5d33';
+            c.fillText('Arrow keys (or tap) to hop', W - 12, 24);
         },
-        _state: () => ({ level, lives, row, lanes })
+        _state: () => ({ level, crossings, row, lanes, fx, playing, hit })
     };
 }
 
