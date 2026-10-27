@@ -13596,11 +13596,12 @@ const MAX_TASK_AUTO_CONTINUES = 5;
 // when set, names specific file formats still missing (see
 // completeProjectTaskFromChat) so the continuation is a concrete instruction
 // rather than a vague "keep going".
-async function startProjectTask(agent, taskId, continueCount = 0, reminder = null) {
+async function startProjectTask(agent, taskId, continueCount = 0, reminder = null, early = false) {
     const task = findWorkspaceTaskById(agent, taskId);
     if (!task || task.status === 'in_progress') return;
     const stepInfo = task.status === 'not_started' ? getProjectStepInfo(task) : null;
-    if (stepInfo && stepInfo.blocker) {
+    // `early` is a lesson being prepared ahead of time, while the one before it is still being finished.
+    if (stepInfo && stepInfo.blocker && !early) {
         alert(`This is step ${stepInfo.step} of its project - "${stepInfo.blocker.name || stepInfo.blocker.task}" has to be completed first.`);
         return;
     }
@@ -16637,10 +16638,23 @@ function canPlayLessonFile(file) {
     return !!(lesson && (lesson.exercises || []).length);
 }
 
+// Opening a lesson's quiz means the lesson is nearly done: Lana starts writing the next lesson now so it is ready when the quiz is.
+function prepareNextLessonAhead(agent, file) {
+    const task = file && file.taskId ? findWorkspaceTaskById(agent, file.taskId) : null;
+    const project = task && task.projectId ? projects[task.projectId] : null;
+    if (!project || !isInteractiveProject(project)) return;
+    const index = project.tasks.findIndex(e => e.taskId === task.id);
+    const entry = index >= 0 ? project.tasks[index + 1] : null;
+    const next = entry ? findWorkspaceTaskById(entry.agent, entry.taskId) : null;
+    if (!next || !next.isLesson || next.isQuiz || next.archived || next.cancelled || next.status !== 'not_started') return;
+    Promise.resolve(startProjectTask(entry.agent, next.id, 0, null, true)).catch(e => console.error('Could not prepare the next lesson:', e));
+}
+
 function startLessonPlayer(agent, fileId) {
     const file = findWorkspaceFileById(agent, fileId);
     if (!file || !canPlayLessonFile(file)) return false;
     if (!ljEnsureForFile(agent, file)) return false;
+    if (file.activity.kind === 'quiz') prepareNextLessonAhead(agent, file);
     arcadeClose();
     closeLessonPlayer(true);
     const lesson = parseLesson(file);
