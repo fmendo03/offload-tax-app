@@ -5132,6 +5132,24 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
             "language_code": {"type": "string", "description": "BCP-47 code for hearing it spoken, e.g. \"it-IT\", \"es-MX\", \"ja-JP\"."},
             "name": {"type": "string", "description": "Project name, e.g. \"Italian: Novice to Proficient\"."},
             "summary": {"type": "string", "description": "3-5 sentences in your own voice: the journey from novice to proficient, what he'll be able to do at each level, roughly how long it takes at his daily study time, and a note on pace (if something doesn't stick you'll add practice before moving on)."},
+            "overview": {
+                "type": "array",
+                "description": (
+                    "The plan itself, shown as the first item of the project - 4 to 6 short sections, in this order: the honest "
+                    "timeline (how far his daily study time really gets him, citing typical CEFR study hours), the daily routine "
+                    "(listening first, then new lesson or review, vocabulary, speaking), the first stretch of the schedule, "
+                    "immersion habits he can add (podcasts, videos, music, spaced review), and the road from here to his target "
+                    "level with rough timeframes."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "Section heading, e.g. \"The honest timeline\"."},
+                        "text": {"type": "string", "description": "A short paragraph or a few lines, plain text."}
+                    },
+                    "required": ["title", "text"]
+                }
+            },
             "modules": {
                 "type": "array",
                 "description": "The course outline, in order, from beginner to advanced.",
@@ -5167,7 +5185,7 @@ PROPOSE_LANGUAGE_PLAN_TOOL = {
                 "minItems": 2
             }
         },
-        "required": ["language", "name", "summary", "modules"]
+        "required": ["language", "name", "summary", "overview", "modules"]
     }
 }
 
@@ -8304,6 +8322,11 @@ def chat():
                         # a roadmap module becomes lessons later, when Lana builds it.
                         'tasks': [dict(l, agent='lana') for l in modules[0]['lessons']],
                         'outline': {'modules': modules}, 'kind': 'language',
+                        'overview': [
+                            {'title': str(o['title']).strip()[:80], 'text': str(o['text']).strip()[:1500]}
+                            for o in (block_input.get('overview') or [])[:8]
+                            if isinstance(o, dict) and str(o.get('title') or '').strip() and str(o.get('text') or '').strip()
+                        ],
                         'language': str(block_input.get('language') or '').strip()[:40],
                         'languageCode': str(block_input.get('language_code') or '').strip()[:12]
                     }

@@ -10418,6 +10418,7 @@ function upsertProjectProposal(agent, proposeProjectData) {
         projectProposal.language = proposeProjectData.language || '';
         projectProposal.languageCode = proposeProjectData.languageCode || '';
         projectProposal.outline = proposeProjectData.outline || null;
+        projectProposal.overview = proposeProjectData.overview || [];
         // Every module with lessons ends with a quiz (the task is made when the plan is accepted).
         (projectProposal.outline ? projectProposal.outline.modules : []).forEach(mod => {
             if ((mod.lessons || []).length && !mod.lessons.some(l => l.quiz)) {
@@ -10440,6 +10441,7 @@ function upsertProjectProposal(agent, proposeProjectData) {
         projects[projectId].language = projectProposal.language;
         projects[projectId].languageCode = projectProposal.languageCode;
         projects[projectId].outline = projectProposal.outline;
+        projects[projectId].overview = projectProposal.overview || [];
     }
     saveProjects();
 
@@ -13226,7 +13228,7 @@ function migrateSingleTaskProjects() {
 // lives in her Interactive Projects and her lesson tasks are left alone.
 function migrateLanaPlanTasks() {
     let done = false;
-    try { done = !!localStorage.getItem('lanaPlanTasksCleared2'); } catch (e) { done = false; }
+    try { done = !!localStorage.getItem('lanaPlanTasksCleared3'); } catch (e) { done = false; }
     if (done) return;
     const tasks = workspaceTasks.lana || [];
     const doomed = new Set(tasks.filter(t => !t.isLesson && !t.projectId).map(t => t.id));
@@ -13236,7 +13238,7 @@ function migrateLanaPlanTasks() {
         saveWorkspaceTasks();
         saveWorkspaceFiles();
     }
-    try { localStorage.setItem('lanaPlanTasksCleared2', '1'); } catch (e) { /* try again next time */ }
+    try { localStorage.setItem('lanaPlanTasksCleared3', '1'); } catch (e) { /* try again next time */ }
 }
 
 // A project is an ordered chain: a task's place in project.tasks is its step
@@ -18094,6 +18096,27 @@ function buildInteractiveLessonEl(agent, lesson) {
     return wrap;
 }
 
+function buildInteractivePlanEl(agent, project) {
+    const wrap = ipEl('div', 'ip-node');
+    const { row, open } = ipFolderRow(agent, `ipp:${project.id}`, false, true, 'ip-module');
+    const title = ipEl('div', 'ip-title');
+    title.appendChild(ipEl('div', 'ip-name', '📋 Your learning plan'));
+    row.appendChild(title);
+    wrap.appendChild(row);
+    if (open) {
+        const body = ipEl('div', 'ip-children');
+        project.overview.forEach(section => {
+            const block = ipEl('div', 'ip-goal');
+            block.appendChild(ipEl('strong', '', section.title));
+            block.appendChild(ipEl('div', '', section.text));
+            block.lastChild.style.whiteSpace = 'pre-wrap';
+            body.appendChild(block);
+        });
+        wrap.appendChild(body);
+    }
+    return wrap;
+}
+
 function buildInteractiveModuleEl(agent, project, mod, index) {
     const wrap = ipEl('div', 'ip-node');
     const lessons = mod.lessons || [];
@@ -18155,6 +18178,8 @@ function buildInteractiveProjectEl(project) {
     if (open) {
         const body = ipEl('div', 'ip-children');
         if (project.summary) body.appendChild(ipEl('div', 'ip-goal', project.summary));
+        // The plan itself (timeline, routine, road to the target) is the first item of the project.
+        if ((project.overview || []).length) body.appendChild(buildInteractivePlanEl(agent, project));
         // A plan made before courses had modules is shown as one module holding all its lessons.
         const modules = project.outline ? project.outline.modules : [{
             name: 'Lessons', goal: '',
@@ -20107,7 +20132,8 @@ async function sendMessageInner(message, attachments, attachmentsForApi, related
     }
     if (!activeDiscussTask[agentAtSendTime] && !relatedItemId) {
         if (currentAgent === agentAtSendTime) showTypingIndicator(agentAtSendTime);
-        const classification = await classifyIfNeedsTask(message, attachments.map(a => a.name));
+        // Lana never turns a request into a task - her plans become Interactive Projects (and it saves a call).
+        const classification = agentAtSendTime === 'lana' ? null : await classifyIfNeedsTask(message, attachments.map(a => a.name));
         if (classification && classification.needs_task) {
             hideTypingIndicatorForAgent(agentAtSendTime);
             createTaskFromChatMessage(agentAtSendTime, message, classification.task_name, attachments);
