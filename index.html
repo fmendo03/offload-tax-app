@@ -2218,6 +2218,10 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
 .ar-over-best { margin: 4px 0 14px; font-weight: 800; color: #663399; }
 .ar-over-buttons { display: flex; gap: 12px; justify-content: center; }
 
+.lj .ar-view .lpath-scroll { flex: 1; overflow-y: auto; padding: 12px 16px 120px; }
+.ar-lock-note { max-width: 520px; width: calc(100% - 32px); margin: 0 auto 4px; box-sizing: border-box; background: #fff3d6; border: 2px solid #e3c98a; border-radius: 12px; padding: 8px 14px; font-size: 13px; font-weight: 700; color: #7a5a14; }
+.lpath-node-name.ar-sub { font-weight: 600; opacity: 0.85; margin-top: -4px; }
+
 /* Interactive Projects: a folder tree, not a task list. */
 .ip-project { margin-bottom: 10px; }
 .ip-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: white; border: 1px solid #e6e6e6; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
@@ -17201,11 +17205,12 @@ function lanaSetHighScore(id, score) {
 }
 
 // What the questions come from: everything in the lessons so far.
-function arcadePool() {
+function arcadePool(scope) {
     const items = [], vocab = [], seen = new Set();
     let code = '';
     (workspaceFiles.lana || []).forEach(f => {
         if (f.archived || !f.activity || f.activity.pending || f.activity.kind === 'notes') return;
+        if (scope && !scope.taskIds.has(f.taskId)) return;
         const lesson = parseLesson(f);
         if (!lesson) return;
         code = code || lesson.languageCode || '';
@@ -17265,7 +17270,7 @@ function arcadeAnyQuestion(pool) {
     return null;
 }
 
-const arcade = { el: null, view: null, canvas: null, ctx: null, game: null, id: null, raf: 0, last: 0, paused: 0, over: false, score: 0, keys: null, pool: null, askResolve: null };
+const arcade = { el: null, view: null, scope: null, canvas: null, ctx: null, game: null, id: null, raf: 0, last: 0, paused: 0, over: false, score: 0, keys: null, pool: null, askResolve: null };
 const ARCADE_GAMES = [
     { id: 'tetris', name: 'Tetris', icon: '🧱', blurb: 'Stack and clear lines. Every piece is a turn.', make: arcadeTetris },
     { id: 'bubble', name: 'Bubble Pop', icon: '🫧', blurb: 'Aim the cannon and match three. Every shot is a turn.', make: arcadeBubble },
@@ -17289,45 +17294,137 @@ function arcadeClose() {
     arcade.view = null;
 }
 
-// ---- the menu ----
+// ---- the arcade levels: everything finished, a module's worth, or one lesson ----
+function arcadeModulesOf(project) {
+    return project.outline ? project.outline.modules : [{ name: 'Lessons', goal: '', lessons: (project.tasks || []).map(e => ({ name: e.name, taskId: e.taskId, quiz: !!e.quiz, review: !!e.review })) }];
+}
+
+// A level opens once the lesson (or, for a module, any lesson in it) is completed; its questions come only from those lessons.
+function arcadeLevels(project) {
+    const agent = interactiveOwner(project);
+    const all = { key: '', name: 'Arcade: everything you have completed', taskIds: new Set(), count: 0, unlocked: false, lock: 'Complete a lesson to open the arcade.' };
+    const modules = arcadeModulesOf(project).map((mod, mi) => {
+        const lessons = (mod.lessons || []).filter(l => !l.quiz && l.taskId).map(l => {
+            const task = findWorkspaceTaskById(agent, l.taskId);
+            const done = !!task && task.status === 'completed';
+            const title = task ? task.name : l.name;
+            return { lesson: l, task, review: !!l.review, scope: { key: `${project.id}:l${l.taskId}`, name: `Arcade ${title}`, taskIds: new Set(done ? [l.taskId] : []), count: done ? 1 : 0, unlocked: done, lock: `Complete "${title}" to open this arcade level.` } };
+        });
+        const doneIds = lessons.filter(x => x.scope.unlocked).map(x => x.lesson.taskId);
+        doneIds.forEach(id => all.taskIds.add(id));
+        const scope = { key: `${project.id}:m${mi}`, name: `Module Arcade: ${mod.name}`, taskIds: new Set(doneIds), count: doneIds.length, unlocked: doneIds.length > 0, lock: `Complete a lesson in ${mod.name} to open this arcade level.` };
+        return { mod, lessons, scope };
+    });
+    all.count = all.taskIds.size;
+    all.unlocked = all.count > 0;
+    return { all, modules };
+}
+
+function arcadeScoreKey(scope, id) {
+    return scope && scope.key ? `${scope.key}|${id}` : id;
+}
+
 function openArcade() {
     arcadeClose();
     const body = ljBody();
+    const project = projects[lanaJourney.projectId];
+    if (!body || !project) return;
+    const levels = arcadeLevels(project);
+    const view = document.createElement('div');
+    view.className = 'lp-overlay ar-view';
+    view.innerHTML = `
+        <div class="lp-top"><button type="button" class="lp-close" title="Back to the course path">←</button><div class="lpath-title">Arcade</div><div class="lp-chips">${lanaStatChips()}</div></div>
+        <div class="ar-lock-note" style="display:none;"></div>
+        <div class="lpath-scroll"><div class="lpath-trail"></div></div>`;
+    body.appendChild(view);
+    arcade.view = view; arcade.scope = null;
+    view.querySelector('.lp-close').addEventListener('click', arcadeClose);
+    const note = view.querySelector('.ar-lock-note');
+    const trail = view.querySelector('.lpath-trail');
+    const wiggle = [0, 46, 70, 46, 0, -46, -70, -46];
+    let n = 0;
+    const addNode = (scope, icon, cls, label, sub) => {
+        const row = document.createElement('div');
+        row.className = 'lpath-row';
+        row.style.transform = `translateX(${wiggle[n % wiggle.length]}px)`;
+        n++;
+        const node = document.createElement('button');
+        node.type = 'button';
+        node.className = `lpath-node ${cls}${scope.unlocked ? '' : ' locked'}`;
+        node.textContent = scope.unlocked ? icon : '🔒';
+        node.title = scope.unlocked ? label : scope.lock;
+        node.addEventListener('click', () => {
+            if (scope.unlocked) { openArcadeMenu(scope); return; }
+            note.textContent = `🔒 ${scope.lock}`;
+            note.style.display = '';
+        });
+        row.appendChild(node);
+        const name = document.createElement('div');
+        name.className = 'lpath-node-name';
+        name.textContent = label;
+        row.appendChild(name);
+        if (sub) { const s2 = document.createElement('div'); s2.className = 'lpath-node-name ar-sub'; s2.textContent = sub; row.appendChild(s2); }
+        trail.appendChild(row);
+    };
+    addNode(levels.all, '🎮', 'quiz', 'Arcade: all modules and lessons completed', levels.all.unlocked ? `A mix of ${levels.all.count} completed lesson${levels.all.count === 1 ? '' : 's'}` : '');
+    levels.modules.forEach(m => {
+        const band = document.createElement('div');
+        band.className = 'lpath-unit';
+        band.innerHTML = `<div class="lpath-unit-name">${escapeHtml(m.mod.name)}${m.mod.level ? ` · ${escapeHtml(m.mod.level)}` : ''}</div>`;
+        trail.appendChild(band);
+        if (!m.lessons.length) {
+            const soon = document.createElement('div');
+            soon.className = 'lpath-soon';
+            soon.textContent = 'Coming up';
+            trail.appendChild(soon);
+            return;
+        }
+        addNode(m.scope, '🕹️', 'review', `Module Arcade: ${m.mod.name}`, m.scope.unlocked ? `A mix of ${m.scope.count} completed lesson${m.scope.count === 1 ? '' : 's'}` : '');
+        m.lessons.forEach(x => addNode(x.scope, '🎮', x.review ? 'review' : '', x.scope.name, ''));
+    });
+}
+
+// The games for one arcade level.
+function openArcadeMenu(scope) {
+    arcadeClose();
+    const body = ljBody();
     if (!body) return;
-    const pool = arcadePool();
+    const pool = arcadePool(scope);
     const scores = lanaHighScores();
     const view = document.createElement('div');
     view.className = 'lp-overlay ar-view';
     const stats = lanaStats();
     view.innerHTML = `
-        <div class="lp-top"><button type="button" class="lp-close" title="Back to the path">←</button><div class="lpath-title">Arcade</div><div class="lp-chips">${lanaStatChips()}</div></div>
+        <div class="lp-top"><button type="button" class="lp-close" title="Back to the arcade levels">←</button><div class="lpath-title">${escapeHtml(scope.name)}</div><div class="lp-chips">${lanaStatChips()}</div></div>
         <div class="lp-stage"><div class="lp-stage-inner">
             <div class="ar-intro">${lunaSvg('cheer', 110)}<div><h2>You have <b>${stats.xp} XP</b> to play with</h2>
-            <p>Every turn costs ${ARCADE_TURN_COST} XP. Run out and you can keep playing - just answer a question from your lessons to earn each turn.</p></div></div>
+            <p>Questions come from ${scope.count} completed lesson${scope.count === 1 ? '' : 's'}. Every turn costs ${ARCADE_TURN_COST} XP. Run out and you can keep playing - just answer a question to earn each turn.</p></div></div>
             <div class="ar-grid">${ARCADE_GAMES.map(g => {
                 const blocked = (g.needs === 'vocab' && pool.vocab.length < 3) || (g.needs === 'questions' && pool.items.length < 3 && pool.vocab.length < 3);
+                const best = scores[arcadeScoreKey(scope, g.id)];
                 return `<button type="button" class="ar-card${blocked ? ' blocked' : ''}" data-game="${g.id}">
                     <span class="ar-card-icon">${g.icon}</span><span class="ar-card-name">${g.name}</span><span class="ar-card-blurb">${g.blurb}</span>
-                    <span class="ar-card-high">${blocked ? 'Finish a few exercises first' : (scores[g.id] ? `Best: ${scores[g.id]}` : 'No score yet')}</span></button>`;
+                    <span class="ar-card-high">${blocked ? 'Not enough words from this level yet' : (best ? `Best: ${best}` : 'No score yet')}</span></button>`;
             }).join('')}</div>
         </div></div>`;
     body.appendChild(view);
-    arcade.view = view;
-    view.querySelector('.lp-close').addEventListener('click', arcadeClose);
+    arcade.view = view; arcade.scope = scope;
+    view.querySelector('.lp-close').addEventListener('click', () => openArcade());
     view.querySelectorAll('.ar-card').forEach(btn => btn.addEventListener('click', () => {
-        if (btn.classList.contains('blocked')) { alert('This game uses words and questions from your lessons - finish a few exercises first.'); return; }
-        startArcadeGame(btn.dataset.game);
+        if (btn.classList.contains('blocked')) { alert('This game needs more words and questions than this level has so far - try a bigger arcade level.'); return; }
+        startArcadeGame(btn.dataset.game, scope);
     }));
 }
 
 // ---- playing ----
-function startArcadeGame(id) {
+function startArcadeGame(id, scope) {
     const def = ARCADE_GAMES.find(g => g.id === id);
     const body = ljBody();
     if (!def || !body) return;
     arcadeCleanup();
     if (arcade.view) arcade.view.remove();
-    arcade.pool = arcadePool();
+    arcade.scope = scope || arcade.scope;
+    arcade.pool = arcadePool(arcade.scope);
     arcade.id = id; arcade.score = 0; arcade.over = false; arcade.paused = 0;
     arcade.keys = new Set();
     const view = document.createElement('div');
@@ -17340,7 +17437,7 @@ function startArcadeGame(id) {
     arcade.view = view;
     arcade.canvas = view.querySelector('.ar-canvas');
     arcade.ctx = arcade.canvas.getContext('2d');
-    view.querySelector('.ar-menu').addEventListener('click', () => openArcade());
+    view.querySelector('.ar-menu').addEventListener('click', () => openArcadeMenu(arcade.scope));
     arcade.canvas.addEventListener('pointermove', e => arcadePointer('move', e));
     arcade.canvas.addEventListener('pointerdown', e => { arcade.canvas.focus(); arcadePointer('down', e); });
     arcadeUpdateScoreChips();
@@ -17367,7 +17464,7 @@ function startArcadeGame(id) {
 
 function arcadeUpdateScoreChips() {
     if (!arcade.view) return;
-    const best = Math.max(lanaHighScores()[arcade.id] || 0, arcade.score);
+    const best = Math.max(lanaHighScores()[arcadeScoreKey(arcade.scope, arcade.id)] || 0, arcade.score);
     const score = arcade.view.querySelector('.ar-score'); if (score) score.textContent = `Score ${arcade.score}`;
     const high = arcade.view.querySelector('.ar-high'); if (high) high.textContent = `🏆 ${best}`;
     const chips = arcade.view.querySelector('.ar-chips'); if (chips) chips.innerHTML = lanaStatChips();
@@ -17489,8 +17586,9 @@ function arcadeAsk(spec) {
 function arcadeEnd(message) {
     if (arcade.over || !arcade.view) return;
     arcade.over = true;
-    const wasBest = lanaSetHighScore(arcade.id, arcade.score);
-    const best = lanaHighScores()[arcade.id] || arcade.score;
+    const scoreKey = arcadeScoreKey(arcade.scope, arcade.id);
+    const wasBest = lanaSetHighScore(scoreKey, arcade.score);
+    const best = lanaHighScores()[scoreKey] || arcade.score;
     const def = ARCADE_GAMES.find(g => g.id === arcade.id);
     const box = arcade.view.querySelector('.ar-over');
     box.innerHTML = `<div class="ar-over-card">${lunaSvg(wasBest ? 'cheer' : 'happy', 110)}
@@ -17502,8 +17600,8 @@ function arcadeEnd(message) {
     box.style.display = '';
     lanaChime(wasBest ? 'win' : 'bad');
     arcadeUpdateScoreChips();
-    box.querySelector('.ar-menu2').addEventListener('click', () => openArcade());
-    box.querySelector('.ar-again').addEventListener('click', () => startArcadeGame(def.id));
+    box.querySelector('.ar-menu2').addEventListener('click', () => openArcadeMenu(arcade.scope));
+    box.querySelector('.ar-again').addEventListener('click', () => startArcadeGame(def.id, arcade.scope));
 }
 
 // ===================== Tetris =====================
