@@ -17997,6 +17997,7 @@ function arcadePacman(api) {
         '###############'];
     const CS = 36, COLS = 15, ROWS = 13;
     api.size(COLS * CS, ROWS * CS + 30);
+    const STEP = 0.15;
     let map, player, ghosts, dir = { x: 0, y: 0 }, want = { x: 0, y: 0 }, lives = 3, level = 1, moveT = 0, ghostT = 0, asking = false, running = true, pellets = 0, note = '', respawning = false;
     const START = { x: 1, y: 1 }, GHOST_START = [{ x: 7, y: 5 }, { x: 7, y: 7 }];
     function reset(full) {
@@ -18026,25 +18027,58 @@ function arcadePacman(api) {
         reset(false);
         startLife();
     }
+    // One tile of movement. Returns 0 to carry on, 1 when a gate question opened, 2 when the life or level ended.
+    function stepPlayer() {
+        const tryDir = (d) => { if (!d.x && !d.y) return false; const nx = player.x + d.x, ny = player.y + d.y; if (!wall(nx, ny) && map[ny][nx] === 'G') { gate(nx, ny); return 'gate'; } return passable(nx, ny); };
+        const w = tryDir(want);
+        if (w === 'gate') { moveT = 0; return 1; }
+        if (w) dir = Object.assign({}, want);
+        else { const d = tryDir(dir); if (d === 'gate') { moveT = 0; return 1; } if (!d) dir = { x: 0, y: 0 }; }
+        if (dir.x || dir.y) { player.x += dir.x; player.y += dir.y; }
+        const ch = map[player.y][player.x];
+        if (ch === '.') { map[player.y][player.x] = ' '; api.addScore(10); pellets--; }
+        if (ghosts.some(g => g.x === player.x && g.y === player.y)) { loseLife(); return 2; }
+        if (pellets <= 0) { api.addScore(500 * level); level++; reset(true); startLife(); return 2; }
+        return 0;
+    }
+    // The dog and the ghost are drawn as solid shapes so they stand out against the maze.
+    function drawDog(c, x, y, r) {
+        c.fillStyle = '#5a3210';
+        c.beginPath(); c.ellipse(x - r * 0.85, y - r * 0.2, r * 0.38, r * 0.7, 0.35, 0, 7); c.fill();
+        c.beginPath(); c.ellipse(x + r * 0.85, y - r * 0.2, r * 0.38, r * 0.7, -0.35, 0, 7); c.fill();
+        c.fillStyle = '#b86a1f'; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+        c.lineWidth = 2; c.strokeStyle = '#4b2a0c'; c.stroke();
+        c.fillStyle = '#f3d9a8'; c.beginPath(); c.ellipse(x, y + r * 0.35, r * 0.55, r * 0.42, 0, 0, 7); c.fill();
+        c.fillStyle = '#1d1208';
+        c.beginPath(); c.arc(x - r * 0.38, y - r * 0.15, r * 0.14, 0, 7); c.fill();
+        c.beginPath(); c.arc(x + r * 0.38, y - r * 0.15, r * 0.14, 0, 7); c.fill();
+        c.beginPath(); c.ellipse(x, y + r * 0.2, r * 0.2, r * 0.14, 0, 0, 7); c.fill();
+    }
+    function drawGhost(c, x, y, r) {
+        c.fillStyle = '#4a2573';
+        c.beginPath();
+        c.arc(x, y - r * 0.1, r, Math.PI, 0);
+        c.lineTo(x + r, y + r * 0.95);
+        for (let i = 0; i < 4; i++) { const sx = x + r - (i + 1) * (r * 0.5); c.lineTo(sx + r * 0.25, y + r * 0.6); c.lineTo(sx, y + r * 0.95); }
+        c.closePath(); c.fill();
+        c.fillStyle = '#fff';
+        c.beginPath(); c.arc(x - r * 0.38, y - r * 0.2, r * 0.27, 0, 7); c.fill();
+        c.beginPath(); c.arc(x + r * 0.38, y - r * 0.2, r * 0.27, 0, 7); c.fill();
+        c.fillStyle = '#1d1208';
+        c.beginPath(); c.arc(x - r * 0.3, y - r * 0.15, r * 0.13, 0, 7); c.fill();
+        c.beginPath(); c.arc(x + r * 0.46, y - r * 0.15, r * 0.13, 0, 7); c.fill();
+    }
     return {
         start() { reset(true); startLife(); },
         stop() { running = false; },
         update(dt) {
             if (asking || respawning) return;
             moveT += dt; ghostT += dt;
-            const step = 0.16;
-            while (moveT >= step) {
-                moveT -= step;
-                const tryDir = (d) => { if (!d.x && !d.y) return false; const nx = player.x + d.x, ny = player.y + d.y; if (!wall(nx, ny) && map[ny][nx] === 'G') { gate(nx, ny); return 'gate'; } return passable(nx, ny); };
-                const w = tryDir(want);
-                if (w === 'gate') { moveT = 0; break; }
-                if (w) dir = Object.assign({}, want);
-                else { const d = tryDir(dir); if (d === 'gate') { moveT = 0; break; } if (!d) dir = { x: 0, y: 0 }; }
-                if (dir.x || dir.y) { player.x += dir.x; player.y += dir.y; }
-                const ch = map[player.y][player.x];
-                if (ch === '.') { map[player.y][player.x] = ' '; api.addScore(10); pellets--; }
-                if (ghosts.some(g => g.x === player.x && g.y === player.y)) { loseLife(); return; }
-                if (pellets <= 0) { api.addScore(500 * level); level++; reset(true); startLife(); return; }
+            while (moveT >= STEP) {
+                moveT -= STEP;
+                const r = stepPlayer();
+                if (r === 2) return;
+                if (r === 1) break;
             }
             const gstep = Math.max(0.12, 0.3 - level * 0.02);
             while (ghostT >= gstep) {
@@ -18065,7 +18099,10 @@ function arcadePacman(api) {
         key(k, down) {
             if (!down) return;
             const m = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } }[k];
-            if (m) want = m;
+            if (!m) return;
+            want = m;
+            // Take the step right away (unless one was only just taken) so the dog answers the key press.
+            if (!asking && !respawning && api.alive() && moveT >= 0.05) { moveT = 0; stepPlayer(); }
         },
         draw() {
             const c = api.ctx;
@@ -18076,12 +18113,11 @@ function arcadePacman(api) {
                 else if (ch === '.') { c.fillStyle = '#c9b25a'; c.beginPath(); c.arc(px + CS / 2, py + CS / 2, 4, 0, 7); c.fill(); }
                 else if (ch === 'G') { c.fillStyle = '#663399'; c.fillRect(px + 2, py + 2, CS - 4, CS - 4); c.fillStyle = '#fff'; c.font = '18px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🔒', px + CS / 2, py + CS / 2 + 1); }
             }
-            c.font = '26px serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-            ghosts.forEach(g => c.fillText('👻', g.x * CS + CS / 2, g.y * CS + 30 + CS / 2 + 1));
-            c.fillText('🐶', player.x * CS + CS / 2, player.y * CS + 30 + CS / 2 + 1);
-            c.textBaseline = 'alphabetic';
-            c.fillStyle = '#4b3f12'; c.font = '700 15px sans-serif'; c.textAlign = 'left';
-            c.fillText(`Level ${level}   Lives ${'🐶'.repeat(Math.max(0, lives))}`, 12, 21);
+            ghosts.forEach(g => drawGhost(c, g.x * CS + CS / 2, g.y * CS + 30 + CS / 2, 14));
+            drawDog(c, player.x * CS + CS / 2, player.y * CS + 30 + CS / 2 + 1, 13);
+            c.fillStyle = '#4b3f12'; c.font = '700 15px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+            c.fillText(`Level ${level}   Lives`, 12, 21);
+            for (let i = 0; i < Math.max(0, lives); i++) drawDog(c, 132 + i * 24, 15, 8);
             if (note) { c.textAlign = 'right'; c.fillStyle = '#c0392b'; c.fillText(note, api.W - 12, 21); }
         },
         _state: () => ({ map, player, ghosts, lives, level, pellets, asking })
