@@ -17219,12 +17219,18 @@ function lanaSetHighScore(id, score) {
 }
 
 // What the questions come from: everything in the lessons so far.
+// An exercise (or quiz) counts toward the arcade once it has been passed.
+function arcadeFilePassed(f) {
+    const a = f.activity || {};
+    return (a.best || 0) >= LESSON_PASS_PERCENT || (!!a.done && (a.last || 0) >= LESSON_PASS_PERCENT);
+}
+
 function arcadePool(scope) {
     const items = [], vocab = [], seen = new Set();
     let code = '';
     (workspaceFiles.lana || []).forEach(f => {
         if (f.archived || !f.activity || f.activity.pending || f.activity.kind === 'notes') return;
-        if (scope && !scope.taskIds.has(f.taskId)) return;
+        if (scope && (!scope.taskIds.has(f.taskId) || !arcadeFilePassed(f))) return;
         const lesson = parseLesson(f);
         if (!lesson) return;
         code = code || lesson.languageCode || '';
@@ -17313,24 +17319,25 @@ function arcadeModulesOf(project) {
     return project.outline ? project.outline.modules : [{ name: 'Lessons', goal: '', lessons: (project.tasks || []).map(e => ({ name: e.name, taskId: e.taskId, quiz: !!e.quiz, review: !!e.review })) }];
 }
 
-// A level opens once the lesson (or, for a module, any lesson in it) is completed; its questions come only from those lessons.
+// A level opens once an exercise in it has been passed, and its questions come only from the exercises passed so far
+// (the "everything" level is always open, with whatever has been passed across the course).
 function arcadeLevels(project) {
     const agent = interactiveOwner(project);
-    const all = { key: '', name: 'Arcade: everything you have completed', taskIds: new Set(), count: 0, unlocked: false, lock: 'Complete a lesson to open the arcade.' };
+    const passedIn = taskId => (workspaceFiles[agent] || []).filter(f => f.taskId === taskId && !f.archived && f.activity && f.activity.kind !== 'notes' && !f.activity.pending && arcadeFilePassed(f)).length;
+    const all = { key: '', name: 'Arcade: everything you have completed', taskIds: new Set(), count: 0, unlocked: true, lock: '' };
     const modules = arcadeModulesOf(project).map((mod, mi) => {
         const lessons = (mod.lessons || []).filter(l => !l.quiz && l.taskId).map(l => {
             const task = findWorkspaceTaskById(agent, l.taskId);
-            const done = !!task && task.status === 'completed';
             const title = task ? task.name : l.name;
-            return { lesson: l, task, review: !!l.review, scope: { key: `${project.id}:l${l.taskId}`, name: `Arcade ${title}`, taskIds: new Set(done ? [l.taskId] : []), count: done ? 1 : 0, unlocked: done, lock: `Complete "${title}" to open this arcade level.` } };
+            const passed = passedIn(l.taskId);
+            all.taskIds.add(l.taskId);
+            return { lesson: l, task, review: !!l.review, passed, scope: { key: `${project.id}:l${l.taskId}`, name: `Arcade ${title}`, taskIds: new Set([l.taskId]), count: passed ? 1 : 0, unlocked: passed > 0, lock: `Pass an exercise in "${title}" to open this arcade level.` } };
         });
-        const doneIds = lessons.filter(x => x.scope.unlocked).map(x => x.lesson.taskId);
-        doneIds.forEach(id => all.taskIds.add(id));
-        const scope = { key: `${project.id}:m${mi}`, name: `Module Arcade: ${mod.name}`, taskIds: new Set(doneIds), count: doneIds.length, unlocked: doneIds.length > 0, lock: `Complete a lesson in ${mod.name} to open this arcade level.` };
+        const withContent = lessons.filter(x => x.passed > 0);
+        const scope = { key: `${project.id}:m${mi}`, name: `Module Arcade: ${mod.name}`, taskIds: new Set(lessons.map(x => x.lesson.taskId)), count: withContent.length, unlocked: withContent.length > 0, lock: `Pass an exercise in ${mod.name} to open this arcade level.` };
         return { mod, lessons, scope };
     });
-    all.count = all.taskIds.size;
-    all.unlocked = all.count > 0;
+    all.count = modules.reduce((n, m) => n + m.scope.count, 0);
     return { all, modules };
 }
 
@@ -17380,7 +17387,7 @@ function openArcade() {
         if (sub) { const s2 = document.createElement('div'); s2.className = 'lpath-node-name ar-sub'; s2.textContent = sub; row.appendChild(s2); }
         trail.appendChild(row);
     };
-    addNode(levels.all, '🎮', 'quiz', 'Arcade: all modules and lessons completed', levels.all.unlocked ? `A mix of ${levels.all.count} completed lesson${levels.all.count === 1 ? '' : 's'}` : '');
+    addNode(levels.all, '🎮', 'quiz', 'Arcade: all modules and lessons completed', levels.all.count ? `A mix of what you have passed in ${levels.all.count} lesson${levels.all.count === 1 ? '' : 's'}` : 'Nothing passed yet');
     levels.modules.forEach(m => {
         const band = document.createElement('div');
         band.className = 'lpath-unit';
@@ -17393,7 +17400,7 @@ function openArcade() {
             trail.appendChild(soon);
             return;
         }
-        addNode(m.scope, '🕹️', 'review', `Module Arcade: ${m.mod.name}`, m.scope.unlocked ? `A mix of ${m.scope.count} completed lesson${m.scope.count === 1 ? '' : 's'}` : '');
+        addNode(m.scope, '🕹️', 'review', `Module Arcade: ${m.mod.name}`, m.scope.unlocked ? `A mix of what you have passed in ${m.scope.count} lesson${m.scope.count === 1 ? '' : 's'}` : '');
         m.lessons.forEach(x => addNode(x.scope, '🎮', x.review ? 'review' : '', x.scope.name, ''));
     });
 }
@@ -17412,7 +17419,7 @@ function openArcadeMenu(scope) {
         <div class="lp-top"><button type="button" class="lp-close" title="Back to the arcade levels">←</button><div class="lpath-title">${escapeHtml(scope.name)}</div><div class="lp-chips">${lanaStatChips()}</div></div>
         <div class="lp-stage"><div class="lp-stage-inner">
             <div class="ar-intro">${lunaSvg('cheer', 110)}<div><h2>You have <b>${stats.xp} XP</b> to play with</h2>
-            <p>Questions come from ${scope.count} completed lesson${scope.count === 1 ? '' : 's'}. Every turn costs ${ARCADE_TURN_COST} XP. Run out and you can keep playing - just answer a question to earn each turn.</p></div></div>
+            <p>Questions come from the exercises you have passed${scope.key === '' ? '' : ' here'} so far (${scope.count} lesson${scope.count === 1 ? '' : 's'}). Every turn costs ${ARCADE_TURN_COST} XP. Run out and you can keep playing - just answer a question to earn each turn.</p></div></div>
             <div class="ar-grid">${ARCADE_GAMES.map(g => {
                 const blocked = (g.needs === 'vocab' && pool.vocab.length < 3) || (g.needs === 'questions' && pool.items.length < 3 && pool.vocab.length < 3);
                 const best = scores[arcadeScoreKey(scope, g.id)];
