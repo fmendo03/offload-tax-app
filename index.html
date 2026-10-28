@@ -3550,6 +3550,8 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
         .todo-cat-opt.active, .todo-cat-opt:hover { background: #eef2ff; }
         .todo-cat-opt.todo-cat-none { color: #888; font-style: italic; }
         .todo-cat-opt.todo-cat-add { color: #1a3a8a; font-weight: 700; border-top: 1px solid #eee; }
+        .todo-cat-opt.todo-cat-hint { color: #444; font-style: italic; background: #f4f7ff; cursor: default; }
+        .todo-cat-combo .todo-cat-input.todo-cat-newing { border-color: #1a3a8a; box-shadow: 0 0 0 2px rgba(26, 58, 138, 0.2); }
 
         .todos-board {
             flex: 1;
@@ -27075,8 +27077,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             wrap.appendChild(input);
             wrap.appendChild(caret);
 
-            let list = null, items = [], active = -1, filtering = false;
+            let list = null, items = [], active = -1, filtering = false, newMode = false;
             const typed = () => input.value.trim();
+            const NEW_PLACEHOLDER = 'Type the new category name, then press Enter';
+            function endNewMode() { newMode = false; input.classList.remove('todo-cat-newing'); input.placeholder = 'Choose or type a category'; }
 
             const onScroll = (e) => { if (!list || e.target === list) return; close(); };
             function close() {
@@ -27087,6 +27091,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             }
 
             function buildItems() {
+                // Waiting for a brand-new name: say so, instead of listing the others.
+                if (newMode && !typed()) { items = [{ type: 'hint', label: NEW_PLACEHOLDER }]; return; }
                 const q = filtering ? typed().toLowerCase() : '';
                 const all = todoCategoryNames();
                 items = [];
@@ -27109,10 +27115,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 list.innerHTML = '';
                 items.forEach((item, i) => {
                     const opt = document.createElement('div');
-                    opt.className = 'todo-cat-opt' + (item.type === 'none' ? ' todo-cat-none' : '') + (item.type === 'add' ? ' todo-cat-add' : '') + (i === active ? ' active' : '');
+                    opt.className = 'todo-cat-opt' + (item.type === 'none' ? ' todo-cat-none' : '') + (item.type === 'add' ? ' todo-cat-add' : '') + (item.type === 'hint' ? ' todo-cat-hint' : '') + (i === active ? ' active' : '');
                     opt.textContent = item.label;
                     opt.addEventListener('mousedown', (e) => e.preventDefault());   // keep focus in the box
-                    opt.addEventListener('click', () => choose(item));
+                    if (item.type !== 'hint') opt.addEventListener('click', () => choose(item));
                     list.appendChild(opt);
                 });
                 const r = input.getBoundingClientRect();
@@ -27128,20 +27134,30 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             function open() { buildItems(); render(); }
 
             function choose(item) {
-                if (item.type === 'none') { input.value = ''; close(); }
-                else if (item.type === 'cat') { input.value = item.value; close(); }
-                else if (item.value) { input.value = item.value; close(); }
-                else { input.value = ''; close(); input.placeholder = 'Type the new category name'; input.focus(); }
+                if (item.type === 'hint') return;
+                if (item.type === 'none') { endNewMode(); input.value = ''; close(); }
+                else if (item.type === 'cat') { endNewMode(); input.value = item.value; close(); }
+                else if (item.value) { endNewMode(); input.value = item.value; close(); }
+                else {
+                    // "+ Add New Category" with nothing typed yet: the box is now waiting for the new name.
+                    newMode = true;
+                    input.value = '';
+                    input.placeholder = NEW_PLACEHOLDER;
+                    input.classList.add('todo-cat-newing');
+                    filtering = true; active = -1;
+                    input.focus();
+                    open();
+                }
             }
 
-            input.addEventListener('focus', () => { filtering = false; active = -1; open(); });
+            input.addEventListener('focus', () => { if (!newMode) filtering = false; active = -1; open(); });
             input.addEventListener('click', () => { if (!list) { filtering = false; open(); } });
             input.addEventListener('input', () => { filtering = true; active = -1; open(); });
             input.addEventListener('blur', () => {
                 setTimeout(() => {
                     if (document.activeElement === input) return;
                     input.value = canonicalTodoCategory(input.value);
-                    input.placeholder = 'Choose or type a category';
+                    endNewMode();
                     close();
                 }, 120);
             });
@@ -27149,11 +27165,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                     e.preventDefault();
                     if (!list) { open(); }
+                    if (items.length && items[0].type === 'hint') return;
                     active = (active + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
                     render();
                 } else if (e.key === 'Enter') {
                     if (list && active >= 0) { e.preventDefault(); choose(items[active]); }
-                    else if (list) { e.preventDefault(); input.value = canonicalTodoCategory(input.value); close(); }
+                    else if (list) { e.preventDefault(); input.value = canonicalTodoCategory(input.value); endNewMode(); close(); }
                 } else if (e.key === 'Escape') {
                     if (list) { e.stopPropagation(); close(); }
                 } else if (e.key === 'Tab') {
@@ -27169,7 +27186,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 el: wrap, input,
                 getValue: () => canonicalTodoCategory(input.value),
                 setValue: (v) => { input.value = v || ''; },
-                reset: () => { input.value = ''; input.placeholder = 'Choose or type a category'; close(); }
+                reset: () => { input.value = ''; endNewMode(); close(); }
             };
         }
 
