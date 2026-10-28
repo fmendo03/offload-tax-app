@@ -54,6 +54,21 @@ def offload_answering(port):
         return False
 
 
+def window_open_on_profile(profile):
+    """Is a Chrome/Edge window still open on Offload's own profile? Asked of Windows itself, because when a
+    window is already open there, a new launch hands over to it and returns at once - which must not be
+    mistaken for the window having been closed."""
+    marker = os.path.basename(os.path.normpath(profile))
+    try:
+        out = subprocess.run(
+            ['powershell', '-NoProfile', '-Command',
+             "(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'chrome.exe' -or $_.Name -eq 'msedge.exe') -and $_.CommandLine -like '*%s*' } | Measure-Object).Count" % marker],
+            capture_output=True, text=True, timeout=20, creationflags=0x08000000)
+        return int((out.stdout or '0').strip() or 0) > 0
+    except Exception:
+        return False
+
+
 def find_browser():
     candidates = [
         os.path.join(os.environ.get('ProgramFiles', r'C:\Program Files'), 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -110,8 +125,13 @@ def main():
     ])
     say(f'Window opened with {os.path.basename(browser)}')
     window.wait()
-    say('Window closed.')
+    say('Window process returned.')
     if started_here:
+        # A window left open from before takes the new one over, so the launch returns straight away
+        # even though the app is still on screen - keep running until no window is left.
+        while window_open_on_profile(profile):
+            time.sleep(3)
+        say('Window closed.')
         time.sleep(2)   # let the page finish saving what it was doing
         os._exit(0)
 
