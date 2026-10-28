@@ -2114,6 +2114,11 @@ def load_calendar_settings():
         'lastImportSignature': None,
         'lastImportedAt': None,
         'lastImportError': None,
+        'outlookEnabled': False,
+        'lastOutlookAt': None,
+        'lastOutlookAttemptAt': None,
+        'lastOutlookError': None,
+        'lastOutlookCount': 0,
         'dismissedExternalUids': []
     }
     if os.path.exists(CALENDAR_SETTINGS_FILE):
@@ -2310,6 +2315,8 @@ def sync_calendar_import():
     # never block an event create/update/delete happening at the same time);
     # only the merge-and-save step below needs calendar_lock.
     settings = load_calendar_settings()
+    if settings.get('outlookEnabled'):
+        _maybe_sync_outlook_async(settings)
     if not settings.get('importEnabled') or not settings.get('importUrl'):
         return settings
     try:
@@ -2386,6 +2393,144 @@ def _merge_imported_events(parsed, signature):
         settings['lastImportError'] = str(e)
     save_calendar_settings(settings)
     return settings
+
+
+# ---- Outlook on this computer ----
+# The simple way to sync: read the calendar straight out of the Outlook desktop app on this PC (no link,
+# no sign-in, no app registration). Needs Outlook installed and pywin32; events land as source="external"
+# with an "outlook:" id so they never mix with the ICS-feed import.
+OUTLOOK_UID_PREFIX = 'outlook:'
+OUTLOOK_REFRESH_SECONDS = 120
+outlook_sync_lock = threading.Lock()
+
+
+def read_outlook_events(days_back=14, days_ahead=120):
+    try:
+        import pythoncom
+        import win32com.client
+    except ImportError:
+        raise RuntimeError("The Outlook helper (pywin32) isn't installed on this computer.")
+    pythoncom.CoInitialize()
+    try:
+        try:
+            outlook = win32com.client.Dispatch('Outlook.Application')
+            calendar = outlook.GetNamespace('MAPI').GetDefaultFolder(9)   # olFolderCalendar
+        except Exception:
+            raise RuntimeError("Couldn't reach the Outlook app. Make sure Outlook is installed and signed in on this computer, then try again.")
+        items = calendar.Items
+        items.IncludeRecurrences = True
+        items.Sort('[Start]')
+        fmt = '%m/%d/%Y %I:%M %p'
+        window_start = now_local() - timedelta(days=days_back)
+        window_end = now_local() + timedelta(days=days_ahead)
+        found = items.Restrict(f"[Start] >= '{window_start.strftime(fmt)}' AND [Start] <= '{window_end.strftime(fmt)}'")
+        events, seen = [], set()
+        for item in found:
+            if len(events) >= 2500:
+                break
+            try:
+                if int(getattr(item, 'MeetingStatus', 0) or 0) in (5, 7):   # cancelled meetings
+                    continue
+                s, e = item.Start, item.End
+                start = datetime(s.year, s.month, s.day, s.hour, s.minute, s.second)
+                end = datetime(e.year, e.month, e.day, e.hour, e.minute, e.second)
+                base = str(getattr(item, 'EntryID', ''))
+                uid = f"{OUTLOOK_UID_PREFIX}{base}:{start.isoformat()}"
+                if uid in seen:
+                    continue
+                seen.add(uid)
+                events.append({
+                    'externalUid': uid,
+                    'title': str(getattr(item, 'Subject', '') or '').strip() or '(untitled)',
+                    'description': '',
+                    'location': str(getattr(item, 'Location', '') or '').strip(),
+                    'start': start.isoformat(),
+                    'end': end.isoformat(),
+                    'allDay': bool(getattr(item, 'AllDayEvent', False))
+                })
+            except Exception:
+                continue
+        return events
+    finally:
+        pythoncom.CoUninitialize()
+
+
+def _merge_outlook_events(parsed, user_id):
+    settings = load_calendar_settings()
+    events = load_calendar_events()
+    dismissed = set(settings.get('dismissedExternalUids', []))
+    by_uid = {e.get('externalUid'): e for e in events if e.get('source') == 'external' and e.get('externalUid')}
+    seen_uids = set()
+    now_iso = now_local().isoformat()
+    for pe in parsed:
+        uid = pe['externalUid']
+        if uid in dismissed:
+            continue
+        seen_uids.add(uid)
+        if uid in by_uid:
+            existing = by_uid[uid]
+            for key in ('title', 'description', 'location', 'start', 'end', 'allDay'):
+                existing[key] = pe[key]
+            existing['updatedAt'] = now_iso
+        else:
+            events.append({
+                'id': uuid.uuid4().hex, 'userId': user_id, 'title': pe['title'], 'description': pe['description'],
+                'location': pe['location'], 'start': pe['start'], 'end': pe['end'] or pe['start'], 'allDay': pe['allDay'],
+                'source': 'external', 'externalUid': uid, 'status': 'confirmed', 'createdAt': now_iso, 'updatedAt': now_iso
+            })
+    # Anything from Outlook that is no longer in the window (deleted or moved out) goes too.
+    events = [e for e in events if not (e.get('source') == 'external' and str(e.get('externalUid') or '').startswith(OUTLOOK_UID_PREFIX) and e['externalUid'] not in seen_uids)]
+    save_calendar_events(events)
+
+
+def sync_outlook_now(user_id):
+    """Reads Outlook and merges it in. Returns (count, error)."""
+    if not outlook_sync_lock.acquire(blocking=False):
+        return None, None   # a sync is already running
+    count, error = 0, None
+    try:
+        with calendar_lock:
+            settings = load_calendar_settings()
+            settings['lastOutlookAttemptAt'] = now_local().isoformat()
+            save_calendar_settings(settings)
+        try:
+            parsed = read_outlook_events()
+            with calendar_lock:
+                _merge_outlook_events(parsed, user_id)
+            count = len(parsed)
+        except Exception as e:
+            error = str(e)
+        with calendar_lock:
+            settings = load_calendar_settings()
+            settings['lastOutlookError'] = error
+            if not error:
+                settings['lastOutlookAt'] = now_local().isoformat()
+                settings['lastOutlookCount'] = count
+            save_calendar_settings(settings)
+    finally:
+        outlook_sync_lock.release()
+    return count, error
+
+
+def _maybe_sync_outlook_async(settings):
+    last = settings.get('lastOutlookAttemptAt')
+    if last:
+        try:
+            if (now_local() - datetime.fromisoformat(last)).total_seconds() < OUTLOOK_REFRESH_SECONDS:
+                return
+        except ValueError:
+            pass
+    if outlook_sync_lock.locked():
+        return
+    threading.Thread(target=sync_outlook_now, args=(current_user_id(),), daemon=True).start()
+
+
+def _remove_outlook_events():
+    with calendar_lock:
+        events = load_calendar_events()
+        kept = [e for e in events if not (e.get('source') == 'external' and str(e.get('externalUid') or '').startswith(OUTLOOK_UID_PREFIX))]
+        if len(kept) != len(events):
+            save_calendar_events(kept)
 
 
 CALENDAR_BUSINESS_START_HOUR = 9
@@ -3183,7 +3328,18 @@ def calendar_settings_update():
                 settings['importEnabled'] = bool(data['importEnabled'])
             if 'exportEnabled' in data:
                 settings['exportEnabled'] = bool(data['exportEnabled'])
+            outlook_changed = 'outlookEnabled' in data and bool(data['outlookEnabled']) != bool(settings.get('outlookEnabled'))
+            if 'outlookEnabled' in data:
+                settings['outlookEnabled'] = bool(data['outlookEnabled'])
+                if not settings['outlookEnabled']:
+                    settings['lastOutlookError'] = None
             save_calendar_settings(settings)
+        if outlook_changed:
+            if settings['outlookEnabled']:
+                sync_outlook_now(current_user_id())
+            else:
+                _remove_outlook_events()
+            settings = load_calendar_settings()
         if settings['importEnabled']:
             settings = sync_calendar_import()
         public_settings = {k: v for k, v in settings.items() if k != 'dismissedExternalUids'}
@@ -3194,6 +3350,21 @@ def calendar_settings_update():
         return jsonify({'success': True, 'settings': public_settings})
     except Exception as e:
         print(f"Calendar settings error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/calendar/outlook-sync', methods=['POST'])
+def calendar_outlook_sync():
+    try:
+        count, error = sync_outlook_now(current_user_id())
+        settings = load_calendar_settings()
+        public_settings = {k: v for k, v in settings.items() if k != 'dismissedExternalUids'}
+        public_settings['exportUrl'] = None
+        if error:
+            return jsonify({'success': False, 'error': error, 'settings': public_settings})
+        return jsonify({'success': True, 'count': count, 'settings': public_settings})
+    except Exception as e:
+        print(f"Outlook sync error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
