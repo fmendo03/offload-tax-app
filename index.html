@@ -3536,6 +3536,21 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
         .todos-search-clear { border: none; background: none; color: #1a3a8a; font-weight: 600; font-size: 13px; cursor: pointer; padding: 4px 6px; }
         .todos-search-status { font-size: 12px; color: #666; }
 
+        .todos-group-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #444; cursor: pointer; white-space: nowrap; }
+        .todos-cat-heading { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 4px; margin-top: 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #555; border-bottom: 1px solid #e6e6e6; }
+        .todos-cat-heading:first-child { margin-top: 0; }
+        .todos-cat-heading .todos-cat-count { font-weight: 700; color: #888; }
+        .todo-row-category { flex-shrink: 0; font-size: 11px; font-weight: 700; color: #555; background: #eef0f4; border-radius: 10px; padding: 2px 8px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .todo-cat-combo { position: relative; }
+        .todo-cat-combo .todo-cat-input { width: 100%; box-sizing: border-box; padding-right: 28px; }
+        .todo-cat-caret { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #666; font-size: 12px; }
+        .todo-cat-list { position: fixed; z-index: 5000; background: #fff; border: 1px solid #cfd4dc; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); max-height: 220px; overflow-y: auto; }
+        .todo-cat-opt { padding: 8px 12px; cursor: pointer; font-size: 14px; color: #222; }
+        .todo-cat-opt.active, .todo-cat-opt:hover { background: #eef2ff; }
+        .todo-cat-opt.todo-cat-none { color: #888; font-style: italic; }
+        .todo-cat-opt.todo-cat-add { color: #1a3a8a; font-weight: 700; border-top: 1px solid #eee; }
+
         .todos-board {
             flex: 1;
             min-height: 0;
@@ -8094,6 +8109,7 @@ body.va-open #notification-toasts {
                     <button type="button" class="todos-search-clear" id="todos-search-clear" style="display:none;">Clear</button>
                     <span class="todos-search-status" id="todos-search-status"></span>
                 </div>
+                <label class="todos-group-toggle"><input type="checkbox" id="todos-group-category"> Group by category</label>
                 <div class="agent-quickbar" id="todos-agent-quickbar"></div></div>
             <div class="todos-board">
             <div class="todos-kanban">
@@ -8150,6 +8166,10 @@ body.va-open #notification-toasts {
                                 <option value="240">Half day (4 hours)</option>
                                 <option value="480">Full day (8 hours)</option>
                             </select>
+                        </div>
+                        <div class="topics-new-field">
+                            <label>Category</label>
+                            <div id="todos-new-category-slot"></div>
                         </div>
                         <div class="topics-new-field">
                             <label for="todos-new-priority">Priority</label>
@@ -26229,6 +26249,26 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         const todosSearch = { text: '', mode: 'and' };
         try { if (localStorage.getItem('todosSearchMode') === 'or') todosSearch.mode = 'or'; } catch (e) { /* no storage */ }
 
+        // ---- Group by category ----
+        let todosGroupByCategory = false;
+        try { todosGroupByCategory = localStorage.getItem('todosGroupByCategory') === '1'; } catch (e) { /* no storage */ }
+
+        // [{name, items}] - named categories A to Z, then whatever has none.
+        function groupTodosByCategory(list) {
+            const groups = new Map();
+            list.forEach(t => {
+                const key = String(t.category || '').trim();
+                const id = key.toLowerCase();
+                if (!groups.has(id)) groups.set(id, { name: key, items: [] });
+                groups.get(id).items.push(t);
+            });
+            return Array.from(groups.values()).sort((a, b) => {
+                if (!a.name) return 1;
+                if (!b.name) return -1;
+                return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+            });
+        }
+
         function todoSearchTerms() {
             return (todosSearch.text.match(/"([^"]+)"|[^\s,]+/g) || [])
                 .map(t => t.replace(/^"|"$/g, '').trim().toLowerCase())
@@ -26237,7 +26277,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
 
         function todoMatchesSearch(todo, terms) {
             if (!terms.length) return true;
-            const text = [todo.title, todo.details, ...(todo.attachments || []).map(a => a && a.name)]
+            const text = [todo.title, todo.details, todo.category, ...(todo.attachments || []).map(a => a && a.name)]
                 .filter(Boolean).join('\n').toLowerCase();
             return todosSearch.mode === 'or' ? terms.some(t => text.includes(t)) : terms.every(t => text.includes(t));
         }
@@ -26250,6 +26290,13 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         function initTodosSearch() {
+            const groupBox = document.getElementById('todos-group-category');
+            groupBox.checked = todosGroupByCategory;
+            groupBox.addEventListener('change', () => {
+                todosGroupByCategory = groupBox.checked;
+                try { localStorage.setItem('todosGroupByCategory', todosGroupByCategory ? '1' : '0'); } catch (e) { /* no storage */ }
+                renderTodosPage();
+            });
             const input = document.getElementById('todos-search-input');
             input.addEventListener('input', () => { todosSearch.text = input.value; renderTodosPage(); });
             input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { input.value = ''; todosSearch.text = ''; renderTodosPage(); } });
@@ -26285,7 +26332,19 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             ].forEach(([listId, emptyId, countId, list]) => {
                 const container = document.getElementById(listId);
                 container.innerHTML = '';
-                list.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
+                if (todosGroupByCategory) {
+                    groupTodosByCategory(list).forEach(group => {
+                        const heading = document.createElement('div');
+                        heading.className = 'todos-cat-heading';
+                        heading.innerHTML = '<span></span><span class="todos-cat-count"></span>';
+                        heading.firstChild.textContent = group.name || 'No category';
+                        heading.lastChild.textContent = group.items.length;
+                        container.appendChild(heading);
+                        group.items.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
+                    });
+                } else {
+                    list.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
+                }
                 const emptyEl = document.getElementById(emptyId);
                 if (emptyEl.dataset.defaultText === undefined) emptyEl.dataset.defaultText = emptyEl.textContent;
                 emptyEl.textContent = terms.length ? 'No to-dos match your search.' : emptyEl.dataset.defaultText;
@@ -26332,7 +26391,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (selectedTodoId === null || editingTodoId) return;
             const view = document.getElementById('todos-view');
             if (!view || view.style.display === 'none' || !view.contains(e.target)) return;
-            if (e.target.closest('.topics-item, .todos-details-pane, button, input, select, textarea, label, a, .todos-new-bar-collapse, [contenteditable="true"]')) return;
+            if (e.target.closest('.topics-item, .todos-details-pane, button, input, select, textarea, label, a, .todos-new-bar-collapse, .todo-cat-list, [contenteditable="true"]')) return;
             selectedTodoId = null;
             renderTodosPage();
         });
@@ -26396,6 +26455,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             titleEl.style.textOverflow = 'ellipsis';
             titleEl.style.whiteSpace = 'nowrap';
             row.appendChild(titleEl);
+
+            if (todo.category && !todosGroupByCategory) {
+                const chip = document.createElement('span');
+                chip.className = 'todo-row-category';
+                chip.textContent = todo.category;
+                chip.title = `Category: ${todo.category}`;
+                row.appendChild(chip);
+            }
 
             // Same date/time format as the preview pane's own "Scheduled:"
             // button, just inline in the row - lets the list be scanned for
@@ -26544,6 +26611,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 personalTag.textContent = '\u{1F3E0} Personal';
                 tags.appendChild(personalTag);
             }
+            if (todo.category) {
+                const categoryTag = document.createElement('span');
+                categoryTag.className = 'topics-category-agent-badge';
+                categoryTag.textContent = `\u{1F3F7}\uFE0F ${todo.category}`;
+                tags.appendChild(categoryTag);
+            }
             if (todo.seriesId) {
                 const recurringTag = document.createElement('span');
                 recurringTag.className = 'topics-category-agent-badge';
@@ -26597,6 +26670,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 personalLabel.appendChild(document.createTextNode('Personal'));
                 editFieldsRow.appendChild(personalLabel);
 
+                const categoryCombo = createTodoCategoryCombo(todo.category || '', contentEl);
+                categoryCombo.el.style.flex = '1';
+                categoryCombo.el.style.minWidth = '160px';
+                editFieldsRow.appendChild(categoryCombo.el);
+
                 contentEl.appendChild(editFieldsRow);
 
                 const editActions = document.createElement('div');
@@ -26613,7 +26691,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         alert('Please fill in both the title and details.');
                         return;
                     }
-                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked };
+                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked, category: categoryCombo.getValue() };
                     unbindClickOutsideToCancel(contentEl);
                     editingTodoId = null;
                     if (todo.seriesId) {
@@ -26906,6 +26984,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if ('details' in fields) seriesPayload.details = fields.details;
             if ('priority' in fields) seriesPayload.priority = fields.priority;
             if ('personal' in fields) seriesPayload.personal = fields.personal;
+            if ('category' in fields) seriesPayload.category = fields.category;
             if ('estimated_minutes' in fields) seriesPayload.estimated_minutes = fields.estimated_minutes;
             if (Object.keys(seriesPayload).length) {
                 await fetch(`/todos/series/${seriesId}`, {
@@ -26954,6 +27033,150 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // share one markup, differing only by id prefix: 'todos-new' or
         // 'cal-todo'. These helpers take that prefix.
         const todoFormEl = (prefix, name) => document.getElementById(`${prefix}-${name}`);
+
+        // ---- Category: a drop-down you can type into ----
+        // Typing filters the list; "+ Add New Category" is always the last choice (with a name typed, it adds that name).
+        const TODO_CATEGORY_MAX = 60;
+        const todoCategoryCombos = {};
+
+        function todoCategoryNames() {
+            const seen = new Map();
+            todosList.forEach(t => {
+                const c = String(t.category || '').trim();
+                if (c && !seen.has(c.toLowerCase())) seen.set(c.toLowerCase(), c);
+            });
+            return Array.from(seen.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        }
+
+        // Typing "taxes" when "Taxes" exists means that category, not a second one.
+        function canonicalTodoCategory(text) {
+            const t = String(text || '').trim().slice(0, TODO_CATEGORY_MAX);
+            if (!t) return '';
+            return todoCategoryNames().find(c => c.toLowerCase() === t.toLowerCase()) || t;
+        }
+
+        // host: where the open list is attached (the page body unless it has to live inside an edit panel).
+        function createTodoCategoryCombo(initial, host) {
+            const wrap = document.createElement('div');
+            wrap.className = 'todo-cat-combo';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'todo-cat-input';
+            input.placeholder = 'Choose or type a category';
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+            input.maxLength = TODO_CATEGORY_MAX;
+            input.value = initial || '';
+            const caret = document.createElement('span');
+            caret.className = 'todo-cat-caret';
+            caret.textContent = '\u25BE';
+            wrap.appendChild(input);
+            wrap.appendChild(caret);
+
+            let list = null, items = [], active = -1, filtering = false;
+            const typed = () => input.value.trim();
+
+            const onScroll = (e) => { if (!list || e.target === list) return; close(); };
+            function close() {
+                if (list) { list.remove(); list = null; }
+                active = -1; filtering = false;
+                document.removeEventListener('scroll', onScroll, true);
+                window.removeEventListener('resize', close);
+            }
+
+            function buildItems() {
+                const q = filtering ? typed().toLowerCase() : '';
+                const all = todoCategoryNames();
+                items = [];
+                if (!q) items.push({ type: 'none', label: 'No category' });
+                all.filter(n => !q || n.toLowerCase().includes(q)).forEach(n => items.push({ type: 'cat', label: n, value: n }));
+                const t = typed();
+                const exact = t && all.some(n => n.toLowerCase() === t.toLowerCase());
+                const addsTyped = filtering && t && !exact;
+                items.push({ type: 'add', label: addsTyped ? `+ Add New Category "${t}"` : '+ Add New Category', value: addsTyped ? t : '' });
+            }
+
+            function render() {
+                if (!list) {
+                    list = document.createElement('div');
+                    list.className = 'todo-cat-list';
+                    (host || document.body).appendChild(list);
+                    document.addEventListener('scroll', onScroll, true);
+                    window.addEventListener('resize', close);
+                }
+                list.innerHTML = '';
+                items.forEach((item, i) => {
+                    const opt = document.createElement('div');
+                    opt.className = 'todo-cat-opt' + (item.type === 'none' ? ' todo-cat-none' : '') + (item.type === 'add' ? ' todo-cat-add' : '') + (i === active ? ' active' : '');
+                    opt.textContent = item.label;
+                    opt.addEventListener('mousedown', (e) => e.preventDefault());   // keep focus in the box
+                    opt.addEventListener('click', () => choose(item));
+                    list.appendChild(opt);
+                });
+                const r = input.getBoundingClientRect();
+                list.style.left = `${r.left}px`;
+                list.style.width = `${r.width}px`;
+                const below = window.innerHeight - r.bottom;
+                if (below < 200 && r.top > below) { list.style.top = 'auto'; list.style.bottom = `${window.innerHeight - r.top + 2}px`; }
+                else { list.style.bottom = 'auto'; list.style.top = `${r.bottom + 2}px`; }
+                const activeEl = list.querySelector('.active');
+                if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+            }
+
+            function open() { buildItems(); render(); }
+
+            function choose(item) {
+                if (item.type === 'none') { input.value = ''; close(); }
+                else if (item.type === 'cat') { input.value = item.value; close(); }
+                else if (item.value) { input.value = item.value; close(); }
+                else { input.value = ''; close(); input.placeholder = 'Type the new category name'; input.focus(); }
+            }
+
+            input.addEventListener('focus', () => { filtering = false; active = -1; open(); });
+            input.addEventListener('click', () => { if (!list) { filtering = false; open(); } });
+            input.addEventListener('input', () => { filtering = true; active = -1; open(); });
+            input.addEventListener('blur', () => {
+                setTimeout(() => {
+                    if (document.activeElement === input) return;
+                    input.value = canonicalTodoCategory(input.value);
+                    input.placeholder = 'Choose or type a category';
+                    close();
+                }, 120);
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (!list) { open(); }
+                    active = (active + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+                    render();
+                } else if (e.key === 'Enter') {
+                    if (list && active >= 0) { e.preventDefault(); choose(items[active]); }
+                    else if (list) { e.preventDefault(); input.value = canonicalTodoCategory(input.value); close(); }
+                } else if (e.key === 'Escape') {
+                    if (list) { e.stopPropagation(); close(); }
+                } else if (e.key === 'Tab') {
+                    close();
+                }
+            });
+            caret.style.pointerEvents = 'auto';
+            caret.style.cursor = 'pointer';
+            caret.addEventListener('mousedown', (e) => e.preventDefault());
+            caret.addEventListener('click', () => { if (list) close(); else { input.focus(); filtering = false; open(); } });
+
+            return {
+                el: wrap, input,
+                getValue: () => canonicalTodoCategory(input.value),
+                setValue: (v) => { input.value = v || ''; },
+                reset: () => { input.value = ''; input.placeholder = 'Choose or type a category'; close(); }
+            };
+        }
+
+        function mountTodoCategoryCombo(prefix) {
+            const slot = document.getElementById(`${prefix}-category-slot`);
+            if (!slot) return;
+            todoCategoryCombos[prefix] = createTodoCategoryCombo('');
+            slot.appendChild(todoCategoryCombos[prefix].el);
+        }
 
         // Sunday=0 - same convention as the Availability template's days and
         // the backend's _day_of_week_sunday0, so a weekday index picked here
@@ -27113,6 +27336,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     body: JSON.stringify({
                         title, details, estimated_minutes: estimatedMinutes, attachments: newTodoAttachments,
                         priority: priorityInput.value, personal: personalInput.checked,
+                        category: todoCategoryCombos['todos-new'].getValue(),
                         ...(recurrence ? { recurrence } : {})
                     })
                 });
@@ -27126,6 +27350,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     durationInput.value = '';
                     priorityInput.value = 'medium';
                     personalInput.checked = false;
+                    todoCategoryCombos['todos-new'].reset();
                     resetNewTodoRecurrenceUi();
                     newTodoAttachments.length = 0;
                     refreshNewTodoAttachments();
@@ -27238,6 +27463,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     body: JSON.stringify({
                         title, details, estimated_minutes: estimatedMinutes, attachments: calendarTodoAttachments,
                         priority: todoFormEl(p, 'priority').value, personal: todoFormEl(p, 'personal').checked,
+                        category: todoCategoryCombos['cal-todo'].getValue(),
                         ...(recurrence ? { recurrence } : {})
                     })
                 });
@@ -27263,6 +27489,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                         }
                         selectedTodoId = data.todo_id;
                     }
+                    todoCategoryCombos['cal-todo'].reset();
                     closeCalendarTodoModal();
                     await loadCalendarData();
                     renderTodosPage();
@@ -29798,6 +30025,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         initCalendarTodoModal();
         document.getElementById('todos-new-attachments-zone').appendChild(buildAttachmentDropzone(newTodoAttachments, refreshNewTodoAttachments));
         initNewTodoRecurrenceUi();
+        mountTodoCategoryCombo('todos-new');
+        mountTodoCategoryCombo('cal-todo');
         initLunchSettingsUi();
         initTodoSettingsUi();
 

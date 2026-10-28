@@ -4297,6 +4297,7 @@ def _ensure_all_series_generated():
                     'completed': False, 'createdAt': now_iso, 'completedAt': None,
                     'calendarEventId': event['id'], 'calendarEventIds': [event['id']], 'attachments': [],
                     'priority': series['priority'], 'personal': series.get('personal', False),
+                    'category': series.get('category', ''),
                     'notFinished': False, 'seriesId': series['id'], 'occurrenceDate': occ_date.isoformat()
                 })
                 changed = True
@@ -4332,6 +4333,7 @@ def todos_create():
         priority = str(data.get('priority') or 'medium').strip().lower()
         if priority not in ('high', 'medium', 'low'):
             priority = 'medium'
+        category = str(data.get('category') or '').strip()[:60]
         with todos_lock:
             todos = load_todos()
             todo = {
@@ -4357,6 +4359,8 @@ def todos_create():
                 # comes from the single global personal-to-do color setting
                 # (see load_todo_settings), not anything stored per to-do.
                 'personal': bool(data.get('personal')),
+                # Free-text group the to-do belongs to ("" = none); the To-Do page can group by it.
+                'category': category,
                 # Set by _apply_todo_rollovers when a scheduled day passes
                 # with the to-do still incomplete - see that function.
                 'notFinished': False
@@ -4407,6 +4411,8 @@ def todos_update(todo_id):
                     todo['priority'] = new_priority
             if 'personal' in data:
                 todo['personal'] = bool(data['personal'])
+            if 'category' in data:
+                todo['category'] = str(data['category'] or '').strip()[:60]
             # A new id is another time this to-do is scheduled - it joins
             # calendarEventIds (earlier cards, e.g. a missed one, stay) and
             # becomes the current calendarEventId. null explicitly clears
@@ -4482,6 +4488,7 @@ def todos_series_create():
             'id': uuid.uuid4().hex, 'userId': current_user_id(), 'title': title,
             'details': details, 'estimatedMinutes': estimated_minutes, 'priority': priority,
             'personal': bool(data.get('personal')),
+            'category': str(data.get('category') or '').strip()[:60],
             'recurrence': recurrence, 'active': True,
             'createdAt': now_local().isoformat(),
             # One day before its own first occurrence, so the very first
@@ -4536,6 +4543,8 @@ def todos_series_update(series_id):
                     series['priority'] = new_priority
             if 'personal' in data:
                 series['personal'] = bool(data['personal'])
+            if 'category' in data:
+                series['category'] = str(data['category'] or '').strip()[:60]
             # Only the time of day is ever edited after the series exists
             # (dragging/resizing a linked event and choosing "all future") -
             # the frequency/weekday/month-day rule itself isn't editable in
