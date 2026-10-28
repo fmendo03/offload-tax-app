@@ -17452,13 +17452,17 @@ function startArcadeGame(id, scope) {
     view.className = 'lp-overlay ar-view ar-play';
     view.innerHTML = `
         <div class="lp-top"><button type="button" class="lp-close ar-menu" title="Back to the arcade">←</button><div class="lpath-title">${def.icon} ${def.name}</div>
-            <div class="lp-chips"><span class="lp-chip ar-score">Score 0</span><span class="lp-chip ar-high"></span><span class="ar-chips">${lanaStatChips()}</span></div></div>
+            <div class="lp-chips"><span class="lp-chip ar-score">Score 0</span><span class="lp-chip ar-high"></span><span class="ar-chips">${lanaStatChips()}</span><button type="button" class="lp-skip ar-stop" title="End this game">Stop playing</button></div></div>
         <div class="ar-stage"><canvas class="ar-canvas" tabindex="0"></canvas><div class="ar-ask" style="display:none;"></div><div class="ar-over" style="display:none;"></div></div>`;
     body.appendChild(view);
     arcade.view = view;
     arcade.canvas = view.querySelector('.ar-canvas');
     arcade.ctx = arcade.canvas.getContext('2d');
     view.querySelector('.ar-menu').addEventListener('click', () => openArcadeMenu(arcade.scope));
+    view.querySelector('.ar-stop').addEventListener('click', () => {
+        arcadeEnd('You stopped playing');
+        if (arcade.askResolve) arcade.askResolve({ ok: false, quit: true });
+    });
     arcade.canvas.addEventListener('pointermove', e => arcadePointer('move', e));
     arcade.canvas.addEventListener('pointerdown', e => { arcade.canvas.focus(); arcadePointer('down', e); });
     arcadeUpdateScoreChips();
@@ -17557,7 +17561,6 @@ function arcadeAsk(spec) {
             <div class="ar-ask-prompt">${lessonRichText(spec.prompt, code)} ${spec.speak ? lessonSpeakButton(spec.speak, code, false) : ''}</div>
             <div class="ar-opts">${options}</div>
             <div class="ar-ask-fb"></div>
-            <div class="ar-ask-actions">${spec.quit ? '<button type="button" class="lp-skip ar-quit">Stop playing</button>' : ''}<button type="button" class="lp-main ar-next" style="display:none;">Continue</button></div>
         </div>`;
         box.style.display = '';
         box.querySelector('.ar-ask-card').addEventListener('click', e => {
@@ -17586,15 +17589,10 @@ function arcadeAsk(spec) {
             fb.textContent = ok ? 'Correct!' : (timedOut ? "Time's up. " : 'Not quite. ') + `The answer: ${spec.options[spec.correct]}.` + (spec.explain ? ` ${lessonPlain(spec.explain)}` : '');
             lanaChime(ok ? 'ok' : 'bad');
             const result = { ok, index, timedOut: !!timedOut };
-            if (spec.gate !== false && (spec.quit || !ok)) {
-                const next = box.querySelector('.ar-next'); next.style.display = '';
-                next.addEventListener('click', () => finish(result));
-                next.focus();
-            } else setTimeout(() => finish(result), ok ? 450 : 1500);
+            // Right: a moment to see it, then the box closes. Wrong: long enough to read the answer, then the game asks again.
+            setTimeout(() => finish(result), ok ? 700 : 2200);
         };
         box.querySelectorAll('.ar-opt').forEach(b => b.addEventListener('click', () => reveal(parseInt(b.dataset.i, 10), false)));
-        const quit = box.querySelector('.ar-quit');
-        if (quit) quit.addEventListener('click', () => finish({ ok: false, quit: true }));
         if (spec.timer) {
             const bar = box.querySelector('.ar-timer span');
             const start = performance.now();
@@ -17612,6 +17610,7 @@ function arcadeEnd(message) {
     const best = lanaHighScores()[scoreKey] || arcade.score;
     const def = ARCADE_GAMES.find(g => g.id === arcade.id);
     const box = arcade.view.querySelector('.ar-over');
+    const stopBtn = arcade.view.querySelector('.ar-stop'); if (stopBtn) stopBtn.style.display = 'none';
     box.innerHTML = `<div class="ar-over-card">${lunaSvg(wasBest ? 'cheer' : 'happy', 110)}
         <h2>${wasBest ? 'New high score!' : 'Game over'}</h2>
         <p class="ar-over-msg">${escapeHtml(message || '')}</p>
