@@ -26694,6 +26694,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                     const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked, category: categoryCombo.getValue() };
                     unbindClickOutsideToCancel(contentEl);
                     editingTodoId = null;
+                    selectedTodoId = null;   // saving puts the details panel away too
                     if (todo.seriesId) {
                         showSeriesScopeModal(
                             'This to-do repeats. Apply this change to just this occurrence, or to it and every future occurrence in the series?',
@@ -26718,13 +26719,14 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 cancelBtn.addEventListener('click', () => {
                     unbindClickOutsideToCancel(contentEl);
                     editingTodoId = null;
+                    selectedTodoId = null;   // cancelling puts the details panel away too
                     renderTodosPage();
                 });
                 editActions.appendChild(cancelBtn);
 
                 contentEl.appendChild(editActions);
                 titleInput.focus();
-                bindClickOutsideToCancel(contentEl, () => { editingTodoId = null; renderTodosPage(); });
+                bindClickOutsideToCancel(contentEl, () => { editingTodoId = null; selectedTodoId = null; renderTodosPage(); });
                 return;
             }
 
