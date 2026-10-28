@@ -814,13 +814,146 @@ def today_str():
 DAILY_ITEMS_PER_AGENT = 1
 
 
+# ---- The weekly question plan ----
+# About 20 check-in questions a week (not one per agent per day). Each week's plan is made the first time it is
+# needed and kept in question_schedule.json:
+#   - at most 3 questions from any one agent;
+#   - 12 come from the agents Francis talks to most (4 agents x 3), the other 8 from random agents;
+#   - an agent who got no question one week is guaranteed at least one the next;
+#   - the questions are spread over the days of the week.
+QUESTIONS_PER_WEEK = 20
+QUESTIONS_FROM_TOP_AGENTS = 12
+MAX_QUESTIONS_PER_AGENT_PER_WEEK = 3
+QUESTION_SCHEDULE_FILE = _data_path('question_schedule.json')
+question_schedule_lock = threading.Lock()
+_question_schedule_cache = {}
+
+
+def _week_key(d):
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+def _agent_interaction_counts(days=28):
+    """How much each agent has been used lately (their replies in chats and task runs), from the usage log."""
+    counts = {}
+    cutoff = (now_local() - timedelta(days=days)).isoformat()
+    if os.path.exists(USAGE_LOG_FILE):
+        try:
+            with open(USAGE_LOG_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    agent = rec.get('agent')
+                    if agent in ALL_AGENTS and (rec.get('ts') or '') >= cutoff:
+                        counts[agent] = counts.get(agent, 0) + 1
+        except OSError:
+            pass
+    return counts
+
+
+def _plan_week_counts(interaction, missed_last_week, rng):
+    """How many questions each agent gets this week."""
+    per_agent = {a: 0 for a in ALL_AGENTS}
+    shuffled = list(ALL_AGENTS)
+    rng.shuffle(shuffled)   # so agents with equal use are ranked at random
+    ranked = sorted(shuffled, key=lambda a: -interaction.get(a, 0))
+    top_count = QUESTIONS_FROM_TOP_AGENTS // MAX_QUESTIONS_PER_AGENT_PER_WEEK
+    for a in ranked[:top_count]:
+        per_agent[a] = MAX_QUESTIONS_PER_AGENT_PER_WEEK
+    others = ranked[top_count:]
+    left = QUESTIONS_PER_WEEK - QUESTIONS_FROM_TOP_AGENTS
+    # Anyone who was skipped last week goes first.
+    for a in others:
+        if left > 0 and a in missed_last_week:
+            per_agent[a] += 1
+            left -= 1
+    while left > 0:
+        eligible = [a for a in others if per_agent[a] < MAX_QUESTIONS_PER_AGENT_PER_WEEK]
+        if not eligible:
+            break
+        per_agent[rng.choice(eligible)] += 1
+        left -= 1
+    return per_agent
+
+
+def _build_week_plan(state, week_start, today, rng):
+    weeks = state.setdefault('weeks', {})
+    earlier = [k for k in weeks if k < _week_key(week_start)]
+    missed = set()
+    if earlier:
+        last = weeks[max(earlier)].get('counts', {})
+        missed = {a for a in ALL_AGENTS if last.get(a, 0) == 0}
+    per_agent = _plan_week_counts(_agent_interaction_counts(), missed, rng)
+
+    cursors = state.setdefault('cursors', {'firm': {}, 'personal': {}})
+    entries = []
+    for index, agent in enumerate(ALL_AGENTS):
+        kinds = ['firm', 'personal'] if (index + week_start.toordinal()) % 2 == 0 else ['personal', 'firm']
+        for n in range(per_agent[agent]):
+            kind = kinds[n % 2]
+            bank = (QUESTION_BANKS if kind == 'firm' else PERSONAL_QUESTION_BANKS).get(agent, [])
+            if not bank:
+                continue
+            pos = cursors.setdefault(kind, {}).get(agent, 0)
+            cursors[kind][agent] = pos + 1
+            entries.append({'agent': agent, 'kind': kind, 'question': bank[pos % len(bank)]})
+
+    # Spread over the days still left this week (never more than a few a day, never the same agent twice in a day).
+    days = [week_start + timedelta(days=i) for i in range(7) if week_start + timedelta(days=i) >= today]
+    cap = -(-len(entries) // max(1, len(days)))
+    rng.shuffle(entries)
+    load = {d.isoformat(): [] for d in days}
+    for e in entries:
+        options = [d for d in load if len(load[d]) < cap and all(x['agent'] != e['agent'] for x in load[d])]
+        if not options:
+            options = [d for d in load if len(load[d]) < cap] or list(load)
+        pick = min(options, key=lambda d: (len(load[d]), d))
+        e['date'] = pick
+        load[pick].append(e)
+    counts = {}
+    for e in entries:
+        counts[e['agent']] = counts.get(e['agent'], 0) + 1
+    return {'counts': counts, 'entries': entries}
+
+
+def get_question_schedule():
+    """This week's plan, made on first use."""
+    today = today_local()
+    week_start = today - timedelta(days=today.weekday())
+    key = _week_key(week_start)
+    with question_schedule_lock:
+        cached = _question_schedule_cache.get(key)
+        if cached is not None:
+            return cached
+        state = {}
+        if os.path.exists(QUESTION_SCHEDULE_FILE):
+            try:
+                with open(QUESTION_SCHEDULE_FILE, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                state = {}
+        if key not in state.get('weeks', {}):
+            state.setdefault('weeks', {})[key] = _build_week_plan(state, week_start, today, random.Random())
+            for old in sorted(state['weeks'])[:-8]:
+                del state['weeks'][old]
+            with open(QUESTION_SCHEDULE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+        _question_schedule_cache.clear()
+        _question_schedule_cache[key] = state['weeks'][key]
+        return state['weeks'][key]
+
+
+def _questions_scheduled_today(agent, kind):
+    today = today_local().isoformat()
+    return [e['question'] for e in get_question_schedule()['entries']
+            if e['agent'] == agent and e['kind'] == kind and e['date'] == today]
+
+
 def get_today_questions(agent):
-    bank = QUESTION_BANKS.get(agent, [])
-    if not bank:
-        return []
-    base = today_local().toordinal()
-    count = min(DAILY_ITEMS_PER_AGENT, len(bank))
-    return [bank[(base + i) % len(bank)] for i in range(count)]
+    return _questions_scheduled_today(agent, 'firm')
 
 
 def get_today_ideas(agent):
@@ -863,12 +996,7 @@ def save_personal_knowledge_base(data):
 
 
 def get_today_personal_questions(agent):
-    bank = PERSONAL_QUESTION_BANKS.get(agent, [])
-    if not bank:
-        return []
-    base = today_local().toordinal()
-    count = min(DAILY_ITEMS_PER_AGENT, len(bank))
-    return [bank[(base + i) % len(bank)] for i in range(count)]
+    return _questions_scheduled_today(agent, 'personal')
 
 
 def get_today_personal_ideas(agent):
