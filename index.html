@@ -3557,11 +3557,12 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
             flex: 1;
             min-height: 0;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
         }
 
         .todos-kanban {
-            flex: 1 1 60%;
+            flex: 1 1 0;
+            min-width: 0;
             min-height: 0;
             display: flex;
             gap: 12px;
@@ -3631,12 +3632,14 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
             min-height: 0;
         }
 
+        /* The details open as a column down the right-hand side, laid out like the New To-Do form. */
         .todos-details-pane {
-            flex: 0 0 36%;
+            flex: 0 0 400px;
+            min-width: 0;
             min-height: 0;
             display: flex;
             flex-direction: column;
-            border-top: 1px solid #e6e6e6;
+            border-left: 1px solid #e6e6e6;
             background: white;
         }
 
@@ -3646,10 +3649,9 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
         }
 
         .todos-edit-note { padding: 8px 20px 0; font-size: 12px; color: #666; }
-        .todos-edit-form { border-top: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); column-gap: 16px; row-gap: 10px; align-items: start; }
-        .todos-edit-form .todos-edit-wide { grid-column: 1 / -1; }
+        .todos-edit-form { border-top: none; }
         .todos-edit-form #todos-edit-form-fields { display: contents; }
-        #todos-preview-content .topics-preview-actions { padding: 6px 20px 16px; }
+        #todos-preview-content .topics-preview-actions { padding: 6px 20px 16px; flex-wrap: wrap; }
 
         .todos-details-close {
             margin-left: auto;
@@ -26711,7 +26713,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             actions.className = 'topics-preview-actions';
             const saveBtn = document.createElement('button');
             saveBtn.type = 'button';
-            saveBtn.className = 'task-action-btn solid-start';
+            saveBtn.className = 'task-action-btn solid-complete';
             saveBtn.textContent = 'Save';
             saveBtn.addEventListener('click', saveTodoForm);
             actions.appendChild(saveBtn);
