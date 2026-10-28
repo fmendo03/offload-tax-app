@@ -32,7 +32,7 @@ import urllib.parse
 import socket
 import ipaddress
 import threading
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import docx as docx_lib
@@ -2114,11 +2114,6 @@ def load_calendar_settings():
         'lastImportSignature': None,
         'lastImportedAt': None,
         'lastImportError': None,
-        'outlookEnabled': False,
-        'lastOutlookAt': None,
-        'lastOutlookAttemptAt': None,
-        'lastOutlookError': None,
-        'lastOutlookCount': 0,
         'dismissedExternalUids': []
     }
     if os.path.exists(CALENDAR_SETTINGS_FILE):
@@ -2190,8 +2185,10 @@ def _parse_ics_datetime(value):
         if len(value) == 8 and value.isdigit():
             d = datetime.strptime(value, '%Y%m%d')
             return d.isoformat(), True
-        v = value[:-1] if value.endswith('Z') else value
-        d = datetime.strptime(v, '%Y%m%dT%H%M%S')
+        if value.endswith('Z'):
+            d = datetime.strptime(value[:-1], '%Y%m%dT%H%M%S').replace(tzinfo=timezone.utc).astimezone(APP_TIMEZONE).replace(tzinfo=None)
+        else:
+            d = datetime.strptime(value, '%Y%m%dT%H%M%S')
         return d.isoformat(), False
     except ValueError:
         return None, False
@@ -2200,8 +2197,9 @@ def _parse_ics_datetime(value):
 # Minimal RFC 5545 reader: unfolds continuation lines, walks VEVENT blocks,
 # and reads just the handful of properties a personal calendar actually
 # needs (UID/SUMMARY/DTSTART/DTEND/DESCRIPTION/LOCATION/STATUS). Recurring
-# events (RRULE) are NOT expanded - only the single instance literally
-# written in the feed comes through, same as reading one VEVENT at a time.
+# events (RRULE) are expanded into their individual occurrences for a window
+# around today (see _expand_ics_recurrences), honoring EXDATE and any moved or
+# cancelled single occurrences (RECURRENCE-ID).
 def parse_ics(text):
     raw_lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
     lines = []
@@ -2249,8 +2247,88 @@ def parse_ics(text):
                 current['end'] = iso
         elif prop_name == 'STATUS' and value.strip().upper() == 'CANCELLED':
             current['_cancelled'] = True
+        elif prop_name == 'RRULE':
+            current['_rrule'] = value.strip()
+        elif prop_name == 'EXDATE':
+            current.setdefault('_exdates', []).extend(v for v in value.split(',') if v.strip())
+        elif prop_name == 'RECURRENCE-ID':
+            iso, _ = _parse_ics_datetime(value)
+            if iso:
+                current['_recurrence_id'] = iso
 
-    return [e for e in events if not e.get('_cancelled')]
+    return _expand_ics_recurrences(events)
+
+
+ICS_RECURRENCE_DAYS_BACK = 14
+ICS_RECURRENCE_DAYS_AHEAD = 120
+ICS_RECURRENCE_MAX = 800
+
+
+def _expand_ics_recurrences(events):
+    from dateutil.rrule import rrulestr
+    now = now_local()
+    window_start = now - timedelta(days=ICS_RECURRENCE_DAYS_BACK)
+    window_end = now + timedelta(days=ICS_RECURRENCE_DAYS_AHEAD)
+
+    # Single occurrences that were moved or cancelled: the repeating event must skip those dates.
+    overridden = set()
+    for e in events:
+        if e.get('_recurrence_id') and e.get('externalUid'):
+            overridden.add((e['externalUid'], e['_recurrence_id']))
+
+    out = []
+    for e in events:
+        rrule_text = e.get('_rrule')
+        uid = e.get('externalUid')
+        if e.get('_recurrence_id'):
+            # A moved single occurrence is its own event (a cancelled one is dropped).
+            if not e.get('_cancelled'):
+                e['externalUid'] = f"{uid}#{e['_recurrence_id']}"
+                out.append(e)
+            continue
+        if e.get('_cancelled'):
+            continue
+        if not rrule_text or not uid:
+            out.append(e)
+            continue
+        try:
+            start = datetime.fromisoformat(e['start'])
+            end = datetime.fromisoformat(e['end']) if e.get('end') else start
+            duration = max(end - start, timedelta(0))
+            # UNTIL is often UTC ("...Z") - bring it to local time like every other time in the feed.
+            def fix_until(m):
+                val = m.group(1)
+                if val.endswith('Z'):
+                    d = datetime.strptime(val[:-1], '%Y%m%dT%H%M%S').replace(tzinfo=timezone.utc).astimezone(APP_TIMEZONE).replace(tzinfo=None)
+                elif len(val) == 8:
+                    d = datetime.strptime(val, '%Y%m%d').replace(hour=23, minute=59, second=59)
+                else:
+                    d = datetime.strptime(val, '%Y%m%dT%H%M%S')
+                return 'UNTIL=' + d.strftime('%Y%m%dT%H%M%S')
+            rule_text = re.sub(r'UNTIL=([0-9TZ]+)', fix_until, rrule_text)
+            rule = rrulestr(rule_text, dtstart=start)
+            skip = set()
+            for ex in e.get('_exdates', []):
+                iso, _ = _parse_ics_datetime(ex)
+                if iso:
+                    skip.add(iso)
+            count = 0
+            for occ in rule.between(window_start - duration, window_end, inc=True):
+                iso = occ.isoformat()
+                if iso in skip or (uid, iso) in overridden:
+                    continue
+                count += 1
+                if count > ICS_RECURRENCE_MAX:
+                    break
+                copy = {k: v for k, v in e.items() if not k.startswith('_')}
+                copy['externalUid'] = f"{uid}#{iso}"
+                copy['start'] = iso
+                copy['end'] = (occ + duration).isoformat()
+                out.append(copy)
+        except Exception as ex:
+            print(f"Couldn't expand a repeating event: {ex}")
+            out.append(e)   # at least keep its first occurrence
+    return [{k: v for k, v in e.items() if not k.startswith('_')} for e in out]
 
 
 def _fold_ics_line(line):
@@ -2310,20 +2388,36 @@ def build_ics(events):
 # running its own background thread - same approach as the Knowledge Base's
 # file/folder connections. A content hash skips reprocessing when the feed
 # hasn't actually changed since last time.
+_outlook_events_purged = False
+
+
+def _purge_old_outlook_events():
+    global _outlook_events_purged
+    if _outlook_events_purged:
+        return
+    _outlook_events_purged = True
+    with calendar_lock:
+        events = load_calendar_events()
+        kept = [e for e in events if not (e.get('source') == 'external' and str(e.get('externalUid') or '').startswith('outlook:'))]
+        if len(kept) != len(events):
+            save_calendar_events(kept)
+
+
 def sync_calendar_import():
+    _purge_old_outlook_events()
     # The network fetch runs unlocked (it can take a few seconds and must
     # never block an event create/update/delete happening at the same time);
     # only the merge-and-save step below needs calendar_lock.
     settings = load_calendar_settings()
-    if settings.get('outlookEnabled'):
-        _maybe_sync_outlook_async(settings)
     if not settings.get('importEnabled') or not settings.get('importUrl'):
         return settings
     try:
         req = urllib.request.Request(settings['importUrl'], headers={'User-Agent': 'Offload-Calendar/1.0'})
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = resp.read()
-        signature = hashlib.sha256(raw).hexdigest()
+        # The feed's own content plus today's date: repeating events are expanded for a window around today,
+        # so the same feed has to be re-read as the days pass.
+        signature = hashlib.sha256(raw).hexdigest() + '|' + today_local().isoformat() + '|v2'
         if signature == settings.get('lastImportSignature'):
             return settings
         text = raw.decode('utf-8', errors='replace')
@@ -2393,144 +2487,6 @@ def _merge_imported_events(parsed, signature):
         settings['lastImportError'] = str(e)
     save_calendar_settings(settings)
     return settings
-
-
-# ---- Outlook on this computer ----
-# The simple way to sync: read the calendar straight out of the Outlook desktop app on this PC (no link,
-# no sign-in, no app registration). Needs Outlook installed and pywin32; events land as source="external"
-# with an "outlook:" id so they never mix with the ICS-feed import.
-OUTLOOK_UID_PREFIX = 'outlook:'
-OUTLOOK_REFRESH_SECONDS = 120
-outlook_sync_lock = threading.Lock()
-
-
-def read_outlook_events(days_back=14, days_ahead=120):
-    try:
-        import pythoncom
-        import win32com.client
-    except ImportError:
-        raise RuntimeError("The Outlook helper (pywin32) isn't installed on this computer.")
-    pythoncom.CoInitialize()
-    try:
-        try:
-            outlook = win32com.client.Dispatch('Outlook.Application')
-            calendar = outlook.GetNamespace('MAPI').GetDefaultFolder(9)   # olFolderCalendar
-        except Exception:
-            raise RuntimeError("Couldn't reach the Outlook app. Make sure Outlook is installed and signed in on this computer, then try again.")
-        items = calendar.Items
-        items.IncludeRecurrences = True
-        items.Sort('[Start]')
-        fmt = '%m/%d/%Y %I:%M %p'
-        window_start = now_local() - timedelta(days=days_back)
-        window_end = now_local() + timedelta(days=days_ahead)
-        found = items.Restrict(f"[Start] >= '{window_start.strftime(fmt)}' AND [Start] <= '{window_end.strftime(fmt)}'")
-        events, seen = [], set()
-        for item in found:
-            if len(events) >= 2500:
-                break
-            try:
-                if int(getattr(item, 'MeetingStatus', 0) or 0) in (5, 7):   # cancelled meetings
-                    continue
-                s, e = item.Start, item.End
-                start = datetime(s.year, s.month, s.day, s.hour, s.minute, s.second)
-                end = datetime(e.year, e.month, e.day, e.hour, e.minute, e.second)
-                base = str(getattr(item, 'EntryID', ''))
-                uid = f"{OUTLOOK_UID_PREFIX}{base}:{start.isoformat()}"
-                if uid in seen:
-                    continue
-                seen.add(uid)
-                events.append({
-                    'externalUid': uid,
-                    'title': str(getattr(item, 'Subject', '') or '').strip() or '(untitled)',
-                    'description': '',
-                    'location': str(getattr(item, 'Location', '') or '').strip(),
-                    'start': start.isoformat(),
-                    'end': end.isoformat(),
-                    'allDay': bool(getattr(item, 'AllDayEvent', False))
-                })
-            except Exception:
-                continue
-        return events
-    finally:
-        pythoncom.CoUninitialize()
-
-
-def _merge_outlook_events(parsed, user_id):
-    settings = load_calendar_settings()
-    events = load_calendar_events()
-    dismissed = set(settings.get('dismissedExternalUids', []))
-    by_uid = {e.get('externalUid'): e for e in events if e.get('source') == 'external' and e.get('externalUid')}
-    seen_uids = set()
-    now_iso = now_local().isoformat()
-    for pe in parsed:
-        uid = pe['externalUid']
-        if uid in dismissed:
-            continue
-        seen_uids.add(uid)
-        if uid in by_uid:
-            existing = by_uid[uid]
-            for key in ('title', 'description', 'location', 'start', 'end', 'allDay'):
-                existing[key] = pe[key]
-            existing['updatedAt'] = now_iso
-        else:
-            events.append({
-                'id': uuid.uuid4().hex, 'userId': user_id, 'title': pe['title'], 'description': pe['description'],
-                'location': pe['location'], 'start': pe['start'], 'end': pe['end'] or pe['start'], 'allDay': pe['allDay'],
-                'source': 'external', 'externalUid': uid, 'status': 'confirmed', 'createdAt': now_iso, 'updatedAt': now_iso
-            })
-    # Anything from Outlook that is no longer in the window (deleted or moved out) goes too.
-    events = [e for e in events if not (e.get('source') == 'external' and str(e.get('externalUid') or '').startswith(OUTLOOK_UID_PREFIX) and e['externalUid'] not in seen_uids)]
-    save_calendar_events(events)
-
-
-def sync_outlook_now(user_id):
-    """Reads Outlook and merges it in. Returns (count, error)."""
-    if not outlook_sync_lock.acquire(blocking=False):
-        return None, None   # a sync is already running
-    count, error = 0, None
-    try:
-        with calendar_lock:
-            settings = load_calendar_settings()
-            settings['lastOutlookAttemptAt'] = now_local().isoformat()
-            save_calendar_settings(settings)
-        try:
-            parsed = read_outlook_events()
-            with calendar_lock:
-                _merge_outlook_events(parsed, user_id)
-            count = len(parsed)
-        except Exception as e:
-            error = str(e)
-        with calendar_lock:
-            settings = load_calendar_settings()
-            settings['lastOutlookError'] = error
-            if not error:
-                settings['lastOutlookAt'] = now_local().isoformat()
-                settings['lastOutlookCount'] = count
-            save_calendar_settings(settings)
-    finally:
-        outlook_sync_lock.release()
-    return count, error
-
-
-def _maybe_sync_outlook_async(settings):
-    last = settings.get('lastOutlookAttemptAt')
-    if last:
-        try:
-            if (now_local() - datetime.fromisoformat(last)).total_seconds() < OUTLOOK_REFRESH_SECONDS:
-                return
-        except ValueError:
-            pass
-    if outlook_sync_lock.locked():
-        return
-    threading.Thread(target=sync_outlook_now, args=(current_user_id(),), daemon=True).start()
-
-
-def _remove_outlook_events():
-    with calendar_lock:
-        events = load_calendar_events()
-        kept = [e for e in events if not (e.get('source') == 'external' and str(e.get('externalUid') or '').startswith(OUTLOOK_UID_PREFIX))]
-        if len(kept) != len(events):
-            save_calendar_events(kept)
 
 
 CALENDAR_BUSINESS_START_HOUR = 9
@@ -3328,18 +3284,7 @@ def calendar_settings_update():
                 settings['importEnabled'] = bool(data['importEnabled'])
             if 'exportEnabled' in data:
                 settings['exportEnabled'] = bool(data['exportEnabled'])
-            outlook_changed = 'outlookEnabled' in data and bool(data['outlookEnabled']) != bool(settings.get('outlookEnabled'))
-            if 'outlookEnabled' in data:
-                settings['outlookEnabled'] = bool(data['outlookEnabled'])
-                if not settings['outlookEnabled']:
-                    settings['lastOutlookError'] = None
             save_calendar_settings(settings)
-        if outlook_changed:
-            if settings['outlookEnabled']:
-                sync_outlook_now(current_user_id())
-            else:
-                _remove_outlook_events()
-            settings = load_calendar_settings()
         if settings['importEnabled']:
             settings = sync_calendar_import()
         public_settings = {k: v for k, v in settings.items() if k != 'dismissedExternalUids'}
@@ -3350,21 +3295,6 @@ def calendar_settings_update():
         return jsonify({'success': True, 'settings': public_settings})
     except Exception as e:
         print(f"Calendar settings error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/calendar/outlook-sync', methods=['POST'])
-def calendar_outlook_sync():
-    try:
-        count, error = sync_outlook_now(current_user_id())
-        settings = load_calendar_settings()
-        public_settings = {k: v for k, v in settings.items() if k != 'dismissedExternalUids'}
-        public_settings['exportUrl'] = None
-        if error:
-            return jsonify({'success': False, 'error': error, 'settings': public_settings})
-        return jsonify({'success': True, 'count': count, 'settings': public_settings})
-    except Exception as e:
-        print(f"Outlook sync error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

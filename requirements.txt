@@ -9,4 +9,4 @@ fpdf2==2.8.8
 gunicorn==26.2.0
 extract-msg==0.56.1
 tzdata==2025.2
-pywin32==312; sys_platform == 'win32'
+python-dateutil>=2.9.0

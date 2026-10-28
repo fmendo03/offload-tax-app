@@ -8407,18 +8407,6 @@ body.va-open #notification-toasts {
                     <div class="calendar-sync-bar">
                         <div class="calendar-sync-toggle">
                             <label class="toggle-switch">
-                                <input type="checkbox" id="calendar-outlook-toggle">
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <div class="calendar-sync-label">
-                                <strong>Sync Outlook (on this computer) &rarr; Offload</strong>
-                                <div class="calendar-sync-sub">The simple way: reads the calendar in your Outlook app. No link or sign-in - just turn it on. Outlook must be installed on this PC.</div>
-                                <div class="calendar-sync-status" id="calendar-outlook-status"></div>
-                                <button type="button" class="pane-toolbar-btn" id="calendar-outlook-sync-btn" style="display:none; margin-top:6px;">Sync now</button>
-                            </div>
-                        </div>
-                        <div class="calendar-sync-toggle">
-                            <label class="toggle-switch">
                                 <input type="checkbox" id="calendar-import-toggle">
                                 <span class="toggle-slider"></span>
                             </label>
@@ -22503,27 +22491,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 importStatus.className = 'calendar-sync-status';
             }
 
-            const outlookToggle = document.getElementById('calendar-outlook-toggle');
-            const outlookStatus = document.getElementById('calendar-outlook-status');
-            const outlookBtn = document.getElementById('calendar-outlook-sync-btn');
-            outlookToggle.checked = !!calendarSettings.outlookEnabled;
-            outlookBtn.style.display = calendarSettings.outlookEnabled ? '' : 'none';
-            if (calendarSettings.outlookEnabled) {
-                if (calendarSettings.lastOutlookError) {
-                    outlookStatus.textContent = calendarSettings.lastOutlookError;
-                    outlookStatus.className = 'calendar-sync-status error';
-                } else if (calendarSettings.lastOutlookAt) {
-                    outlookStatus.textContent = `${calendarSettings.lastOutlookCount || 0} events from Outlook - last synced ${new Date(calendarSettings.lastOutlookAt).toLocaleTimeString()}`;
-                    outlookStatus.className = 'calendar-sync-status';
-                } else {
-                    outlookStatus.textContent = 'Reading your Outlook calendar...';
-                    outlookStatus.className = 'calendar-sync-status';
-                }
-            } else {
-                outlookStatus.textContent = '';
-                outlookStatus.className = 'calendar-sync-status';
-            }
-
             const exportToggle = document.getElementById('calendar-export-toggle');
             const exportStatus = document.getElementById('calendar-export-status');
             exportToggle.checked = !!calendarSettings.exportEnabled;
@@ -29688,22 +29655,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         document.getElementById('calendar-event-allday').addEventListener('change', (e) => toggleCalendarAllDayFields(e.target.checked));
         document.getElementById('calendar-event-modal').addEventListener('click', (e) => {
             if (e.target.id === 'calendar-event-modal') closeEventModal();
-        });
-        document.getElementById('calendar-outlook-toggle').addEventListener('change', async (e) => {
-            const status = document.getElementById('calendar-outlook-status');
-            if (e.target.checked) { status.textContent = 'Reading your Outlook calendar...'; status.className = 'calendar-sync-status'; }
-            await saveCalendarSyncSettings({ outlookEnabled: e.target.checked });
-        });
-        document.getElementById('calendar-outlook-sync-btn').addEventListener('click', async (e) => {
-            const btn = e.target;
-            btn.disabled = true; btn.textContent = 'Syncing...';
-            try {
-                const response = await fetch('/calendar/outlook-sync', { method: 'POST' });
-                const data = await response.json();
-                if (data.settings) calendarSettings = data.settings;
-                await loadCalendarData();
-                renderCalendarSyncBar();
-            } finally { btn.disabled = false; btn.textContent = 'Sync now'; }
         });
         document.getElementById('calendar-import-toggle').addEventListener('change', (e) => {
             saveCalendarSyncSettings({ importEnabled: e.target.checked, importUrl: document.getElementById('calendar-import-url').value.trim() });
