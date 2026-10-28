@@ -2776,6 +2776,24 @@ def save_todo_settings(data):
         json.dump(data, f, indent=2)
 
 
+# Categories a to-do can be filed under. Every one that gets used is remembered here (so it stays in the
+# drop-down), and Settings > To-Dos can add, rename and delete them.
+def _clean_category(name):
+    return str(name or '').strip()[:60]
+
+
+def _remember_category(name):
+    name = _clean_category(name)
+    if not name:
+        return
+    with todo_settings_lock:
+        settings = load_todo_settings()
+        cats = settings.setdefault('categories', [])
+        if not any(c.lower() == name.lower() for c in cats):
+            cats.append(name)
+            save_todo_settings(settings)
+
+
 def _round_up_to_quarter_hour(dt):
     discard = timedelta(minutes=dt.minute % 15, seconds=dt.second, microseconds=dt.microsecond)
     dt = dt - discard
@@ -3493,7 +3511,67 @@ def lunch_settings_update():
 
 @app.route('/todos/settings', methods=['GET'])
 def todo_settings_get():
-    return jsonify({'success': True, 'settings': load_todo_settings(), 'palette': TODO_PERSONAL_COLOR_PALETTE})
+    settings = load_todo_settings()
+    # Remembered categories plus any still on a to-do from before they were remembered.
+    names = {c.lower(): c for c in settings.get('categories', [])}
+    for todo in load_todos():
+        c = _clean_category(todo.get('category'))
+        if c and c.lower() not in names:
+            names[c.lower()] = c
+    settings = dict(settings, categories=sorted(names.values(), key=lambda c: c.lower()))
+    return jsonify({'success': True, 'settings': settings, 'palette': TODO_PERSONAL_COLOR_PALETTE})
+
+
+# Settings > To-Dos > Categories: add, rename (every to-do and repeating series in it follows) or delete
+# (they stay on the list, with no category).
+@app.route('/todos/categories', methods=['POST'])
+def todo_categories_update():
+    try:
+        data = request.json or {}
+        action = str(data.get('action') or '')
+        name = _clean_category(data.get('name'))
+        new_name = _clean_category(data.get('new_name'))
+        if action not in ('add', 'rename', 'delete') or not name:
+            return jsonify({'success': False, 'error': 'Missing category'}), 400
+        if action == 'rename' and not new_name:
+            return jsonify({'success': False, 'error': 'Please type the new name.'}), 400
+
+        with todo_settings_lock:
+            settings = load_todo_settings()
+            cats = settings.setdefault('categories', [])
+            if action == 'add':
+                if not any(c.lower() == name.lower() for c in cats):
+                    cats.append(name)
+                target = ''
+            elif action == 'delete':
+                settings['categories'] = [c for c in cats if c.lower() != name.lower()]
+                target = ''
+            else:
+                existing = next((c for c in cats if c.lower() == new_name.lower() and c.lower() != name.lower()), None)
+                target = existing or new_name
+                settings['categories'] = [c for c in cats if c.lower() != name.lower()]
+                if not any(c.lower() == target.lower() for c in settings['categories']):
+                    settings['categories'].append(target)
+            save_todo_settings(settings)
+            categories = list(settings['categories'])
+
+        if action in ('rename', 'delete'):
+            with todos_lock:
+                todos = load_todos()
+                for todo in todos:
+                    if _clean_category(todo.get('category')).lower() == name.lower():
+                        todo['category'] = target
+                save_todos(todos)
+            with todo_series_lock:
+                series_list = load_todo_series()
+                for series in series_list:
+                    if _clean_category(series.get('category')).lower() == name.lower():
+                        series['category'] = target
+                save_todo_series(series_list)
+        return jsonify({'success': True, 'todos': load_todos(), 'categories': sorted(categories, key=lambda c: c.lower())})
+    except Exception as e:
+        print(f"Todo categories error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/todos/settings', methods=['POST'])
@@ -4367,6 +4445,7 @@ def todos_create():
             }
             todos.append(todo)
             save_todos(todos)
+        _remember_category(category)
         return jsonify({'success': True, 'todos': todos, 'todo_id': todo['id']})
     except Exception as e:
         print(f"Todo create error: {e}")
@@ -4377,6 +4456,7 @@ def todos_create():
 def todos_update(todo_id):
     try:
         data = request.json or {}
+        category_to_remember = ''
         with todos_lock, calendar_lock:
             todos = load_todos()
             todo = next((t for t in todos if t['id'] == todo_id), None)
@@ -4412,7 +4492,8 @@ def todos_update(todo_id):
             if 'personal' in data:
                 todo['personal'] = bool(data['personal'])
             if 'category' in data:
-                todo['category'] = str(data['category'] or '').strip()[:60]
+                todo['category'] = _clean_category(data['category'])
+                category_to_remember = todo['category']
             # A new id is another time this to-do is scheduled - it joins
             # calendarEventIds (earlier cards, e.g. a missed one, stay) and
             # becomes the current calendarEventId. null explicitly clears
@@ -4438,6 +4519,7 @@ def todos_update(todo_id):
                 _sync_todo_to_events(todo, events)
                 save_calendar_events(events)
             save_todos(todos)
+        _remember_category(category_to_remember)
         return jsonify({'success': True, 'todos': todos})
     except Exception as e:
         print(f"Todo update error: {e}")
@@ -4488,7 +4570,7 @@ def todos_series_create():
             'id': uuid.uuid4().hex, 'userId': current_user_id(), 'title': title,
             'details': details, 'estimatedMinutes': estimated_minutes, 'priority': priority,
             'personal': bool(data.get('personal')),
-            'category': str(data.get('category') or '').strip()[:60],
+            'category': _clean_category(data.get('category')),
             'recurrence': recurrence, 'active': True,
             'createdAt': now_local().isoformat(),
             # One day before its own first occurrence, so the very first
@@ -4499,6 +4581,7 @@ def todos_series_create():
             series_list = load_todo_series()
             series_list.append(series)
             save_todo_series(series_list)
+        _remember_category(series.get('category'))
 
         _ensure_all_series_generated()
 

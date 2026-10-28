@@ -3536,7 +3536,18 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
         .todos-search-clear { border: none; background: none; color: #1a3a8a; font-weight: 600; font-size: 13px; cursor: pointer; padding: 4px 6px; }
         .todos-search-status { font-size: 12px; color: #666; }
 
-        .todos-group-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #444; cursor: pointer; white-space: nowrap; }
+        .todos-group-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #444; white-space: nowrap; }
+        .todos-group-toggle select { padding: 6px 8px; border: 1px solid #cfd4dc; border-radius: 8px; font-size: 13px; background: #fff; color: #222; }
+        .todos-cat-heading { cursor: pointer; user-select: none; }
+        .todos-cat-heading:hover { color: #222; }
+        .todos-cat-name { display: inline-flex; align-items: center; gap: 6px; }
+        .todos-cat-chevron { display: inline-block; width: 10px; font-size: 11px; }
+        .todo-category-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .todo-category-row .todo-category-name { flex: 1; font-weight: 700; font-size: 14px; color: #222; }
+        .todo-category-row .todo-category-count { font-size: 12px; color: #777; }
+        .todo-category-row input { flex: 1; padding: 6px 10px; border: 1px solid #ccd; border-radius: 6px; font-size: 13px; }
+        .todo-category-add-row { display: flex; gap: 8px; margin-top: 12px; }
+        .todo-category-add-row input { flex: 1; padding: 8px 12px; border: 1px solid #ccd; border-radius: 6px; font-size: 13px; }
         .todos-cat-heading { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 4px; margin-top: 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #555; border-bottom: 1px solid #e6e6e6; }
         .todos-cat-heading:first-child { margin-top: 0; }
         .todos-cat-heading .todos-cat-count { font-weight: 700; color: #888; }
@@ -8119,7 +8130,14 @@ body.va-open #notification-toasts {
                     <button type="button" class="todos-search-clear" id="todos-search-clear" style="display:none;">Clear</button>
                     <span class="todos-search-status" id="todos-search-status"></span>
                 </div>
-                <label class="todos-group-toggle"><input type="checkbox" id="todos-group-category"> Group by category</label>
+                <label class="todos-group-toggle">Group by:
+                    <select id="todos-group-by">
+                        <option value="">None</option>
+                        <option value="category">Category</option>
+                        <option value="priority">Priority</option>
+                        <option value="time">Time</option>
+                        <option value="type">Business / Personal</option>
+                    </select></label>
                 <div class="agent-quickbar" id="todos-agent-quickbar"></div></div>
             <div class="todos-board">
             <div class="todos-kanban">
@@ -8419,6 +8437,19 @@ body.va-open #notification-toasts {
                             events. Priority shows separately, as the color of the card's left edge.
                         </p>
                         <div class="todos-color-swatches" id="todo-settings-color-swatches"></div>
+                    </div>
+                    <div class="settings-section">
+                        <h2>Categories</h2>
+                        <p class="settings-section-desc">
+                            Categories file your to-dos so the To-Do List can group them. Renaming one
+                            renames it on every to-do in it; deleting one takes it off those to-dos
+                            (they stay on your list, with no category).
+                        </p>
+                        <div id="todo-categories-list"></div>
+                        <div class="todo-category-add-row">
+                            <input type="text" id="todo-category-new-name" placeholder="New category name" maxlength="60">
+                            <button type="button" class="task-action-btn solid-complete" id="todo-category-add-btn">Add Category</button>
+                        </div>
                     </div>
                     <div class="settings-section">
                         <h2>To-Do Templates</h2>
@@ -23239,6 +23270,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
             document.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.toggle('active', p.id === `settings-tab-${tab}`));
             if (tab === 'usage') loadUsageSummary();
+            if (tab === 'todos') renderTodoCategoriesSettings();
         }
 
         // Settings > Usage - what the AI calls have cost, from /usage/summary.
@@ -25426,6 +25458,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const data = await response.json();
                 if (!data.success) return;
                 todoPersonalColor = data.settings.personalColor;
+                todoExplicitCategories = data.settings.categories || [];
                 updateTodoSettingsSwatchSelection();
                 if (document.getElementById('calendar-view').style.display !== 'none') renderCalendarWeek();
             } catch (error) {
@@ -25457,6 +25490,100 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             updateTodoSettingsSwatchSelection();
             document.getElementById('todo-template-new-btn').addEventListener('click', submitNewTodoTemplate);
             document.getElementById('todos-new-template-select').addEventListener('change', (e) => applyTodoTemplate(e.target.value));
+            const addCategory = async () => {
+                const input = document.getElementById('todo-category-new-name');
+                const name = input.value.trim();
+                if (!name) return;
+                const data = await todoCategoryRequest({ action: 'add', name });
+                if (data.success) input.value = '';
+            };
+            document.getElementById('todo-category-add-btn').addEventListener('click', addCategory);
+            document.getElementById('todo-category-new-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') addCategory(); });
+        }
+
+        // ---- Settings > To-Dos > Categories ----
+        async function todoCategoryRequest(payload) {
+            const response = await fetch('/todos/categories', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            if (data.success) {
+                todosList = data.todos;
+                todoExplicitCategories = data.categories || [];
+                if (document.getElementById('todos-view').style.display !== 'none') renderTodosPage();
+                await renderTodoCategoriesSettings(false);
+            } else {
+                alert(data.error || 'Could not change that category - try again.');
+            }
+            return data;
+        }
+
+        async function renderTodoCategoriesSettings(reload = true) {
+            const host = document.getElementById('todo-categories-list');
+            if (!host) return;
+            if (reload) {
+                try {
+                    const r = await (await fetch('/todos')).json();
+                    if (r.success) todosList = r.todos;
+                    const st = await (await fetch('/todos/settings')).json();
+                    if (st.success) todoExplicitCategories = st.settings.categories || [];
+                } catch (error) { console.error('Failed to load categories:', error); }
+            }
+            const names = todoCategoryNames();
+            host.innerHTML = '';
+            if (!names.length) {
+                const empty = document.createElement('p');
+                empty.className = 'settings-section-desc';
+                empty.textContent = 'No categories yet - add one below, or type a new one when you add a to-do.';
+                host.appendChild(empty);
+                return;
+            }
+            names.forEach(name => {
+                const count = todosList.filter(t => String(t.category || '').trim().toLowerCase() === name.toLowerCase()).length;
+                const row = document.createElement('div');
+                row.className = 'todo-category-row';
+                const label = document.createElement('span');
+                label.className = 'todo-category-name';
+                label.textContent = name;
+                const counter = document.createElement('span');
+                counter.className = 'todo-category-count';
+                counter.textContent = `${count} to-do${count === 1 ? '' : 's'}`;
+                const renameBtn = document.createElement('button');
+                renameBtn.type = 'button'; renameBtn.className = 'pane-toolbar-btn'; renameBtn.textContent = 'Rename';
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button'; deleteBtn.className = 'pane-toolbar-btn'; deleteBtn.textContent = 'Delete';
+                deleteBtn.style.color = '#c0392b';
+                row.append(label, counter, renameBtn, deleteBtn);
+                host.appendChild(row);
+
+                renameBtn.addEventListener('click', () => {
+                    const input = document.createElement('input');
+                    input.type = 'text'; input.value = name; input.maxLength = 60;
+                    const save = document.createElement('button');
+                    save.type = 'button'; save.className = 'task-action-btn solid-complete'; save.textContent = 'Save';
+                    const cancel = document.createElement('button');
+                    cancel.type = 'button'; cancel.className = 'pane-toolbar-btn'; cancel.textContent = 'Cancel';
+                    row.innerHTML = '';
+                    row.append(input, save, cancel);
+                    input.focus(); input.select();
+                    const commit = async () => {
+                        const next = input.value.trim();
+                        if (!next || next === name) { renderTodoCategoriesSettings(false); return; }
+                        await todoCategoryRequest({ action: 'rename', name, new_name: next });
+                    };
+                    save.addEventListener('click', commit);
+                    cancel.addEventListener('click', () => renderTodoCategoriesSettings(false));
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') commit();
+                        else if (e.key === 'Escape') renderTodoCategoriesSettings(false);
+                    });
+                });
+                deleteBtn.addEventListener('click', async () => {
+                    const note = count ? ` The ${count} to-do${count === 1 ? '' : 's'} in it will stay on your list with no category.` : '';
+                    if (!confirm(`Delete the category "${name}"?${note}`)) return;
+                    await todoCategoryRequest({ action: 'delete', name });
+                });
+            });
         }
 
         function updateTodoSettingsSwatchSelection() {
@@ -25800,6 +25927,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 if (!data.success) return;
                 todosList = data.todos;
                 renderTodosPage();
+                fetch('/todos/settings').then(r => r.json()).then(d => { if (d.success) todoExplicitCategories = d.settings.categories || []; }).catch(() => {});
             } catch (error) {
                 console.error('Failed to load to-dos:', error);
             }
@@ -26259,24 +26387,42 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         const todosSearch = { text: '', mode: 'and' };
         try { if (localStorage.getItem('todosSearchMode') === 'or') todosSearch.mode = 'or'; } catch (e) { /* no storage */ }
 
-        // ---- Group by category ----
-        let todosGroupByCategory = false;
-        try { todosGroupByCategory = localStorage.getItem('todosGroupByCategory') === '1'; } catch (e) { /* no storage */ }
+        // ---- Group by (nothing, category, priority, time, or business/personal) ----
+        const TODO_GROUP_MODES = ['', 'category', 'priority', 'time', 'type'];
+        let todosGroupBy = '';
+        try {
+            const savedGroup = localStorage.getItem('todosGroupBy');
+            if (TODO_GROUP_MODES.includes(savedGroup)) todosGroupBy = savedGroup;
+            else if (localStorage.getItem('todosGroupByCategory') === '1') todosGroupBy = 'category';
+        } catch (e) { /* no storage */ }
+        let todosGroupCollapsed = {};   // "mode|list|group" -> true when that group is folded away
+        try { todosGroupCollapsed = JSON.parse(localStorage.getItem('todosGroupCollapsed') || '{}') || {}; } catch (e) { todosGroupCollapsed = {}; }
 
-        // [{name, items}] - named categories A to Z, then whatever has none.
-        function groupTodosByCategory(list) {
+        function todoGroupOf(todo) {
+            if (todosGroupBy === 'category') {
+                const c = String(todo.category || '').trim();
+                return { id: c.toLowerCase(), label: c || 'No category', rank: c ? 0 : 1 };
+            }
+            if (todosGroupBy === 'priority') {
+                const order = ['high', 'medium', 'low'];
+                const p = order.includes(todo.priority) ? todo.priority : 'medium';
+                return { id: p, label: TODO_PRIORITY_LABEL[p] || p, rank: order.indexOf(p) };
+            }
+            if (todosGroupBy === 'time') {
+                const m = todo.estimatedMinutes || 0;
+                return { id: String(m), label: m ? formatTodoDuration(m) : 'No estimate', rank: m || 1e9 };
+            }
+            return todo.personal ? { id: 'personal', label: 'Personal', rank: 1 } : { id: 'business', label: 'Business', rank: 0 };
+        }
+
+        function groupTodos(list) {
             const groups = new Map();
             list.forEach(t => {
-                const key = String(t.category || '').trim();
-                const id = key.toLowerCase();
-                if (!groups.has(id)) groups.set(id, { name: key, items: [] });
-                groups.get(id).items.push(t);
+                const g = todoGroupOf(t);
+                if (!groups.has(g.id)) groups.set(g.id, Object.assign({ items: [] }, g));
+                groups.get(g.id).items.push(t);
             });
-            return Array.from(groups.values()).sort((a, b) => {
-                if (!a.name) return 1;
-                if (!b.name) return -1;
-                return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-            });
+            return Array.from(groups.values()).sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
         }
 
         function todoSearchTerms() {
@@ -26300,11 +26446,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         }
 
         function initTodosSearch() {
-            const groupBox = document.getElementById('todos-group-category');
-            groupBox.checked = todosGroupByCategory;
-            groupBox.addEventListener('change', () => {
-                todosGroupByCategory = groupBox.checked;
-                try { localStorage.setItem('todosGroupByCategory', todosGroupByCategory ? '1' : '0'); } catch (e) { /* no storage */ }
+            const groupSelect = document.getElementById('todos-group-by');
+            groupSelect.value = todosGroupBy;
+            groupSelect.addEventListener('change', () => {
+                todosGroupBy = groupSelect.value;
+                try { localStorage.setItem('todosGroupBy', todosGroupBy); } catch (e) { /* no storage */ }
                 renderTodosPage();
             });
             const input = document.getElementById('todos-search-input');
@@ -26342,15 +26488,24 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             ].forEach(([listId, emptyId, countId, list]) => {
                 const container = document.getElementById(listId);
                 container.innerHTML = '';
-                if (todosGroupByCategory) {
-                    groupTodosByCategory(list).forEach(group => {
+                if (todosGroupBy) {
+                    groupTodos(list).forEach(group => {
+                        const key = `${todosGroupBy}|${listId}|${group.id}`;
+                        const folded = !!todosGroupCollapsed[key];
                         const heading = document.createElement('div');
                         heading.className = 'todos-cat-heading';
-                        heading.innerHTML = '<span></span><span class="todos-cat-count"></span>';
-                        heading.firstChild.textContent = group.name || 'No category';
-                        heading.lastChild.textContent = group.items.length;
+                        heading.title = folded ? 'Click to expand' : 'Click to collapse';
+                        heading.innerHTML = '<span class="todos-cat-name"><span class="todos-cat-chevron"></span><span class="todos-cat-label"></span></span><span class="todos-cat-count"></span>';
+                        heading.querySelector('.todos-cat-chevron').textContent = folded ? '▸' : '▾';
+                        heading.querySelector('.todos-cat-label').textContent = group.label;
+                        heading.querySelector('.todos-cat-count').textContent = group.items.length;
+                        heading.addEventListener('click', () => {
+                            if (folded) delete todosGroupCollapsed[key]; else todosGroupCollapsed[key] = true;
+                            try { localStorage.setItem('todosGroupCollapsed', JSON.stringify(todosGroupCollapsed)); } catch (e) { /* no storage */ }
+                            renderTodosPage();
+                        });
                         container.appendChild(heading);
-                        group.items.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
+                        if (!folded) group.items.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
                     });
                 } else {
                     list.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
@@ -26402,7 +26557,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             if (selectedTodoId === null || todoFormDirty) return;
             const view = document.getElementById('todos-view');
             if (!view || view.style.display === 'none' || !view.contains(e.target)) return;
-            if (e.target.closest('.topics-item, .todos-details-pane, button, input, select, textarea, label, a, .todos-new-bar-collapse, .todo-cat-list, [contenteditable="true"]')) return;
+            if (e.target.closest('.topics-item, .todos-details-pane, button, input, select, textarea, label, a, .todos-new-bar-collapse, .todo-cat-list, .todos-cat-heading, [contenteditable="true"]')) return;
             selectedTodoId = null;
             editingTodoId = null;
             renderTodosPage();
@@ -26468,7 +26623,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             titleEl.style.whiteSpace = 'nowrap';
             row.appendChild(titleEl);
 
-            if (todo.category && !todosGroupByCategory) {
+            if (todo.category && todosGroupBy !== 'category') {
                 const chip = document.createElement('span');
                 chip.className = 'todo-row-category';
                 chip.textContent = todo.category;
@@ -26985,8 +27140,11 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         const TODO_CATEGORY_MAX = 60;
         const todoCategoryCombos = {};
 
+        let todoExplicitCategories = [];   // the remembered list (Settings > To-Dos > Categories)
+
         function todoCategoryNames() {
             const seen = new Map();
+            todoExplicitCategories.forEach(c => { const n = String(c || '').trim(); if (n && !seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n); });
             todosList.forEach(t => {
                 const c = String(t.category || '').trim();
                 if (c && !seen.has(c.toLowerCase())) seen.set(c.toLowerCase(), c);
@@ -27304,7 +27462,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const data = await response.json();
                 if (data.success) {
                     todosList = data.todos;
-                    selectedTodoId = recurrence ? null : data.todo_id;
+                    selectedTodoId = null;
+                    collapseNewTodoBar();
                     renderTodosPage();
                     titleInput.value = '';
                     detailsInput.value = '';
@@ -27327,7 +27486,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             durationInput.disabled = false;
             btn.disabled = false;
             btn.textContent = 'Add To-Do';
-            titleInput.focus();
+        }
+
+        // The New To-Do window folds away once the to-do is added.
+        function collapseNewTodoBar() {
+            document.getElementById('todos-new-bar-collapse').classList.remove('expanded');
+            document.getElementById('todos-new-bar-toggle-arrow').innerHTML = '&#9650;';
         }
 
         // The Calendar's Add To-Do modal reuses the To-Do page's New To-Do
