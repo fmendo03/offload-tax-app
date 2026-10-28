@@ -3645,6 +3645,12 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
             padding-bottom: 10px;
         }
 
+        .todos-edit-note { padding: 8px 20px 0; font-size: 12px; color: #666; }
+        .todos-edit-form { border-top: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); column-gap: 16px; row-gap: 10px; align-items: start; }
+        .todos-edit-form .todos-edit-wide { grid-column: 1 / -1; }
+        .todos-edit-form #todos-edit-form-fields { display: contents; }
+        #todos-preview-content .topics-preview-actions { padding: 6px 20px 16px; }
+
         .todos-details-close {
             margin-left: auto;
             width: 30px;
@@ -26374,7 +26380,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // The x in the details header (and Esc) close it too. Closing while editing throws the edit away, so that asks first.
         function closeTodoDetails() {
             if (selectedTodoId === null) return;
-            if (editingTodoId && !confirm('Close without saving your changes?')) return;
+            if (todoFormDirty && !confirm('Close without saving your changes?')) return;
+            todoFormDirty = false;
             editingTodoId = null;
             selectedTodoId = null;
             renderTodosPage();
@@ -26390,11 +26397,12 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         });
 
         document.addEventListener('click', (e) => {
-            if (selectedTodoId === null || editingTodoId) return;
+            if (selectedTodoId === null || todoFormDirty) return;
             const view = document.getElementById('todos-view');
             if (!view || view.style.display === 'none' || !view.contains(e.target)) return;
             if (e.target.closest('.topics-item, .todos-details-pane, button, input, select, textarea, label, a, .todos-new-bar-collapse, .todo-cat-list, [contenteditable="true"]')) return;
             selectedTodoId = null;
+            editingTodoId = null;
             renderTodosPage();
         });
 
@@ -26571,6 +26579,26 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // as editingTopicId for Discussion Topics.
         let editingTodoId = null;
 
+        // The details panel is the New To-Do form again, filled in with this to-do - so a change is made
+        // the same way as when it was created. Nothing is saved until Save.
+        let todosPreviewSig = '';
+        let todoFormDirty = false;   // typed-in changes that haven't been saved
+
+        function todoPreviewSignature(todo) {
+            const events = todoEventIds(todo).map(id => calendarEvents.find(e => e.id === id)).filter(Boolean).map(e => [e.id, e.start, e.end]);
+            return JSON.stringify([todo.id, todo.title, todo.details, todo.estimatedMinutes, todo.priority, todo.personal, todo.category,
+                todo.completed, todo.notFinished, todo.seriesId, todo.calendarEventId,
+                (todo.attachments || []).map(a => a && [a.name, a.size]), events]);
+        }
+
+        // A scheduled to-do's calendar block follows its estimated time (a split to-do keeps its parts as they are).
+        async function fitScheduledBlockToDuration(todo, minutes) {
+            const events = todoEventIds(todo).map(id => calendarEvents.find(e => e.id === id)).filter(Boolean);
+            if (events.length !== 1 || events[0].allDay) return;
+            const end = new Date(new Date(events[0].start).getTime() + minutes * 60000);
+            await updateCalendarEvent(events[0].id, { end: calendarToLocalISO(end) });
+        }
+
         function renderTodosPreviewPane() {
             const emptyEl = document.getElementById('todos-preview-empty');
             const contentEl = document.getElementById('todos-preview-content');
@@ -26585,193 +26613,108 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 emptyEl.style.display = 'block';
                 contentEl.style.display = 'none';
                 contentEl.innerHTML = '';
+                todosPreviewSig = '';
+                todoFormDirty = false;
                 return;
             }
+
+            // Anything unrelated that redraws the page (a search, a poll) must not throw away what is being typed.
+            const sig = todoPreviewSignature(todo);
+            if (sig === todosPreviewSig && contentEl.childElementCount) return;
+            todosPreviewSig = sig;
+            todoFormDirty = false;
 
             emptyEl.style.display = 'none';
             contentEl.style.display = 'flex';
             contentEl.innerHTML = '';
 
-            const editingThis = editingTodoId === todo.id;
-
-            const tags = document.createElement('div');
-            tags.className = 'topics-preview-tags';
-            if (todo.estimatedMinutes) {
-                const duration = document.createElement('span');
-                duration.className = 'topics-category-agent-badge';
-                duration.textContent = `⏱️ ${formatTodoDuration(todo.estimatedMinutes)}`;
-                tags.appendChild(duration);
-            }
-            const priorityTag = document.createElement('span');
-            priorityTag.className = 'topics-category-agent-badge';
-            priorityTag.style.borderLeft = `3px solid ${TODO_PRIORITY_COLOR[todo.priority] || TODO_PRIORITY_COLOR.medium}`;
-            priorityTag.textContent = TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.medium;
-            tags.appendChild(priorityTag);
-            if (todo.personal) {
-                const personalTag = document.createElement('span');
-                personalTag.className = 'topics-category-agent-badge';
-                personalTag.textContent = '\u{1F3E0} Personal';
-                tags.appendChild(personalTag);
-            }
-            if (todo.category) {
-                const categoryTag = document.createElement('span');
-                categoryTag.className = 'topics-category-agent-badge';
-                categoryTag.textContent = `\u{1F3F7}\uFE0F ${todo.category}`;
-                tags.appendChild(categoryTag);
-            }
             if (todo.seriesId) {
-                const recurringTag = document.createElement('span');
-                recurringTag.className = 'topics-category-agent-badge';
-                recurringTag.textContent = '\u{1F501} Recurring';
-                tags.appendChild(recurringTag);
+                const note = document.createElement('div');
+                note.className = 'todos-edit-note';
+                note.textContent = '\u{1F501} Part of a recurring series - saving asks whether the change is for just this one or the future ones too.';
+                contentEl.appendChild(note);
             }
-            if (!editingThis) {
-                const editBtn = document.createElement('button');
-                editBtn.type = 'button';
-                editBtn.className = 'topics-preview-edit-btn';
-                editBtn.textContent = '✎ Edit';
-                editBtn.title = 'Edit title and details';
-                editBtn.addEventListener('click', () => { editingTodoId = todo.id; renderTodosPage(); });
-                tags.appendChild(editBtn);
+
+            // The very same fields as the New To-Do form (cloned from it), minus the ones that only make sense when creating.
+            const source = document.getElementById('todos-new-form-fields');
+            const form = document.createElement('div');
+            form.className = 'topics-new-bar todos-edit-form';
+            form.innerHTML = source.innerHTML.replace(/todos-new-/g, 'todos-edit-');
+            const f = (id) => form.querySelector(`#todos-edit-${id}`);
+            ['template-select', 'repeat'].forEach(id => { const field = f(id) && f(id).closest('.topics-new-field'); if (field) field.remove(); });
+            const rec = f('recurrence-options'); if (rec) rec.remove();
+            const catSlot = f('category-slot'); catSlot.innerHTML = '';
+            const attachZone = f('attachments-zone'); attachZone.innerHTML = '';
+            const attachList = f('attachments-list'); attachList.innerHTML = '';
+            ['title', 'details'].forEach(id => f(id).closest('.topics-new-field').classList.add('todos-edit-wide'));
+            (attachZone.closest('.topics-new-field') || attachZone).classList.add('todos-edit-wide'); attachList.classList.add('todos-edit-wide');
+
+            f('title').value = todo.title || '';
+            f('details').value = todo.details || '';
+            const durationSelect = f('duration');
+            const minutes = todo.estimatedMinutes || 0;
+            if (minutes && !Array.from(durationSelect.options).some(o => o.value === String(minutes))) {
+                durationSelect.appendChild(new Option(formatTodoDuration(minutes), String(minutes)));
             }
-            contentEl.appendChild(tags);
+            durationSelect.value = minutes ? String(minutes) : '';
+            f('priority').value = todo.priority || 'medium';
+            f('personal').checked = !!todo.personal;
+            const categoryCombo = createTodoCategoryCombo(todo.category || '');
+            catSlot.appendChild(categoryCombo.el);
 
-            if (editingThis) {
-                const titleInput = document.createElement('input');
-                titleInput.type = 'text';
-                titleInput.className = 'topics-preview-edit-title';
-                titleInput.value = todo.title;
-                contentEl.appendChild(titleInput);
+            const attachments = (todo.attachments || []).slice();
+            const refreshAttachments = () => { renderAttachmentChips(attachList, attachments, refreshAttachments); todoFormDirty = true; };
+            attachZone.appendChild(buildAttachmentDropzone(attachments, refreshAttachments));
+            renderAttachmentChips(attachList, attachments, refreshAttachments);
 
-                const detailsTextarea = document.createElement('textarea');
-                detailsTextarea.className = 'topics-preview-edit-details';
-                detailsTextarea.rows = 4;
-                detailsTextarea.value = todo.details || '';
-                contentEl.appendChild(detailsTextarea);
+            form.addEventListener('input', () => { todoFormDirty = true; });
+            form.addEventListener('change', () => { todoFormDirty = true; });
+            contentEl.appendChild(form);
 
-                const editFieldsRow = document.createElement('div');
-                editFieldsRow.style.display = 'flex';
-                editFieldsRow.style.gap = '14px';
-                editFieldsRow.style.alignItems = 'center';
-                editFieldsRow.style.margin = '8px 0';
-
-                const prioritySelect = document.createElement('select');
-                ['high', 'medium', 'low'].forEach(p => {
-                    const opt = new Option(TODO_PRIORITY_LABEL[p], p, false, (todo.priority || 'medium') === p);
-                    applyTodoPriorityOptionStyle(opt, p);
-                    prioritySelect.appendChild(opt);
-                });
-                editFieldsRow.appendChild(prioritySelect);
-
-                const personalLabel = document.createElement('label');
-                personalLabel.className = 'todos-personal-checkbox-label';
-                const personalCheckbox = document.createElement('input');
-                personalCheckbox.type = 'checkbox';
-                personalCheckbox.checked = !!todo.personal;
-                personalLabel.appendChild(personalCheckbox);
-                personalLabel.appendChild(document.createTextNode('Personal'));
-                editFieldsRow.appendChild(personalLabel);
-
-                const categoryCombo = createTodoCategoryCombo(todo.category || '', contentEl);
-                categoryCombo.el.style.flex = '1';
-                categoryCombo.el.style.minWidth = '160px';
-                editFieldsRow.appendChild(categoryCombo.el);
-
-                contentEl.appendChild(editFieldsRow);
-
-                const editActions = document.createElement('div');
-                editActions.className = 'topics-preview-actions';
-
-                const saveBtn = document.createElement('button');
-                saveBtn.type = 'button';
-                saveBtn.className = 'task-action-btn solid-complete';
-                saveBtn.textContent = 'Save';
-                saveBtn.addEventListener('click', async () => {
-                    const newTitle = titleInput.value.trim();
-                    const newDetails = detailsTextarea.value.trim();
-                    if (!newTitle || !newDetails) {
-                        alert('Please fill in both the title and details.');
-                        return;
-                    }
-                    const payload = { title: newTitle, details: newDetails, priority: prioritySelect.value, personal: personalCheckbox.checked, category: categoryCombo.getValue() };
-                    unbindClickOutsideToCancel(contentEl);
-                    editingTodoId = null;
-                    selectedTodoId = null;   // saving puts the details panel away too
-                    if (todo.seriesId) {
-                        showSeriesScopeModal(
-                            'This to-do repeats. Apply this change to just this occurrence, or to it and every future occurrence in the series?',
-                            'Just this one', 'This and future occurrences',
-                            () => updateTodoItem(todo.id, payload),
-                            async () => {
-                                await updateTodoItem(todo.id, payload);
-                                await applyTodoFieldsToSeriesFuture(todo.seriesId, payload, todo.id);
-                            },
-                            () => renderTodosPage()
-                        );
-                        return;
-                    }
+            const saveTodoForm = async () => {
+                const title = f('title').value.trim();
+                const details = f('details').value.trim();
+                const estimatedMinutes = parseInt(f('duration').value, 10);
+                if (!title || !details || !estimatedMinutes) {
+                    alert('Please fill in the title, details, and estimated time.');
+                    return;
+                }
+                const payload = {
+                    title, details, estimated_minutes: estimatedMinutes, priority: f('priority').value,
+                    personal: f('personal').checked, category: categoryCombo.getValue(), attachments
+                };
+                const apply = async () => {
                     await updateTodoItem(todo.id, payload);
-                });
-                editActions.appendChild(saveBtn);
-
-                const cancelBtn = document.createElement('button');
-                cancelBtn.type = 'button';
-                cancelBtn.className = 'pane-toolbar-btn';
-                cancelBtn.textContent = 'Cancel';
-                cancelBtn.addEventListener('click', () => {
-                    unbindClickOutsideToCancel(contentEl);
-                    editingTodoId = null;
-                    selectedTodoId = null;   // cancelling puts the details panel away too
+                    if (estimatedMinutes !== todo.estimatedMinutes) await fitScheduledBlockToDuration(todo, estimatedMinutes);
+                    todoFormDirty = false;
+                    selectedTodoId = null;   // saving puts the details panel away
                     renderTodosPage();
-                });
-                editActions.appendChild(cancelBtn);
-
-                contentEl.appendChild(editActions);
-                titleInput.focus();
-                bindClickOutsideToCancel(contentEl, () => { editingTodoId = null; selectedTodoId = null; renderTodosPage(); });
-                return;
-            }
-
-            const title = document.createElement('h3');
-            title.className = 'topics-preview-title' + (todo.completed ? ' completed' : '');
-            title.textContent = todo.title;
-            title.addEventListener('dblclick', () => { editingTodoId = todo.id; renderTodosPage(); });
-            contentEl.appendChild(title);
-
-            const details = document.createElement('div');
-            details.className = 'topics-preview-details';
-            details.addEventListener('dblclick', () => { editingTodoId = todo.id; renderTodosPage(); });
-            const points = (todo.details || '').split('\n').map(l => l.trim()).filter(Boolean);
-            if (points.length) {
-                const ul = document.createElement('ul');
-                points.forEach(p => {
-                    const li = document.createElement('li');
-                    li.textContent = p.replace(/^[-*•]\s*/, '');
-                    ul.appendChild(li);
-                });
-                details.appendChild(ul);
-            } else {
-                details.textContent = 'No details added.';
-                details.style.color = '#999';
-            }
-            contentEl.appendChild(details);
-
-            // renderAttachmentChips here is a plain (non-persisting) render -
-            // only saveTodoAttachments (passed as the dropzone's onChange and
-            // each chip's remove handler) actually calls updateTodoItem. Doing
-            // the save on every render, including this first one, would touch
-            // the server on every keystroke-free selection and - since
-            // updateTodoItem triggers a full re-render - loop forever.
-            if (!todo.attachments) todo.attachments = [];
-            const chipList = document.createElement('div');
-            chipList.className = 'item-attachment-chip-list';
-            const saveTodoAttachments = () => {
-                renderAttachmentChips(chipList, todo.attachments, saveTodoAttachments);
-                updateTodoItem(todo.id, { attachments: todo.attachments });
+                };
+                if (todo.seriesId) {
+                    showSeriesScopeModal(
+                        'This to-do repeats. Apply this change to just this occurrence, or to it and every future occurrence in the series?',
+                        'Just this one', 'This and future occurrences',
+                        apply,
+                        async () => {
+                            const { attachments: _attachments, ...forSeries } = payload;
+                            await apply();
+                            await applyTodoFieldsToSeriesFuture(todo.seriesId, forSeries, todo.id);
+                        },
+                        () => { /* keep the form open */ }
+                    );
+                    return;
+                }
+                await apply();
             };
-            renderAttachmentChips(chipList, todo.attachments, saveTodoAttachments);
-            contentEl.appendChild(buildAttachmentDropzone(todo.attachments, saveTodoAttachments));
-            contentEl.appendChild(chipList);
+
+            const actions = document.createElement('div');
+            actions.className = 'topics-preview-actions';
+            const saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.className = 'task-action-btn solid-start';
+            saveBtn.textContent = 'Save';
+            saveBtn.addEventListener('click', saveTodoForm);
+            actions.appendChild(saveBtn);
 
             // Every time this to-do has been scheduled - a missed card stays
             // on the calendar and the to-do is scheduled again alongside it,
@@ -26807,9 +26750,6 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 });
                 contentEl.appendChild(timesSection);
             }
-
-            const actions = document.createElement('div');
-            actions.className = 'topics-preview-actions';
 
             const toggleBtn = document.createElement('button');
             toggleBtn.type = 'button';
