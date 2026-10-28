@@ -3524,6 +3524,16 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
 
         /* To-Do page: three-column board (Not Scheduled / Scheduled / Completed)
            over a details panel. */
+        .todos-search { display: flex; align-items: center; gap: 8px; flex: 1 1 360px; max-width: 640px; flex-wrap: wrap; }
+        .todos-search input { flex: 1 1 220px; min-width: 160px; padding: 8px 12px; border: 1px solid #cfd4dc; border-radius: 8px; font-size: 14px; }
+        .todos-search input:focus { outline: none; border-color: #1a3a8a; box-shadow: 0 0 0 2px rgba(26, 58, 138, 0.15); }
+        .todos-search-mode { display: inline-flex; border: 1px solid #cfd4dc; border-radius: 8px; overflow: hidden; }
+        .todos-search-mode button { border: none; background: #fff; color: #555; font-weight: 700; font-size: 12px; padding: 8px 12px; cursor: pointer; }
+        .todos-search-mode button + button { border-left: 1px solid #cfd4dc; }
+        .todos-search-mode button.active { background: #1a3a8a; color: #fff; }
+        .todos-search-clear { border: none; background: none; color: #1a3a8a; font-weight: 600; font-size: 13px; cursor: pointer; padding: 4px 6px; }
+        .todos-search-status { font-size: 12px; color: #666; }
+
         .todos-board {
             flex: 1;
             min-height: 0;
@@ -7592,7 +7602,7 @@ body.va-open #notification-toasts {
             <button id="home-nav-btn" class="home-nav-btn">&#128101; Meet The Team</button>
             <button id="agents-nav-btn" class="home-nav-btn">&#129302; Agents <span class="mini-badge mini-badge-inline" id="agents-total-badge" style="margin-left: auto;"></span></button>
             <button id="projects-nav-btn" class="home-nav-btn">&#128193; Projects &amp; Tasks</button>
-            <button id="todos-nav-btn" class="home-nav-btn">&#128221; To-Do</button>
+            <button id="todos-nav-btn" class="home-nav-btn">&#128221; To-Do List</button>
             <button id="calendar-nav-btn" class="home-nav-btn">&#128197; Calendar</button>
             <button id="reminders-nav-btn" class="home-nav-btn">&#128276; Reminders</button>
             <button id="topics-nav-btn" class="home-nav-btn">&#128172; Discussion Topics</button>
@@ -8057,7 +8067,17 @@ body.va-open #notification-toasts {
 
         <!-- To-Do Page -->
         <div class="page-view" id="todos-view" style="display: none;">
-            <div class="page-view-header"><h1>To-Do</h1><div class="agent-quickbar" id="todos-agent-quickbar"></div></div>
+            <div class="page-view-header"><h1>To-Do List</h1>
+                <div class="todos-search" id="todos-search">
+                    <input type="text" id="todos-search-input" placeholder="Search to-dos: lunch bob &quot;pizza place&quot;" autocomplete="off" spellcheck="false">
+                    <div class="todos-search-mode" role="group" aria-label="How to combine the words">
+                        <button type="button" data-mode="and" title="Only to-dos that contain ALL of the words">AND</button>
+                        <button type="button" data-mode="or" title="To-dos that contain ANY of the words">OR</button>
+                    </div>
+                    <button type="button" class="todos-search-clear" id="todos-search-clear" style="display:none;">Clear</button>
+                    <span class="todos-search-status" id="todos-search-status"></span>
+                </div>
+                <div class="agent-quickbar" id="todos-agent-quickbar"></div></div>
             <div class="todos-board">
             <div class="todos-kanban">
                 <!-- Not Scheduled: everything that isn't on the calendar yet (including
@@ -26187,11 +26207,52 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Three columns, each a filter of the same list: Not Scheduled
         // (anything not on the calendar, including a to-do that missed its
         // day), Scheduled (on the calendar), Completed.
+        // ---- Search the list: words (or "quoted phrases"), combined with AND (all of them) or OR (any of them) ----
+        const todosSearch = { text: '', mode: 'and' };
+        try { if (localStorage.getItem('todosSearchMode') === 'or') todosSearch.mode = 'or'; } catch (e) { /* no storage */ }
+
+        function todoSearchTerms() {
+            return (todosSearch.text.match(/"([^"]+)"|[^\s,]+/g) || [])
+                .map(t => t.replace(/^"|"$/g, '').trim().toLowerCase())
+                .filter(Boolean);
+        }
+
+        function todoMatchesSearch(todo, terms) {
+            if (!terms.length) return true;
+            const text = [todo.title, todo.details, ...(todo.attachments || []).map(a => a && a.name)]
+                .filter(Boolean).join('\n').toLowerCase();
+            return todosSearch.mode === 'or' ? terms.some(t => text.includes(t)) : terms.every(t => text.includes(t));
+        }
+
+        function renderTodosSearchControls(shown, total) {
+            const searching = todoSearchTerms().length > 0;
+            document.querySelectorAll('#todos-search .todos-search-mode button').forEach(b => b.classList.toggle('active', b.dataset.mode === todosSearch.mode));
+            document.getElementById('todos-search-clear').style.display = todosSearch.text ? '' : 'none';
+            document.getElementById('todos-search-status').textContent = searching ? `${shown} of ${total} to-dos` : '';
+        }
+
+        function initTodosSearch() {
+            const input = document.getElementById('todos-search-input');
+            input.addEventListener('input', () => { todosSearch.text = input.value; renderTodosPage(); });
+            input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { input.value = ''; todosSearch.text = ''; renderTodosPage(); } });
+            document.querySelectorAll('#todos-search .todos-search-mode button').forEach(b => b.addEventListener('click', () => {
+                todosSearch.mode = b.dataset.mode;
+                try { localStorage.setItem('todosSearchMode', todosSearch.mode); } catch (e) { /* no storage */ }
+                renderTodosPage();
+            }));
+            document.getElementById('todos-search-clear').addEventListener('click', () => {
+                input.value = ''; todosSearch.text = ''; renderTodosPage(); input.focus();
+            });
+        }
+
         function renderTodosPage() {
-            const unscheduled = todosList.filter(t => !t.completed && !isTodoScheduled(t));
-            const scheduled = todosList.filter(t => !t.completed && isTodoScheduled(t))
+            const terms = todoSearchTerms();
+            const visible = todosList.filter(t => todoMatchesSearch(t, terms));
+            renderTodosSearchControls(visible.length, todosList.length);
+            const unscheduled = visible.filter(t => !t.completed && !isTodoScheduled(t));
+            const scheduled = visible.filter(t => !t.completed && isTodoScheduled(t))
                 .sort((a, b) => todoScheduledSortKey(a) - todoScheduledSortKey(b));
-            const completed = todosList.filter(t => t.completed)
+            const completed = visible.filter(t => t.completed)
                 .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
 
             // Prune stale ids (deleted/completed since selected) - same
@@ -26207,7 +26268,10 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const container = document.getElementById(listId);
                 container.innerHTML = '';
                 list.forEach(todo => container.appendChild(buildTodoItemEl(todo)));
-                document.getElementById(emptyId).style.display = list.length ? 'none' : 'block';
+                const emptyEl = document.getElementById(emptyId);
+                if (emptyEl.dataset.defaultText === undefined) emptyEl.dataset.defaultText = emptyEl.textContent;
+                emptyEl.textContent = terms.length ? 'No to-dos match your search.' : emptyEl.dataset.defaultText;
+                emptyEl.style.display = list.length ? 'none' : 'block';
                 document.getElementById(countId).textContent = list.length;
             });
 
@@ -29702,6 +29766,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         initTodoSettingsUi();
 
         document.getElementById('todos-nav-btn').addEventListener('click', showTodosPage);
+        initTodosSearch();
         initReminders();
         document.getElementById('todos-new-bar-toggle-btn').addEventListener('click', () => {
             const collapse = document.getElementById('todos-new-bar-collapse');
