@@ -3527,7 +3527,9 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
         .todos-search { display: flex; align-items: center; gap: 8px; flex: 1 1 360px; max-width: 640px; flex-wrap: wrap; }
         .todos-search input { flex: 1 1 220px; min-width: 160px; padding: 8px 12px; border: 1px solid #cfd4dc; border-radius: 8px; font-size: 14px; }
         .todos-search input:focus { outline: none; border-color: #1a3a8a; box-shadow: 0 0 0 2px rgba(26, 58, 138, 0.15); }
-        .todos-search-mode { display: inline-flex; border: 1px solid #cfd4dc; border-radius: 8px; overflow: hidden; }
+        /* The AND / OR switch only appears while the search box (or the switch itself) has focus. */
+        .todos-search-mode { display: none; border: 1px solid #cfd4dc; border-radius: 8px; overflow: hidden; }
+        .todos-search:focus-within .todos-search-mode { display: inline-flex; }
         .todos-search-mode button { border: none; background: #fff; color: #555; font-weight: 700; font-size: 12px; padding: 8px 12px; cursor: pointer; }
         .todos-search-mode button + button { border-left: 1px solid #cfd4dc; }
         .todos-search-mode button.active { background: #1a3a8a; color: #fff; }
@@ -26228,7 +26230,7 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
             const searching = todoSearchTerms().length > 0;
             document.querySelectorAll('#todos-search .todos-search-mode button').forEach(b => b.classList.toggle('active', b.dataset.mode === todosSearch.mode));
             document.getElementById('todos-search-clear').style.display = todosSearch.text ? '' : 'none';
-            document.getElementById('todos-search-status').textContent = searching ? `${shown} of ${total} to-dos` : '';
+            document.getElementById('todos-search-status').textContent = searching ? `${shown} of ${total} to-dos (${todosSearch.mode === 'or' ? 'any word' : 'all words'})` : '';
         }
 
         function initTodosSearch() {
