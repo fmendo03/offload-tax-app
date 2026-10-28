@@ -9332,9 +9332,12 @@ body.va-open #notification-toasts {
 
         // `tab`: which of the agent's tabs clicking it opens (their chat by default).
         // `onOpen`: runs when the pop-up is clicked, after the agent's office opens.
-        function showAgentNotification(agent, label, text, tab, onOpen) {
-            flashingAgents.add(agent);
-            updateAgentFlash();
+        // `popupOnly`: just a heads-up - clicking it (or the x) only dismisses it, and nothing opens or lights up.
+        function showAgentNotification(agent, label, text, tab, onOpen, popupOnly) {
+            if (!popupOnly) {
+                flashingAgents.add(agent);
+                updateAgentFlash();
+            }
             playBubblePop();
 
             const container = document.getElementById('notification-toasts');
@@ -9360,6 +9363,7 @@ body.va-open #notification-toasts {
             toast.addEventListener('click', (e) => {
                 if (e.target.closest('.notification-toast-close')) { dismiss(); return; }
                 dismiss();
+                if (popupOnly) return;
                 selectAgent(agent);
                 if (onOpen) onOpen();
                 if (tab) showAgentTab(tab);
@@ -24433,11 +24437,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 const data = await response.json();
                 if (!data.success || !data.checkin) return;
                 // The nudge is written by the server with no AI involved, and it's only a pop-up in
-                // Ashanti's colours. Clicking it opens her chat with the message in it - and from
-                // there, replying is what brings her in - so the AI is only used if he engages.
-                const message = data.checkin.message;
-                showAgentNotification('ashanti', 'Checking in', message, undefined,
-                    () => postAgentChatMessage('ashanti', message, { calendarCheckin: true }));
+                // Ashanti's colours - it never goes into her chat; clicking it just dismisses it.
+                showAgentNotification('ashanti', 'Checking in', data.checkin.message, undefined, null, true);
             } catch (error) {
                 console.error('Failed to load calendar check-in:', error);
             }
