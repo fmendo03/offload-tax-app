@@ -3628,6 +3628,21 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
             padding-bottom: 10px;
         }
 
+        .todos-details-close {
+            margin-left: auto;
+            width: 30px;
+            height: 30px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #666;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .todos-details-close:hover { background: #eef0f4; color: #111; }
+
         /* A calendar card the To-Do page just jumped to - pulses a few times. */
         .calendar-week-event.calendar-event-flash {
             animation: calendar-event-flash 0.8s ease-in-out 3;
@@ -8240,6 +8255,7 @@ body.va-open #notification-toasts {
             <div class="todos-details-pane">
                 <div class="split-pane-header">
                     <h2>To-Do Details</h2>
+                    <button type="button" class="todos-details-close" id="todos-details-close" title="Close (Esc)" aria-label="Close details">&times;</button>
                 </div>
                 <div class="split-pane-scroll" id="todos-preview-body">
                     <div class="page-empty" id="todos-preview-empty">Click a to-do above to see its details here.</div>
@@ -26294,6 +26310,24 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         // Clicking empty space on the To-Do page puts the details away. Buttons, fields,
         // the New To-Do form, other rows and the details panel itself don't count, and
         // nothing closes while a to-do is being edited.
+        // The x in the details header (and Esc) close it too. Closing while editing throws the edit away, so that asks first.
+        function closeTodoDetails() {
+            if (selectedTodoId === null) return;
+            if (editingTodoId && !confirm('Close without saving your changes?')) return;
+            editingTodoId = null;
+            selectedTodoId = null;
+            renderTodosPage();
+        }
+
+        document.getElementById('todos-details-close').addEventListener('click', closeTodoDetails);
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape' || selectedTodoId === null) return;
+            const view = document.getElementById('todos-view');
+            if (!view || view.style.display === 'none') return;
+            if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+            closeTodoDetails();
+        });
+
         document.addEventListener('click', (e) => {
             if (selectedTodoId === null || editingTodoId) return;
             const view = document.getElementById('todos-view');
