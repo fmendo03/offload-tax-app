@@ -8077,13 +8077,19 @@ def social_publish():
 # the task before pressing Start; it is handed to the agent when the task
 # runs, and the agent's finished work then goes to Francis for review before
 # the task counts as complete. One small call per task.
-TASK_PLAN_CAPABILITIES = (
-    "The agent can research with web search, look things up in the firm's uploaded library, "
-    "write in chat, and create files (Word, Excel, PowerPoint, PDF or HTML). It cannot send emails "
-    "or messages, post anywhere, log in to any account, run code, or change anything outside this "
-    "app. Plan only what the agent can actually do here; if the real-world follow-through is up to "
-    "Francis, say so in the final output (for example, \"Francis then posts it\")."
-)
+def task_plan_capabilities():
+    # The agent can only look in files that have actually been connected on the Knowledge Base page, so a plan
+    # mentions that only when there are some - and says "connected files", not an invented name for them.
+    lookup = ""
+    if library_has_content():
+        lookup = ("look things up in the files Francis connected on the Knowledge Base page (call them \"your connected "
+                  "files\" - never \"the library\"), ")
+    return (
+        "The agent can research with web search, " + lookup + "write in chat, and create files (Word, Excel, PowerPoint, "
+        "PDF or HTML). It cannot send emails or messages, post anywhere, log in to any account, run code, or change "
+        "anything outside this app. Plan only what the agent can actually do here; if the real-world follow-through is "
+        "up to Francis, say so in the final output (for example, \"Francis then posts it\")."
+    )
 
 
 TASK_PLAN_SASHA_NOTE = (
@@ -8139,7 +8145,7 @@ def tasks_plan():
             + (f"What Francis has told us about his {'life' if side == 'personal' else 'firm'} (use it only to tailor the plan - "
                f"never restate these facts inside the steps, and never invent details beyond them):\n{notes}\n\n" if notes else '')
             + (f"Files Francis provided for this task - the agent is given them to work from: {', '.join(file_names)}\n\n" if file_names else '')
-            + TASK_PLAN_CAPABILITIES + (TASK_PLAN_SASHA_NOTE if agent == 'sasha' else '') + "\n\n"
+            + task_plan_capabilities() + (TASK_PLAN_SASHA_NOTE if agent == 'sasha' else '') + "\n\n"
             "Return ONLY a JSON object with these keys:\n"
             "- goal: one or two sentences on what will get done and why it is worth doing.\n"
             "- steps: 3 to 6 steps in the order the agent will take them. Each step is an object with two keys: "
