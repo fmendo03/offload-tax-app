@@ -3551,6 +3551,8 @@ body.lesson-audio-on .lr-mic { opacity: 0.4; pointer-events: none; }
         .todos-cat-heading { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 4px; margin-top: 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #555; border-bottom: 1px solid #e6e6e6; }
         .todos-cat-heading:first-child { margin-top: 0; }
         .todos-cat-heading .todos-cat-count { font-weight: 700; color: #888; }
+        .todo-done-btn { flex-shrink: 0; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1.5px solid #2e9d57; background: #fff; color: #2e9d57; font-size: 13px; font-weight: 800; line-height: 1; cursor: pointer; }
+        .todo-done-btn:hover { background: #2e9d57; color: #fff; }
         .todo-row-category { flex-shrink: 0; font-size: 11px; font-weight: 700; color: #555; background: #eef0f4; border-radius: 10px; padding: 2px 8px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         .todo-cat-combo { position: relative; }
@@ -26656,6 +26658,22 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
                 badges.appendChild(badge);
             });
             row.appendChild(badges);
+
+            // A to-do that isn't on the calendar can be ticked off right from the list.
+            if (!todo.completed && !isTodoScheduled(todo)) {
+                const doneBtn = document.createElement('button');
+                doneBtn.type = 'button';
+                doneBtn.className = 'todo-done-btn';
+                doneBtn.textContent = '✓';
+                doneBtn.title = 'Mark completed';
+                doneBtn.setAttribute('aria-label', `Mark "${todo.title}" completed`);
+                doneBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (selectedTodoId === todo.id) selectedTodoId = null;
+                    updateTodoItem(todo.id, { completed: true });
+                });
+                row.appendChild(doneBtn);
+            }
 
             // Click selects it (and opens the details); clicking the selected one again
             // closes them. The second click of a double-click doesn't count.
