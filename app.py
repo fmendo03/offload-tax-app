@@ -6480,11 +6480,29 @@ def admin_restore():
 
 @app.route('/usage/summary', methods=['GET'])
 def usage_summary():
+    # The period is either "the last N days" (?days=30) or an exact range (?start=2026-10-01&end=2026-10-31, both
+    # included).
+    start_day = end_day = None
     try:
-        days = max(1, min(365, int(request.args.get('days', 30))))
+        if request.args.get('start') and request.args.get('end'):
+            start_day = date.fromisoformat(request.args['start'])
+            end_day = date.fromisoformat(request.args['end'])
+            if end_day < start_day:
+                start_day, end_day = end_day, start_day
+            end_day = min(end_day, today_local())
+            start_day = max(start_day, end_day - timedelta(days=365))
     except ValueError:
-        days = 30
-    cutoff = (now_local() - timedelta(days=days)).isoformat()
+        start_day = end_day = None
+    if start_day is None:
+        try:
+            days = max(1, min(365, int(request.args.get('days', 30))))
+        except ValueError:
+            days = 30
+        end_day = today_local()
+        start_day = end_day - timedelta(days=days - 1)
+    days = (end_day - start_day).days + 1
+    cutoff = start_day.isoformat()                          # entries carry local ISO timestamps
+    until = (end_day + timedelta(days=1)).isoformat()
     entries = []
     if os.path.exists(USAGE_LOG_FILE):
         with open(USAGE_LOG_FILE, 'r', encoding='utf-8') as f:
@@ -6493,8 +6511,31 @@ def usage_summary():
                     entry = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if entry.get('ts', '') >= cutoff:
+                if cutoff <= entry.get('ts', '') < until:
                     entries.append(entry)
+
+    # Day by day over the whole period (days with no activity are zeros), for the charts: the total and one
+    # line per agent, for cost, calls and tokens.
+    day_list = [(start_day + timedelta(days=i)).isoformat() for i in range(days)]
+    day_index = {d: i for i, d in enumerate(day_list)}
+
+    def blank():
+        return {'cost': [0.0] * days, 'calls': [0] * days, 'tokens': [0] * days}
+
+    chart_total = blank()
+    chart_agents = {}
+    for e in entries:
+        i = day_index.get((e.get('ts') or '')[:10])
+        if i is None:
+            continue
+        tokens = (e.get('input_tokens', 0) + e.get('cache_write_tokens', 0) + e.get('cache_read_tokens', 0)
+                  + e.get('output_tokens', 0))
+        for series in (chart_total, chart_agents.setdefault(e.get('agent') or '(background)', blank())):
+            series['cost'][i] += e.get('cost', 0)
+            series['calls'][i] += 1
+            series['tokens'][i] += tokens
+    for series in [chart_total] + list(chart_agents.values()):
+        series['cost'] = [round(v, 4) for v in series['cost']]
 
     def group(key_fn):
         groups = {}
@@ -6513,7 +6554,8 @@ def usage_summary():
     cache_read = sum(e.get('cache_read_tokens', 0) for e in entries)
     price = MODEL_PRICING[CLAUDE_MODEL]
     return jsonify({
-        'success': True, 'days': days,
+        'success': True, 'days': days, 'start': start_day.isoformat(), 'end': end_day.isoformat(),
+        'chart': {'days': day_list, 'total': chart_total, 'agents': chart_agents},
         'total_cost': round(sum(e.get('cost', 0) for e in entries), 4),
         'calls': len(entries),
         'web_searches': sum(e.get('web_searches', 0) for e in entries),
@@ -6524,7 +6566,7 @@ def usage_summary():
         'cache_savings': round(cache_read * (price['input'] - price['cache_read']) / 1_000_000, 4),
         'by_purpose': group(lambda e: e.get('purpose') or 'unknown'),
         'by_agent': group(lambda e: e.get('agent') or '(background)'),
-        'by_day': sorted(group(lambda e: e.get('ts', '')[:10]), key=lambda g: g['name'], reverse=True)[:14]
+        'by_day': sorted(group(lambda e: e.get('ts', '')[:10]), key=lambda g: g['name'], reverse=True)[:31]
     })
 
 
