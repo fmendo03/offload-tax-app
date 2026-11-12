@@ -23352,6 +23352,8 @@ async function runOneOnOneAgentTurn(agent, attachments, taskId, signal, discussI
         function renderUsageChart() {
             const host = document.getElementById('usage-chart-host');
             if (!host || !usageView.data) return;
+            // An older server (not restarted since the update) sends no daily figures.
+            if (!usageView.data.chart) { host.textContent = 'Restart Offload to see the chart - the app is still running its older version.'; return; }
             host.innerHTML = buildUsageChartSvg(usageView.data.chart, usageView.metric, usageView.split);
         }
 
